@@ -61,3 +61,66 @@ def test_il_dizionario_della_griglia_e_serializzabile():
     json.dumps(d)  # non deve sollevare
     assert d["crs"] == "EPSG:3857"
     assert d["width"] == g.width
+
+
+from ingest.config import MAX_NEIGHBOUR_DISTANCE_M
+from tests.conftest import ETA, XI, synthetic_coords, synthetic_sea_mask
+
+
+def _indice_di_prova(max_distance=MAX_NEIGHBOUR_DISTANCE_M):
+    lon, lat = synthetic_coords()
+    mare = synthetic_sea_mask()
+    g = grid.build_grid(lon, lat, resolution=400.0)
+    return lon, lat, mare, g, grid.build_regrid_index(
+        lon, lat, mare, g, max_distance_m=max_distance
+    )
+
+
+def test_l_indice_ha_una_voce_per_pixel():
+    _, _, _, g, idx = _indice_di_prova()
+    assert idx.indices.shape == (g.height * g.width,)
+    assert idx.indices.dtype == np.int32
+
+
+def test_il_valore_di_una_cella_di_mare_finisce_nel_frame():
+    lon, lat, mare, g, idx = _indice_di_prova()
+    valori = np.full((ETA, XI), np.nan)
+    valori[mare] = 0.0
+    valori[1, 1] = 42.0
+    fuori = grid.apply_index(valori, idx)
+    assert np.count_nonzero(fuori == 42.0) >= 1
+
+
+def test_la_terraferma_lontana_dal_mare_resta_nodata():
+    """Nessun valore di mare deve sbordare fino al centro della terra.
+
+    Le ultime due righe sono terra e distano piu' di 800 m dall'ultima riga
+    di mare, quindi i pixel che ci cadono sopra non devono trovare vicini.
+    """
+    lon, lat, mare, g, idx = _indice_di_prova()
+    x_terra, y_terra = grid.lonlat_to_mercator(lon[-1, :], lat[-1, :])
+    cx, cy = grid.grid_centres(g)
+    for xt, yt in zip(x_terra, y_terra):
+        vicino = np.argmin((cx - xt) ** 2 + (cy - yt) ** 2)
+        assert idx.indices[vicino] == -1
+
+
+def test_i_valori_mascherati_non_attraversano_la_costa():
+    """L'albero e' costruito solo sulle celle di mare, quindi un valore di
+    terra non puo' comparire nel frame nemmeno per errore."""
+    lon, lat, mare, g, idx = _indice_di_prova()
+    valori = np.full((ETA, XI), 7.0)
+    valori[~mare] = 999.0
+    fuori = grid.apply_index(valori, idx)
+    assert not np.any(fuori == 999.0)
+
+
+def test_l_indice_si_salva_e_si_rilegge(tmp_path):
+    _, _, _, _, idx = _indice_di_prova()
+    percorso = tmp_path / "idx.npz"
+    grid.save_index(idx, percorso)
+    riletto = grid.load_index(percorso)
+    assert np.array_equal(riletto.indices, idx.indices)
+    assert np.array_equal(riletto.sea_mask, idx.sea_mask)
+    assert riletto.fingerprint == idx.fingerprint
+    assert riletto.grid == idx.grid
