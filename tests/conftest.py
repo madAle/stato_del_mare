@@ -51,7 +51,10 @@ def _times(n=NT):
 
 def _masked(base: np.ndarray) -> np.ma.MaskedArray:
     mare = synthetic_sea_mask()
-    mask = np.broadcast_to(~mare, base.shape)
+    # La copia e' necessaria: broadcast_to restituisce una vista in sola
+    # lettura, e masked_array prova a impostarne la forma, cosa deprecata
+    # da NumPy 2.5 in poi.
+    mask = np.broadcast_to(~mare, base.shape).copy()
     return np.ma.masked_array(base, mask=mask)
 
 
@@ -134,7 +137,7 @@ def write_profile_file(path, var_names=("temp",), n_times: int = NT):
             for k in range(n_times):
                 for livello in range(NS):
                     dati[k, livello] = livello + k * 10.0
-            mask = np.broadcast_to(~mare, dati.shape)
+            mask = np.broadcast_to(~mare, dati.shape).copy()
             v[:] = np.ma.masked_array(dati, mask=mask)
     finally:
         ds.close()

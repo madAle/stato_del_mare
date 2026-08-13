@@ -26,6 +26,20 @@ addopts = "-q"
 # import ...`: senza la radice sul path, pytest importa conftest come modulo
 # di primo livello e quell'import fallisce.
 pythonpath = ["."]
+# "Output pristine" e' un vincolo del progetto: qui diventa verificabile invece
+# che dichiarato. Senza questa riga un avviso passa inosservato e viene riportato
+# come suite pulita, che e' esattamente quello che era successo con due
+# DeprecationWarning di NumPy nelle fixture.
+filterwarnings = [
+    "error",
+    # Unica eccezione, e va tenuta stretta: netCDF4 1.7.4 imposta `.shape` su un
+    # array dentro il proprio percorso di scrittura, cosa che NumPy 2.5 ha
+    # deprecato. E' codice di libreria e non esiste una versione piu' recente;
+    # le due occorrenze nostre dello stesso schema sono state corrette con
+    # `.copy()`. Da rimuovere quando netCDF4 si adegua: a quel punto la riga
+    # diventa inerte e la sua rimozione non rompe niente.
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100
