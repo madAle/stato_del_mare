@@ -145,10 +145,25 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
     # basterebbe a saturare il disco e far cadere anche i file sani.
     try:
         testa = source.head(f.url, session=session)
-        impronta = source.download(f.url, scaricato, session=session)
-
         chiave_manifest = manifest.manifest_key(f.date, f.kind, f.group)
-        if manifest.already_ingested(store.get_json(chiave_manifest), impronta):
+        esistente = store.get_json(chiave_manifest)
+
+        # Scorciatoia prima di scaricare. L'impronta autorevole resta lo
+        # sha256, ma calcolarla impone di scaricare il file: senza questo
+        # controllo il secondo run giornaliero riscaricherebbe 1,9 GB solo per
+        # ricalcolare impronte identiche a quelle gia' registrate. Dimensione e
+        # data di modifica bastano a dire che il sorgente non si e' mosso.
+        sorgente = (esistente or {}).get("source", {})
+        if (
+            esistente
+            and sorgente.get("last_modified") == testa["last_modified"]
+            and sorgente.get("bytes") == testa["bytes"]
+        ):
+            log.info("invariato alla sorgente, salto senza scaricare: %s", f.name)
+            return None
+
+        impronta = source.download(f.url, scaricato, session=session)
+        if manifest.already_ingested(esistente, impronta):
             log.info("gia' in archivio, salto: %s", f.name)
             return None
 

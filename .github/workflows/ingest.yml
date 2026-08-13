@@ -46,5 +46,20 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
+          set +e
           uv run python -m ingest reconcile \
             ${{ inputs.dry_run && '--dry-run' || '' }}
+          codice=$?
+          set -e
+          # I codici di uscita esistono per distinguere "riprova domani" da
+          # "serve un umano". Senza questo blocco GitHub li appiattirebbe tutti
+          # su "step fallito" e la distinzione andrebbe persa proprio dove
+          # serve, cioe' nella mail di notifica.
+          case $codice in
+            0) echo "Ingestione completata." ;;
+            1) echo "::warning::Alcuni file non sono stati lavorati. Ritentabile: il run successivo recupera dalla finestra di 8 giorni." ;;
+            2) echo "::error::LA GRIGLIA SORGENTE E' CAMBIATA. Niente e' stato scritto. Serve intervento umano PRIMA del prossimo run, altrimenti l'archivio si riempie di valori nel posto sbagliato." ;;
+            3) echo "::error::Configurazione incompleta: mancano credenziali o variabili d'ambiente. Ogni tentativo fallira' allo stesso modo finche' non viene corretta." ;;
+            *) echo "::error::Uscita inattesa: $codice" ;;
+          esac
+          exit $codice

@@ -273,6 +273,39 @@ def test_il_secondo_giro_non_scrive_nulla(store, tmp_path, monkeypatch, wave_fil
     assert secondo["skipped"] >= 1
 
 
+def test_un_file_invariato_non_viene_riscaricato(store, tmp_path, monkeypatch):
+    """Il secondo run non deve ripagare 1,9 GB per riconfermare cio' che sa.
+
+    La deduplica autorevole e' sullo sha256, che impone di scaricare. Il
+    controllo su dimensione e data di modifica esiste per non arrivarci.
+    """
+    f = _file_sorgente()
+    testa = {"bytes": 42, "last_modified": "Thu, 13 Aug 2026 10:34:00 GMT"}
+    monkeypatch.setattr(reconcile.source, "head", lambda url, session=None: testa)
+
+    istante = datetime(2026, 8, 13, tzinfo=timezone.utc)
+    gia_visto = manifest.RunManifest(
+        source_url=f.url,
+        source_sha256="qualunque",
+        source_bytes=testa["bytes"],
+        source_last_modified=testa["last_modified"],
+        reference_time=istante,
+        kind=f.kind,
+        group=f.group,
+        grid_ref="grid.json",
+        ingested_at=istante,
+        frames=[],
+    )
+    store.put_json(manifest.manifest_key(f.date, f.kind, f.group), gia_visto.to_dict())
+
+    def non_chiamare(*a, **k):
+        raise AssertionError("non deve scaricare un file invariato")
+
+    monkeypatch.setattr(reconcile.source, "download", non_chiamare)
+
+    assert reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path) is None
+
+
 def test_il_dry_run_non_scrive_e_non_scarica(store, tmp_path, monkeypatch):
     """Il dry run stampa il piano: non deve toccare la rete ne' il bucket."""
     f = _file_sorgente()
