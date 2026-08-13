@@ -37,8 +37,10 @@ GRUPPO_DI_RIFERIMENTO = "his_HPDwave"
 VARIABILE_DI_RIFERIMENTO = "Hwave"
 
 
-class GridMismatch(Exception):
-    """Le coordinate sorgente non corrispondono a quelle dell'indice in cache."""
+# Definita in grid.py, dove la sollevano anche le guardie sulle forme.
+# Riesportata qui perche' e' l'orchestratore a decidere che non va inghiottita,
+# ed e' da qui che la CLI la importa.
+GridMismatch = grid.GridMismatch
 
 
 @dataclass(frozen=True)

@@ -18,6 +18,17 @@ from .config import GRID_RESOLUTION_M, MAX_NEIGHBOUR_DISTANCE_M
 EARTH_RADIUS_M = 6378137.0
 
 
+class GridMismatch(Exception):
+    """Le coordinate sorgente non corrispondono a quelle dell'indice in cache.
+
+    Vive qui e non nell'orchestratore perche' anche le guardie sulle forme,
+    che stanno in questo modulo, devono sollevare esattamente questa classe:
+    reconcile la rilancia invece di contarla come errore ritentabile, e un
+    tipo diverso finirebbe nella clausola larga facendo uscire 1 (riprova
+    domani) al posto di 2 (serve un umano).
+    """
+
+
 @dataclass(frozen=True)
 class MercatorGrid:
     """Raster di destinazione, in metri EPSG:3857.
@@ -133,10 +144,19 @@ def coordinate_fingerprint(lon_rho, lat_rho) -> str:
     resta valido come forma ma sbagliato come contenuto, e produrrebbe frame
     plausibili con i valori nel posto sbagliato. Confrontando l'impronta a
     ogni run il job si ferma invece di corrompere l'archivio.
+
+    La forma entra nell'impronta insieme ai valori. La collisione realistica
+    non e' "due domini con byte identici per caso": e' lo stesso dominio
+    rimodellato, dove (752, 272) diventa (272, 752) con contenuto in ordine C
+    byte per byte identico. Senza la forma le due impronte coincidono e la
+    guardia tace.
     """
+    lon_rho = np.ascontiguousarray(lon_rho, dtype=np.float64)
+    lat_rho = np.ascontiguousarray(lat_rho, dtype=np.float64)
     h = hashlib.sha256()
-    h.update(np.ascontiguousarray(lon_rho, dtype=np.float64).tobytes())
-    h.update(np.ascontiguousarray(lat_rho, dtype=np.float64).tobytes())
+    h.update(repr((lon_rho.shape, lat_rho.shape)).encode("utf-8"))
+    h.update(lon_rho.tobytes())
+    h.update(lat_rho.tobytes())
     return h.hexdigest()
 
 
@@ -176,6 +196,14 @@ def build_regrid_index(
     lat_rho = np.asarray(lat_rho, dtype=np.float64)
     sea_mask = np.asarray(sea_mask, dtype=bool)
 
+    if not (lon_rho.shape == lat_rho.shape == sea_mask.shape):
+        raise GridMismatch(
+            "forme incoerenti nella sorgente: "
+            f"lon {lon_rho.shape}, lat {lat_rho.shape}, maschera {sea_mask.shape}. "
+            "Senza questo controllo l'errore emergerebbe come IndexError e "
+            "verrebbe contato come guasto passeggero."
+        )
+
     sx, sy = lonlat_to_mercator(lon_rho[sea_mask], lat_rho[sea_mask])
     tree = cKDTree(np.column_stack([sx, sy]))
 
@@ -212,6 +240,16 @@ def apply_index(values_2d, index: RegridIndex) -> np.ndarray:
     diventano NaN e si propagano correttamente, il che rende innocuo il caso
     in cui la maschera di un singolo file differisca da quella di riferimento.
     """
+    if np.shape(values_2d) != index.sea_mask.shape:
+        # L'indicizzazione booleana solleverebbe IndexError, che la clausola
+        # larga di reconcile conta come guasto passeggero: il run uscirebbe 1
+        # "riprova domani" per sempre invece di 2 "serve un umano".
+        raise GridMismatch(
+            f"campo di forma {np.shape(values_2d)} contro una maschera di mare "
+            f"{index.sea_mask.shape}: l'indice in cache non appartiene a questa "
+            "griglia. Verificare il dominio ADRIAC e rigenerare l'indice a mano."
+        )
+
     if np.ma.isMaskedArray(values_2d):
         piatto = np.ma.filled(values_2d.astype(np.float64), np.nan)[index.sea_mask]
     else:

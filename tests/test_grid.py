@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pytest
 
-from ingest import grid
+from ingest import grid, reconcile
 from ingest.config import MAX_NEIGHBOUR_DISTANCE_M
 from tests.conftest import ETA, XI, synthetic_coords, synthetic_sea_mask
 
@@ -53,6 +53,28 @@ def test_l_impronta_cambia_se_cambiano_le_coordinate():
     lon2 = lon.copy()
     lon2[0, 0] += 0.0001
     assert grid.coordinate_fingerprint(lon2, lat) != prima
+
+
+def test_l_impronta_distingue_due_domini_con_gli_stessi_byte_e_forma_diversa():
+    """La collisione realistica non e' "due domini identici per caso".
+
+    E' un dominio rimodellato: gli stessi valori, letti in una forma diversa.
+    I byte in ordine C coincidono, quindi senza la forma nell'impronta la
+    guardia tace, l'indice in cache viene riusato su una griglia che non e'
+    piu' la sua, e l'errore emerge come IndexError contato come ritentabile.
+    """
+    piatto_lon = np.linspace(10.0, 18.0, 24)
+    piatto_lat = np.linspace(43.0, 45.0, 24)
+    a_lon, a_lat = piatto_lon.reshape(6, 4), piatto_lat.reshape(6, 4)
+    b_lon, b_lat = piatto_lon.reshape(4, 6), piatto_lat.reshape(4, 6)
+
+    # La premessa del test: i byte sono davvero identici.
+    assert (
+        np.ascontiguousarray(a_lon).tobytes() == np.ascontiguousarray(b_lon).tobytes()
+    )
+    assert grid.coordinate_fingerprint(a_lon, a_lat) != grid.coordinate_fingerprint(
+        b_lon, b_lat
+    )
 
 
 def test_il_dizionario_della_griglia_e_serializzabile():
@@ -111,6 +133,36 @@ def test_i_valori_mascherati_non_attraversano_la_costa():
     valori[~mare] = 999.0
     fuori = grid.apply_index(valori, idx)
     assert not np.any(fuori == 999.0)
+
+
+def test_apply_index_rifiuta_un_campo_di_forma_sbagliata():
+    """Un campo di forma diversa dalla maschera va fermato come GridMismatch.
+
+    Senza il controllo l'indicizzazione booleana solleva IndexError, che la
+    clausola larga di reconcile conta come errore ritentabile: il run esce 1
+    "riprova domani" per sempre invece di 2 "serve un umano".
+    """
+    _, _, _, _, idx = _indice_di_prova()
+    trasposto = np.zeros((XI, ETA), dtype=np.float64)
+    with pytest.raises(grid.GridMismatch):
+        grid.apply_index(trasposto, idx)
+
+
+def test_build_regrid_index_rifiuta_forme_incoerenti():
+    lon, lat = synthetic_coords()
+    g = grid.build_grid(lon, lat, resolution=400.0)
+    maschera_storta = np.ones((XI, ETA), dtype=bool)
+    with pytest.raises(grid.GridMismatch):
+        grid.build_regrid_index(lon, lat, maschera_storta, g)
+
+
+def test_e_lo_stesso_guasto_che_reconcile_rilancia():
+    """La classe deve essere quella che reconcile fa uscire dal run.
+
+    Se fossero due eccezioni diverse, la guardia sulle forme finirebbe nella
+    clausola larga e il run uscirebbe 1 invece di 2.
+    """
+    assert grid.GridMismatch is reconcile.GridMismatch
 
 
 def test_l_indice_si_salva_e_si_rilegge(tmp_path):
