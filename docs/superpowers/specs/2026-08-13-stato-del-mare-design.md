@@ -3,13 +3,6 @@
 Data: 2026-08-13
 Stato: approvato in brainstorming, da tradurre in piano di implementazione
 
-> **Tre punti di questo documento hanno correzioni pendenti**, emerse scrivendo il
-> piano di implementazione e non ancora approvate: la soglia di ricampionamento in
-> 5.2, il percorso dei manifest in 4.2 e la granularità dei profili in 4.6. Le
-> dimensioni di griglia in 4.4 sono una stima da sostituire col calcolo reale.
-> Dettagli e motivazioni in `STATO.md`, sezione 4c. Leggerle prima di implementare
-> quei punti.
-
 ## 1. Obiettivo
 
 Mappa interattiva dello stato del mare in Adriatico basata sui dati pubblici ARPAE,
@@ -185,17 +178,24 @@ grid.json                                       descrittore del raster di destin
 catalog.json                                    variabili, intervalli, scale, colormap
 index/{var}/{kind}/{YYYY-MM}.json               ore disponibili, un file per mese
 frames/{var}/{kind}/{ref}/{YYYY-MM-DDTHH}.bin   campo, int16 gzip
-runs/{YYYY-MM-DD}/{kind}/manifest.json          contratto d'archivio del run
+runs/{data}/{kind}/{gruppo}.json                contratto d'archivio, un file per gruppo
 static/bathymetry.bin                           batimetria, scritta una volta
 static/regrid_index.npz                         indice di ricampionamento, cache
 stations/stations.json                          anagrafica
-stations/{id}/columns/{YYYY-MM}.bin             profili sigma grezzi
+stations/{id}/columns/{YYYY-MM-DD}.bin          profili sigma grezzi, giornalieri
 stations/{id}/obs/{YYYY-MM}.json                osservazioni misurate
 ```
 
 Convenzioni sui segnaposto: `{var}` è l'id di variabile della tabella in 4.3,
 `{kind}` è `an` o `fc`, `{ref}` è l'istante di riferimento in forma `YYYYMMDD`,
-`{YYYY-MM-DDTHH}` è l'istante valido in UTC.
+`{YYYY-MM-DDTHH}` è l'istante valido in UTC, `{data}` è la data del file
+sorgente in forma `YYYY-MM-DD` e `{gruppo}` è il gruppo di file sorgente
+(per esempio `his_HPDwave`).
+
+Il manifest è per gruppo di file e non per run: in un giorno si lavorano più
+file sorgente diversi per tipo, e con un manifest unico un gruppo riuscito e
+uno fallito nello stesso giorno non potrebbero registrare il progresso
+parziale separatamente.
 
 Un file per frame, non un pacchetto giornaliero: i frame sono immutabili, quindi
 `Cache-Control: public, max-age=31536000, immutable`, e il client scarica solo le
@@ -235,9 +235,12 @@ L'angolo si ricompone con `atan2` a valle.
 ### 4.4 Griglia di destinazione
 
 `grid.json` definisce il raster in Web Mercator (EPSG:3857): bbox, larghezza,
-altezza, risoluzione. Alla risoluzione nativa del modello (~900 m/px) sono circa
-850 x 1.000 celle: **una texture sola, nessuna piramide di tile**, ben dentro i
-limiti GPU di qualsiasi dispositivo.
+altezza, risoluzione. Alla risoluzione di 1.200 m Mercator (circa 878 m al
+suolo a 43 gradi di latitudine, cioè la risoluzione nativa del modello ADRIAC)
+sono **858 x 844 celle**, valore reale prodotto da `build_grid()` e misurato
+contro l'archivio il 2026-08-13: **una texture sola, nessuna piramide di
+tile**, ben dentro i limiti GPU di qualsiasi dispositivo. Le dimensioni non
+vanno mai cablate: le calcola il codice dai dati.
 
 Web Mercator e non lat/lon regolare perché la mappa è una slippy map: alle nostre
 latitudini la deformazione mercatoriana sull'altezza del dominio è circa il 30%, e
@@ -284,6 +287,11 @@ checksum con quello registrato nel manifest corrispondente. Uguale significa sal
 Catturati fin da subito, senza UI. Per ogni stazione, la cella di mare ADRIAC più
 vicina; per ogni ora, i 30 valori sigma di temperatura, salinità e correnti,
 salvati **grezzi**, senza conversione in metri.
+
+Un file **giornaliero** per stazione: `stations/{id}/columns/{YYYY-MM-DD}.bin`.
+L'object storage non supporta l'append, quindi un file mensile andrebbe
+riscritto ogni giorno perdendo l'immutabilità. Il costo è trascurabile, circa
+5,8 KB al giorno per stazione.
 
 Rimandare la conversione è deliberato: `s_rho`, `Cs_r`, `hc` e la batimetria sono
 statici e già archiviati, quindi la profondità reale si ricostruisce in qualunque
@@ -367,8 +375,16 @@ La geometria è identica ogni giorno, quindi la corrispondenza cella Mercator ve
 cella ROMS si calcola una volta e si riusa. Cache su `static/regrid_index.npz`.
 
 Costruzione: `scipy.spatial.cKDTree` sulle **sole 121.543 celle di mare**,
-interrogato con i centri delle celle di destinazione, distanza massima 1,5 km.
+interrogato con i centri delle celle di destinazione, distanza massima **800 m**.
 Vicino più prossimo, non interpolazione.
+
+La soglia è geometrica: le celle sorgente distano 1 km fra loro, quindi
+qualunque punto interno a una cella di mare è entro 707 m dal suo centro
+(la semidiagonale). 800 m copre tutti i punti di mare legittimi e limita lo
+sbordamento sulla terraferma a meno di una cella sorgente. Una soglia più
+larga, per esempio 1,5 km, farebbe pescare un valore di mare fino a 1,5 km
+nell'entroterra, producendo una frangia colorata visibile lungo tutta la
+costa.
 
 Costruire l'albero solo sul mare garantisce che **nessun valore attraversi la
 costa**. Un'interpolazione bilineare in ingestione medierebbe celle di mare con
@@ -441,7 +457,7 @@ registra dal NetCDF e confronta con l'atteso.
 | NetCDF corrotto, variabile assente | Salta quel file, gli altri proseguono. |
 | Upload interrotto a metà | I frame caricati restano (immutabili); senza manifest, il run dopo rilavora e riscrive identico. |
 | Valori fuori range int16 | Clip, conteggio nel manifest (`clipped_count`). |
-| Stazione senza cella di mare entro 1,5 km | Salta con log. Possibile per le stazioni lagunari. |
+| Stazione senza cella di mare entro 800 m | Salta con log. Possibile per le stazioni lagunari. |
 
 Nessuno richiede intervento umano: la riconciliazione li assorbe al run successivo.
 

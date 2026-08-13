@@ -61,6 +61,12 @@ Secondo vincolo: **`src/data/` è l'unico modulo che conosce gli URL del bucket.
 | Interpolazione temporale continua fra ore adiacenti | Il senso dell'app è l'andamento nel tempo |
 | Finestra iniziale scrubber: 48 h passate + 72 h previste | |
 | Avvisi guasti: **solo mail di GitHub Actions** | Scelta dell'utente, niente `health.json` né banner in pagina |
+| Distanza massima di ricampionamento: **800 m** (non 1,5 km come nella prima stesura della spec) | Le celle sorgente distano 1 km fra loro: 707 m (la semidiagonale) copre ogni punto interno a una cella di mare; 800 m limita lo sbordamento sulla terraferma a meno di una cella sorgente |
+| Manifest **per gruppo di file**, non per run: `runs/{data}/{kind}/{gruppo}.json` | In un giorno si lavorano più file sorgente diversi per tipo; con un manifest unico, un gruppo riuscito e uno fallito nello stesso giorno non potrebbero registrare il progresso parziale separatamente |
+| Profili stazioni **giornalieri**: `stations/{id}/columns/{YYYY-MM-DD}.bin` (non mensili) | L'object storage non supporta l'append, quindi un file mensile andrebbe riscritto ogni giorno perdendo l'immutabilità. Giornaliero costa circa 5,8 KB al giorno per stazione |
+| Download sorgente: **3 tentativi con attesa crescente**, file parziale cancellato prima di ogni nuovo tentativo | Un errore passeggero a metà di un download da quasi 2 GB non deve costare l'intero run; senza la cancellazione, lo sha256 verrebbe calcolato su byte incompleti |
+| Batimetria pubblicata **solo quando si incontra il primo file 3D** (`his_temp`), scala 0,1 | Non sta nei file d'onda. Con scala 0,01 il fondoscala sarebbe 327 m e il bacino meridionale (fino a 1.245,9 m) verrebbe tosato in silenzio; si solleva un errore se `clipped_count` non è zero |
+| Dimensioni griglia reali: **858 x 844 celle** a 1.200 m Mercator, misurate contro l'archivio il 2026-08-13 | Non sono cablate: le produce `build_grid()` dai dati sorgente e finiscono in `grid.json` |
 
 **Divieti espliciti:**
 
@@ -84,21 +90,9 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-1. **Eseguire il piano dell'ingestore**, con `superpowers:subagent-driven-development` (un subagente per task, revisione in mezzo) oppure `superpowers:executing-plans` (in sessione, a lotti). Il piano ha 15 task, ognuno con test, codice e commit già scritti.
-2. **Allineare la spec** alle correzioni, seguendo la checklist in coda al piano.
-3. **Il piano della SPA**, da scrivere solo *dopo* che l'ingestore gira: così lo si scrive contro dati osservabili su R2 invece che contro una specifica.
-
-**Cinque correzioni alla spec, applicate dal piano ma non ancora dalla spec.** Le prime tre sono emerse decomponendo i task, le ultime due dall'autorevisione del piano:
-
-| Punto spec | Cosa dice | Cosa va corretto e perché |
-|---|---|---|
-| §5.2, soglia di ricampionamento | 1,5 km | Va portata a circa **800 m**. Le celle sorgente distano 1 km, quindi qualunque punto interno a una cella di mare è entro 707 m dal suo centro (semidiagonale). Con 1,5 km i pixel di destinazione fino a 1,5 km nell'entroterra pescherebbero un valore di mare, producendo una frangia colorata visibile lungo tutta la costa. 800 m copre tutti i punti di mare legittimi e limita lo sbordamento a meno di una cella sorgente. |
-| §4.2, percorso dei manifest | `runs/{data}/{kind}/manifest.json` | Serve **un manifest per gruppo di file**: `runs/{data}/{kind}/{gruppo}.json`. In un giorno si lavorano 6 file sorgente diversi per tipo; con un manifest unico, se HPDwave riesce e temp fallisce non si può registrare il progresso parziale. |
-| §4.6, profili stazioni | `stations/{id}/columns/{YYYY-MM}.bin` | Vanno **giornalieri**: `{YYYY-MM-DD}.bin`. L'object storage non supporta l'append, quindi un file mensile andrebbe riscritto ogni giorno perdendo l'immutabilità. Giornaliero sono circa 5,8 KB per stazione. |
-| §6.2, tentativi ripetuti | "3 tentativi con backoff" | La spec lo prescrive ma nessun task lo implementava. Aggiunto in `source.py` con attesa crescente, e con la cancellazione del file parziale prima di ogni nuovo tentativo: senza, lo sha256 verrebbe calcolato su byte incompleti. |
-| §4.2, `static/bathymetry.bin` | elencato nel layout | Nessun task lo scriveva. La batimetria sta **solo nei file 3D**, non in quelli d'onda, quindi si pubblica quando si incontra il primo `his_temp`. Attenzione alla scala: con 0,01 il fondoscala sarebbe 327 m e tutto il bacino meridionale (fino a 1.246 m) verrebbe tosato in silenzio. Il piano usa 0,1 e solleva un errore se `clipped_count` non è zero. |
-
-Inoltre le dimensioni della griglia in §4.4 ("circa 850 x 1.000 celle") sono una stima. Il calcolo reale: il bbox in Mercator è circa 1.029 x 1.053 km, quindi a risoluzione 1.200 m Mercator (che a 43 gradi di latitudine corrisponde a circa 878 m al suolo) vengono **circa 858 x 878 celle**. Le dimensioni esatte le deve produrre `build_grid()` e finire in `grid.json`, non essere cablate.
+1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 105 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
+2. ~~Allineare la spec alle correzioni~~. **Fatto**: le correzioni emerse eseguendo il piano sono state applicate alla spec e sono ora voci chiuse in sezione 3.
+3. **Il piano della SPA**, da scrivere ora che l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
 
 **Cosa il piano lascia fuori di proposito.** Le osservazioni misurate dalle boe (`stations/{id}/obs/{YYYY-MM}.json` in §4.2). ARPAE le conserva in `opendata/osservati/meteo/storico/` dal 2006, quindi **non sono deperibili**: si recuperano in qualunque momento. Il principio "l'ingestione è golosa" nasce dalla finestra di 8 giorni di ADRIAC e vale solo per ciò che ARPAE cancella. L'ingestore costruisce comunque l'anagrafica delle stazioni, che serve ai profili.
 
