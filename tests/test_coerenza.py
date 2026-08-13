@@ -90,10 +90,14 @@ def test_il_valore_su_nausicaa_sopravvive_a_tutta_la_catena(file_reale):
     letto = valori[riga_dest, colonna_dest]
 
     assert not np.isnan(letto), "la boa e' finita su un pixel nodata"
-    # La tolleranza copre la quantizzazione (1 mm) e il nearest-neighbour:
-    # il pixel di destinazione puo' pescare una cella adiacente, che al largo
-    # di Cesenatico differisce di pochi centimetri di altezza d'onda.
-    assert abs(letto - atteso) < 0.5, f"letto {letto}, atteso {atteso}"
+    # Misurato sull'archivio reale il 2026-08-13: lo scarto era 0,0003 m, cioe'
+    # il solo passo di quantizzazione. La tolleranza e' comunque 0,15 m perche'
+    # le due selezioni non sono la stessa: l'attesa sceglie la cella piu' vicina
+    # in gradi, la pipeline in metri Mercator, e con la boa vicina a un confine
+    # possono cadere su celle adiacenti, che con mare mosso differiscono di
+    # qualche centimetro. Non allargarla oltre: mezzo metro nasconderebbe uno
+    # spostamento di piu' celle, che e' proprio cio' che questo test cerca.
+    assert abs(letto - atteso) < 0.15, f"letto {letto}, atteso {atteso}"
 
 
 def test_gli_istanti_del_file_di_analisi_sono_del_giorno_prima(file_reale):
