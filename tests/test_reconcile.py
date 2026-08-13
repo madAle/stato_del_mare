@@ -7,7 +7,7 @@ import pytest
 from moto import mock_aws
 from netCDF4 import Dataset
 
-from ingest import grid, manifest, reconcile
+from ingest import frames, grid, manifest, reconcile
 from ingest.source import parse_filename
 from ingest.storage import ObjectStore
 from tests.conftest import synthetic_coords, synthetic_sea_mask, write_wave_file
@@ -123,6 +123,47 @@ def test_la_guardia_sulla_griglia_ferma_reconcile(store, tmp_path, monkeypatch, 
     assert store.get_json("catalog.json") is None
 
 
+def test_l_indice_sopravvive_a_una_workdir_nuova(store, tmp_path, monkeypatch, wave_file):
+    """L'indice deve tornare dal bucket, non dal disco locale.
+
+    E' la differenza fra una guardia che funziona e una decorativa: sui runner
+    effimeri la workdir sparisce a ogni run, quindi un indice solo locale
+    verrebbe ricostruito ogni volta dal file corrente e non rileverebbe mai un
+    cambio di dominio.
+
+    Con lo stesso file sorgente in entrambe le workdir, confrontare solo
+    l'impronta non basta a distinguere "riletto dal bucket" da "ricostruito
+    da capo": coinciderebbero comunque. Si conta invece quante volte
+    build_regrid_index viene chiamata: una sola, mai due, altrimenti la
+    seconda chiamata ha ricostruito invece di rileggere.
+    """
+    costruzioni = []
+    originale = grid.build_regrid_index
+
+    def conta_costruzioni(*args, **kwargs):
+        costruzioni.append(1)
+        return originale(*args, **kwargs)
+
+    monkeypatch.setattr(grid, "build_regrid_index", conta_costruzioni)
+
+    prima = tmp_path / "run1"
+    prima.mkdir()
+    with Dataset(str(wave_file)) as ds:
+        reconcile.ensure_index(store, ds, prima)
+
+    # Workdir nuova e vuota, come al run successivo su un runner effimero.
+    seconda = tmp_path / "run2"
+    seconda.mkdir()
+    with Dataset(str(wave_file)) as ds:
+        indice = reconcile.ensure_index(store, ds, seconda)
+
+    assert (seconda / "regrid_index.npz").exists()
+    assert indice.fingerprint == grid.coordinate_fingerprint(
+        *frames.read_grid_coords(Dataset(str(wave_file)))
+    )
+    assert len(costruzioni) == 1
+
+
 def test_l_indice_si_costruisce_al_primo_giro_e_si_riusa(store, tmp_path, wave_file):
     percorso = tmp_path / "regrid_index.npz"
     with Dataset(str(wave_file)) as ds:
@@ -205,3 +246,20 @@ def test_il_secondo_giro_non_scrive_nulla(store, tmp_path, monkeypatch, wave_fil
     secondo = reconcile.reconcile(store, tmp_path, window_days=8)
     assert secondo["processed"] == 0
     assert secondo["skipped"] >= 1
+
+
+def test_il_dry_run_non_scrive_e_non_scarica(store, tmp_path, monkeypatch):
+    """Il dry run stampa il piano: non deve toccare la rete ne' il bucket."""
+    f = _file_sorgente()
+    monkeypatch.setattr(reconcile.source, "list_source_files", lambda session=None: [f])
+
+    def non_chiamare(*args, **kwargs):
+        raise AssertionError("il dry run non deve scaricare")
+
+    monkeypatch.setattr(reconcile.source, "download", non_chiamare)
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", non_chiamare)
+
+    esito = reconcile.reconcile(store, tmp_path, window_days=8, dry_run=True)
+    assert esito["planned"] >= 1
+    assert esito["processed"] == 0
+    assert store.get_json("catalog.json") is None

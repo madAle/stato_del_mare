@@ -99,6 +99,17 @@ def ensure_index(store, ds, workdir: Path, cache_path: Path | None = None):
     lon, lat = frames.read_grid_coords(ds)
     impronta = grid.coordinate_fingerprint(lon, lat)
 
+    # L'indice vive sull'object store, non solo sul disco locale. I runner di
+    # GitHub Actions sono effimeri: un indice che stesse solo in workdir
+    # verrebbe ricostruito a ogni run dal file corrente, coinciderebbe sempre
+    # con se stesso, e la guardia non scatterebbe mai. Il disco locale resta
+    # solo come ottimizzazione dentro un singolo run.
+    if not cache_path.exists():
+        remoto = store.get_binary(INDEX_KEY)
+        if remoto is not None:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(remoto)
+
     if cache_path.exists():
         indice = grid.load_index(cache_path)
         if indice.fingerprint != impronta:
@@ -115,6 +126,7 @@ def ensure_index(store, ds, workdir: Path, cache_path: Path | None = None):
     indice = grid.build_regrid_index(lon, lat, mare, g)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     grid.save_index(indice, cache_path)
+    store.put_binary(INDEX_KEY, cache_path.read_bytes())
     store.put_json(GRID_KEY, grid.grid_to_dict(g))
     log.info("indice costruito: %d x %d celle", g.width, g.height)
     return indice
@@ -124,20 +136,24 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
     """Scarica, lavora e pubblica un file sorgente. Restituisce il manifest,
     oppure None se il file era gia' in archivio con la stessa impronta."""
     f = work.source
-    testa = source.head(f.url, session=session)
     scaricato = workdir / f.name
-    impronta = source.download(f.url, scaricato, session=session)
-
-    chiave_manifest = manifest.manifest_key(f.date, f.kind, f.group)
-    if manifest.already_ingested(store.get_json(chiave_manifest), impronta):
-        scaricato.unlink(missing_ok=True)
-        log.info("gia' in archivio, salto: %s", f.name)
-        return None
-
-    percorso_nc = decompress_to_nc(scaricato)
+    percorso_nc = None
+    # Il finally copre anche lo scaricamento e la scompattazione, non solo la
+    # lavorazione: i file di previsione 3D arrivano a quasi 2 GB contro i 14 GB
+    # del runner, e un download interrotto a meta' lascerebbe un residuo che
+    # nessuno rimuove. Qualche fallimento di rete in un run di recupero
+    # basterebbe a saturare il disco e far cadere anche i file sani.
     try:
+        testa = source.head(f.url, session=session)
+        impronta = source.download(f.url, scaricato, session=session)
+
+        chiave_manifest = manifest.manifest_key(f.date, f.kind, f.group)
+        if manifest.already_ingested(store.get_json(chiave_manifest), impronta):
+            log.info("gia' in archivio, salto: %s", f.name)
+            return None
+
+        percorso_nc = decompress_to_nc(scaricato)
         with Dataset(str(percorso_nc)) as ds:
-            istanti = frames.read_times(ds)
             corrente = manifest.RunManifest(
                 source_url=f.url,
                 source_sha256=impronta,
@@ -160,7 +176,7 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
 
             gruppi_profilo = dict(config.PROFILE_GROUPS)
             if f.group in gruppi_profilo:
-                _pubblica_profili(store, ds, index, f, gruppi_profilo[f.group], istanti)
+                _pubblica_profili(store, ds, index, f, gruppi_profilo[f.group])
 
             # La batimetria sta solo nei file 3D, non in quelli d'onda.
             # E' statica: si pubblica la prima volta che se ne incontra una.
@@ -170,7 +186,9 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
         store.put_json(chiave_manifest, corrente.to_dict())
         return corrente
     finally:
-        percorso_nc.unlink(missing_ok=True)
+        scaricato.unlink(missing_ok=True)
+        if percorso_nc is not None:
+            percorso_nc.unlink(missing_ok=True)
 
 
 def _pubblica_batimetria(store, ds, index):
@@ -197,7 +215,7 @@ def _pubblica_batimetria(store, ds, index):
     log.info("batimetria pubblicata, da %.1f a %.1f m", stats["min"], stats["max"])
 
 
-def _pubblica_profili(store, ds, index, f, var_names, istanti):
+def _pubblica_profili(store, ds, index, f, var_names):
     anagrafica = store.get_json(STATIONS_KEY)
     if not anagrafica:
         log.warning("anagrafica stazioni assente, salto i profili di %s", f.name)
@@ -250,11 +268,16 @@ def reconcile(
         try:
             if indice is None and w.source.group == GRUPPO_DI_RIFERIMENTO:
                 scaricato = workdir / w.source.name
-                source.download(w.source.url, scaricato, session=session)
-                percorso = decompress_to_nc(scaricato)
-                with Dataset(str(percorso)) as ds:
-                    indice = ensure_index(store, ds, workdir)
-                percorso.unlink(missing_ok=True)
+                percorso = None
+                try:
+                    source.download(w.source.url, scaricato, session=session)
+                    percorso = decompress_to_nc(scaricato)
+                    with Dataset(str(percorso)) as ds:
+                        indice = ensure_index(store, ds, workdir)
+                finally:
+                    scaricato.unlink(missing_ok=True)
+                    if percorso is not None:
+                        percorso.unlink(missing_ok=True)
 
             if indice is None:
                 log.info("indice non ancora disponibile, rimando: %s", w.source.name)
@@ -283,6 +306,11 @@ def reconcile(
 def _aggiorna_anagrafica(store, session=None):
     try:
         elenco = stations.fetch_stations(session=session)
+    except stations.StationCollision:
+        # Come GridMismatch: non e' un guasto passeggero da registrare e
+        # scavalcare. Due nomi diversi sullo stesso identificativo vogliono
+        # una decisione umana, non un run che prosegue.
+        raise
     except Exception:
         log.exception("anagrafica stazioni non aggiornata")
         return

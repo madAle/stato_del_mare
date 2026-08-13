@@ -79,6 +79,30 @@ class ObjectStore:
             CacheControl=CACHE_BREVE,
         )
 
+    def put_binary(self, key: str, data: bytes) -> None:
+        """Oggetto binario mutabile, cioe' l'indice di ricampionamento.
+
+        Niente Content-Encoding e niente cache immutabile: questo file cambia
+        quando cambia la griglia sorgente, e congelarlo nella CDN vanificherebbe
+        proprio la guardia che deve alimentare.
+        """
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=data,
+            ContentType="application/octet-stream",
+            CacheControl=CACHE_BREVE,
+        )
+
+    def get_binary(self, key: str) -> bytes | None:
+        try:
+            risposta = self.client.get_object(Bucket=self.bucket, Key=key)
+        except ClientError as errore:
+            if errore.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                return None
+            raise
+        return risposta["Body"].read()
+
     def get_json(self, key: str) -> dict | None:
         try:
             risposta = self.client.get_object(Bucket=self.bucket, Key=key)

@@ -58,3 +58,22 @@ def test_list_keys(store):
     store.put_frame("frames/a/2.bin", b"\x00")
     store.put_frame("frames/b/1.bin", b"\x00")
     assert sorted(store.list_keys("frames/a/")) == ["frames/a/1.bin", "frames/a/2.bin"]
+
+
+def test_giro_completo_del_binario(store):
+    store.put_binary("static/regrid_index.npz", b"\x01\x02\x03")
+    assert store.get_binary("static/regrid_index.npz") == b"\x01\x02\x03"
+
+
+def test_un_binario_assente_restituisce_none(store):
+    assert store.get_binary("static/non_esiste.npz") is None
+
+
+def test_il_binario_non_e_immutabile(store):
+    """L'indice di ricampionamento cambia quando cambia la griglia sorgente:
+    marcarlo immutabile congelerebbe nella CDN proprio il dato che la guardia
+    deve poter aggiornare."""
+    store.put_binary("static/regrid_index.npz", b"\x00")
+    testa = store.client.head_object(Bucket=BUCKET, Key="static/regrid_index.npz")
+    assert testa["CacheControl"] != CACHE_IMMUTABILE
+    assert "ContentEncoding" not in testa
