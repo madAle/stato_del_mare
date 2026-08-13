@@ -2,16 +2,17 @@
 
 **Aggiornato:** 2026-08-13 · **Branch:** `feat/ingestore` · **Fase:** ingestore implementato (15 task eseguiti), revisione finale svolta, tutte le correzioni applicate e committate
 
-**La prima cosa da fare domani:** la ri-revisione mirata delle 14 correzioni
-(vedi 4c punto 3). Non è stata ancora fatta: i tre difetti critici vivevano tutti
-in codice che nessun test toccava, quindi va verificato, rilievo per rilievo, che
-il test nuovo sia stato visto fallire contro il codice rotto **prima** della
+**Il punto esatto in cui riprendere:** la ri-revisione mirata delle 14
+correzioni della revisione finale (dettaglio in 4c punto 3). È il passo mancante
+del processo. Non è stata ancora fatta: i tre difetti critici vivevano tutti in
+codice che nessun test toccava, quindi va verificato, rilievo per rilievo, che il
+test nuovo sia stato visto fallire contro il codice rotto **prima** della
 correzione. Un test scritto dopo passa anche se non verifica niente, ed è così
 che quei tre difetti erano sopravvissuti a quindici revisioni di task.
 
 Questo file va letto per primo. Poi:
 
-- [docs/superpowers/specs/2026-08-13-stato-del-mare-design.md](docs/superpowers/specs/2026-08-13-stato-del-mare-design.md), il design approvato: modello dati, formato del pacchetto, pipeline, architettura SPA, test. È la fonte di verità su cosa costruire, ed è allineato al codice per la parte sull'ingestore. **È da qui che si riparte.**
+- [docs/superpowers/specs/2026-08-13-stato-del-mare-design.md](docs/superpowers/specs/2026-08-13-stato-del-mare-design.md), il design approvato: modello dati, formato del pacchetto, pipeline, architettura SPA, test. È la fonte di verità **su cosa costruire**, ed è allineato al codice per la parte sull'ingestore. Da leggere prima di scrivere codice nuovo, non per riprendere il lavoro in corso: per quello vale la riga qui sopra.
 - [docs/superpowers/plans/2026-08-13-ingestore.md](docs/superpowers/plans/2026-08-13-ingestore.md), il piano eseguito: 15 task in TDD. Storico, non più da eseguire. Attenzione: i frammenti di codice al suo interno sono anteriori alle correzioni della revisione finale, quindi non vanno ricopiati alla lettera.
 - `CLAUDE.md`, contesto stabile e divieti.
 
@@ -122,12 +123,21 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 126 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
+1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 127 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
 2. ~~Allineare la spec alle correzioni~~. **Fatto**: le correzioni emerse eseguendo il piano e quelle della revisione finale (sezioni 4.2, 4.5, 4.6, 4.7 e 6.1) sono state applicate alla spec.
 3. **Ri-revisione mirata delle 14 correzioni.** È il passo mancante del processo,
    ed è la prima cosa da fare. Deve verificare, rilievo per rilievo, che il test
    nuovo sia stato visto fallire contro il codice rotto prima della correzione.
-   Diff da rivedere: da `9d600dc` compreso fino a `HEAD`.
+   Diff da rivedere: `git diff 9d600dc~1..HEAD`, cioè tutti i commit da `9d600dc`
+   compreso in poi.
+
+   Come: è la ri-revisione mirata prevista da `superpowers:subagent-driven-development`
+   dopo l'ondata di correzioni finale, e il processo ne concede **una sola**.
+   L'elenco dei rilievi da spuntare sta in
+   `docs/superpowers/revisioni/2026-08-13-ingestore-rilievi.md`, quello che è
+   stato fatto per ciascuno in `...-correzioni.md`. Il criterio non è "il codice
+   sembra giusto" ma "esiste un test che, tolta la correzione, diventa rosso":
+   dove il report non mostra il rosso catturato, va riprodotto.
 4. **Revisione umana e merge del branch dell'ingestore**, poi il primo deploy su R2.
 5. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
 6. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
@@ -161,7 +171,10 @@ non ho fatto"):
 
 ## 5. Comandi
 
-Nessun comando di build esiste ancora. Questi sono i comandi di ispezione usati per verificare le fonti, utili per ricontrollare senza rifare le scoperte:
+I comandi di verifica del codice stanno in fondo, nella sezione 7. Non esiste
+ancora nessun comando di build, perché la SPA non è iniziata.
+
+Questi sono invece i comandi di ispezione usati per verificare le fonti, utili per ricontrollare senza rifare le scoperte:
 
 ```bash
 # elenco dei file disponibili nella finestra ADRIAC (8 giorni)
