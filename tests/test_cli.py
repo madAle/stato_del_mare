@@ -1,6 +1,7 @@
 """I codici di uscita della CLI: e' il contratto su cui un cron decide."""
 from ingest import __main__ as cli
 from ingest.reconcile import GridMismatch
+from ingest.stations import StationCollision
 
 
 def _store_finto(monkeypatch):
@@ -47,6 +48,22 @@ def test_la_griglia_cambiata_esce_con_due(monkeypatch):
 
     def esplode(*a, **k):
         raise GridMismatch("le coordinate sorgente sono cambiate")
+
+    monkeypatch.setattr(cli, "reconcile", esplode)
+    assert cli.main(["reconcile"]) == 2
+
+
+def test_la_collisione_fra_stazioni_esce_con_due(monkeypatch):
+    """Non ritentabile: due nomi diversi sullo stesso identificativo.
+
+    Senza una clausola dedicata, Python stampava un traceback e usciva 1, che
+    il workflow rende come "ritentabile, il run successivo recupera": il cron
+    avrebbe ritentato per sempre un guasto che non si risolve da solo.
+    """
+    _store_finto(monkeypatch)
+
+    def esplode(*a, **k):
+        raise StationCollision("boa-prova generato sia da 'Prova' sia da 'Prova!'")
 
     monkeypatch.setattr(cli, "reconcile", esplode)
     assert cli.main(["reconcile"]) == 2

@@ -6,8 +6,11 @@ senza scrivere niente, e serve a capire se il diff ragiona come ci si aspetta.
 Codici di uscita, pensati per un cron che deve decidere da solo cosa fare:
 
     0  tutto bene
-    1  qualche file e' fallito, ritentabile: il run successivo recupera
-    2  la griglia sorgente e' cambiata, niente e' stato scritto, serve un umano
+    1  qualche file e' fallito o e' stato rimandato, ritentabile: il run
+       successivo recupera
+    2  guasto che non si risolve da solo, il run si e' fermato, serve un umano:
+       la griglia sorgente e' cambiata, oppure due stazioni diverse collidono
+       sullo stesso identificativo
     3  configurazione incompleta, fallira' identico a ogni tentativo
 
 La distinzione fra 1 e gli altri due e' l'unica cosa che impedisce a un cron di
@@ -22,6 +25,7 @@ from pathlib import Path
 
 from .config import WINDOW_DAYS
 from .reconcile import GridMismatch, reconcile
+from .stations import StationCollision
 from .storage import ObjectStore
 
 
@@ -75,6 +79,19 @@ def main(argv: list[str] | None = None) -> int:
         except GridMismatch as errore:
             logging.error("LA GRIGLIA SORGENTE E' CAMBIATA: %s", errore)
             logging.error("nessun dato scritto. Intervento umano necessario.")
+            return 2
+        except StationCollision as errore:
+            # Come GridMismatch: una collisione di nomi nel flusso ARPAE non si
+            # risolve da sola. Senza questa clausola Python stampava un
+            # traceback e usciva 1, cioe' "ritentabile, il run successivo
+            # recupera", e il cron avrebbe ritentato due volte al giorno per
+            # sempre mentre la notifica prometteva che sarebbe guarito.
+            logging.error("COLLISIONE FRA STAZIONI: %s", errore)
+            logging.error(
+                "l'identificativo e' un segmento di percorso permanente: due "
+                "stazioni fuse mescolerebbero le loro storie. Intervento umano "
+                "necessario."
+            )
             return 2
 
     logging.info(
