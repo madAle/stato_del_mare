@@ -47,6 +47,20 @@ class PlannedWork:
     reason: str
 
 
+@dataclass(frozen=True)
+class EsitoFile:
+    """Cosa un file ha prodotto, e se era gia' in archivio.
+
+    Il manifest torna anche quando il file viene deduplicato: e' cio' che
+    permette agli indici di ripararsi da soli dopo un run ucciso a meta'.
+    Il flag tiene separata la contabilita', cosi' un file saltato non viene
+    spacciato per lavorato.
+    """
+
+    manifesto: "manifest.RunManifest"
+    deduplicato: bool
+
+
 def decompress_to_nc(gz_path: Path) -> Path:
     """Scompatta un .nc.gz accanto a se stesso e cancella il compresso."""
     destinazione = gz_path.with_suffix("")
@@ -133,9 +147,15 @@ def ensure_index(store, ds, workdir: Path, cache_path: Path | None = None):
     return indice
 
 
-def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
-    """Scarica, lavora e pubblica un file sorgente. Restituisce il manifest,
-    oppure None se il file era gia' in archivio con la stessa impronta."""
+def process_file(store, index, work: PlannedWork, workdir: Path, session=None) -> EsitoFile:
+    """Scarica, lavora e pubblica un file sorgente.
+
+    Restituisce sempre un manifest: quello appena scritto, oppure quello gia'
+    in archivio se il file era invariato. Restituire None sulla deduplica
+    lasciava i frame di un run morto prima della fase indici assenti da
+    `index/` per sempre, perche' ogni run successivo saltava il file e non
+    scriveva mai la voce di indice.
+    """
     f = work.source
     scaricato = workdir / f.name
     percorso_nc = None
@@ -168,12 +188,12 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
             and sorgente.get("bytes") == testa["bytes"]
         ):
             log.info("invariato alla sorgente, salto senza scaricare: %s", f.name)
-            return None
+            return EsitoFile(manifest.RunManifest.from_dict(esistente), True)
 
         impronta = source.download(f.url, scaricato, session=session)
         if manifest.already_ingested(esistente, impronta):
             log.info("gia' in archivio, salto: %s", f.name)
-            return None
+            return EsitoFile(manifest.RunManifest.from_dict(esistente), True)
 
         percorso_nc = decompress_to_nc(scaricato)
         with Dataset(str(percorso_nc)) as ds:
@@ -209,7 +229,7 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
                 _pubblica_batimetria(store, ds, index)
 
         store.put_json(chiave_manifest, corrente.to_dict())
-        return corrente
+        return EsitoFile(corrente, False)
     finally:
         scaricato.unlink(missing_ok=True)
         if percorso_nc is not None:
@@ -327,11 +347,15 @@ def reconcile(
                 log.info("indice non ancora disponibile, rimando: %s", w.source.name)
                 continue
 
-            corrente = process_file(store, indice, w, workdir, session=session)
-            if corrente is None:
+            lavorato = process_file(store, indice, w, workdir, session=session)
+            # Anche un file deduplicato entra in `prodotti`: merge_index e'
+            # idempotente, quindi rimetterlo costa una PUT per file di indice
+            # toccato e ripara gli indici di un run precedente morto prima
+            # della fase indici.
+            prodotti.append(lavorato.manifesto)
+            if lavorato.deduplicato:
                 esito["skipped"] += 1
             else:
-                prodotti.append(corrente)
                 esito["processed"] += 1
         except GridMismatch:
             raise

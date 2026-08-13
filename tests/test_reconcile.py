@@ -250,8 +250,15 @@ def test_il_catalogo_si_scrive_dopo_i_frame(store, tmp_path, monkeypatch, wave_f
     assert any(k.startswith("frames/") for k in chiavi)
 
 
-def test_il_secondo_giro_non_scrive_nulla(store, tmp_path, monkeypatch, wave_file):
-    """Idempotenza: rilanciare non deve produrre scritture."""
+def test_il_secondo_giro_non_rilavora_nulla(store, tmp_path, monkeypatch, wave_file):
+    """Idempotenza: rilanciare non deve rilavorare nessun file.
+
+    Qualche scrittura il secondo giro la fa, ed e' voluta: gli indici mensili
+    e il catalogo vengono riscritti identici, perche' `merge_index` e'
+    idempotente ed e' cosi' che un run ucciso prima della fase indici si
+    ripara al giro dopo. Cio' che non deve succedere e' riscaricare o
+    riquantizzare: quello lo dicono i contatori.
+    """
     f = _file_sorgente()
     monkeypatch.setattr(
         reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
@@ -310,7 +317,11 @@ def test_un_file_invariato_non_viene_riscaricato(store, tmp_path, monkeypatch):
 
     monkeypatch.setattr(reconcile.source, "download", non_chiamare)
 
-    assert reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path) is None
+    esito = reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path)
+    # Il file e' saltato, ma il manifest torna comunque: e' cio' che permette
+    # agli indici di ripararsi dopo un run ucciso prima della fase indici.
+    assert esito.deduplicato is True
+    assert esito.manifesto.source_sha256 == "qualunque"
 
 
 def test_un_cambio_di_schema_forza_il_rilavoro_anche_a_sorgente_invariata(
@@ -353,9 +364,76 @@ def test_un_cambio_di_schema_forza_il_rilavoro_anche_a_sorgente_invariata(
 
     monkeypatch.setattr(reconcile.source, "download", deve_scaricare)
 
-    # Se la scorciatoia scattasse, process_file tornerebbe None senza scaricare.
+    # Se la scorciatoia scattasse, process_file tornerebbe senza scaricare.
     with pytest.raises(Scaricato):
         reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path)
+
+
+def _sorgente_sintetica(monkeypatch, f):
+    """Sostituisce rete e scompattazione con il file d'onda sintetico."""
+    monkeypatch.setattr(reconcile.source, "list_source_files", lambda session=None: [f])
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+    monkeypatch.setattr(
+        reconcile.source,
+        "download",
+        lambda url, dest, session=None: (
+            write_wave_file(dest.with_suffix(".nc")),
+            "impronta",
+        )[1],
+    )
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+
+def test_gli_indici_si_riparano_dopo_un_run_morto_prima_della_fase_indici(
+    store, tmp_path, monkeypatch, wave_file
+):
+    """Frame scritti, manifest scritto, run ucciso: il run dopo deve ripararsi.
+
+    E' il caso quasi certo del primo deploy: 8 giorni da ingerire contro un
+    limite di 90 minuti sul runner. Se `prodotti` raccogliesse solo i file
+    appena lavorati, il run successivo deduplicherebbe sul manifest, non
+    contribuirebbe a `rebuild_indices`, e quei frame resterebbero sul bucket
+    ma assenti da `index/` per sempre: il client non saprebbe mai che
+    esistono. E' irreversibile, non passeggero.
+    """
+    f = _file_sorgente()
+    _sorgente_sintetica(monkeypatch, f)
+
+    def runner_ucciso(*a, **k):
+        raise RuntimeError("il runner e' stato ucciso prima della fase indici")
+
+    monkeypatch.setattr(reconcile.catalog, "rebuild_indices", runner_ucciso)
+    with pytest.raises(RuntimeError):
+        reconcile.reconcile(store, tmp_path, window_days=8, only="hwave")
+
+    # Lo stato che il run morto lascia sul bucket.
+    assert store.list_keys("frames/hwave/"), "il run 1 doveva scrivere i frame"
+    assert store.get_json(manifest.manifest_key(f.date, f.kind, f.group)) is not None
+    assert store.list_keys("index/") == []
+
+    monkeypatch.undo()
+    _sorgente_sintetica(monkeypatch, f)
+
+    esito = reconcile.reconcile(store, tmp_path, window_days=8, only="hwave")
+    # Il file e' comunque saltato: la deduplica resta, e la contabilita' non
+    # deve spacciarlo per lavorato.
+    assert esito["processed"] == 0
+    assert esito["skipped"] == 1
+    assert esito["errors"] == 0
+
+    atteso = {"2026-08-12T01:00:00Z": "20260813", "2026-08-12T02:00:00Z": "20260813"}
+    assert store.get_json("index/hwave/an/2026-08.json") == {"hours": atteso}
+
+    # E l'indice deve puntare a frame che esistono davvero: un indice
+    # rigenerato con voci inventate sarebbe peggio dell'assenza.
+    for istante, riferimento in atteso.items():
+        valido = datetime.strptime(istante, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+        assert store.exists(frames.frame_key("hwave", "an", riferimento, valido))
 
 
 def _indice_sintetico():
@@ -416,7 +494,7 @@ def test_i_gruppi_di_profilo_non_si_sovrascrivono(store, tmp_path, monkeypatch):
         )
         manifesti[gruppo] = reconcile.process_file(
             store, indice, reconcile.PlannedWork(f, "mai ingerito"), tmp_path
-        )
+        ).manifesto
 
     chiavi = store.list_keys("stations/boa-prova/columns/")
     assert len(chiavi) == 3, f"i tre gruppi si sono sovrascritti: {chiavi}"
