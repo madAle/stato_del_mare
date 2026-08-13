@@ -121,9 +121,32 @@ addopts = "-q"
 # import ...`: senza la radice sul path, pytest importa conftest come modulo
 # di primo livello e quell'import fallisce.
 pythonpath = ["."]
+# "Output pristine" e' un vincolo del progetto: qui diventa verificabile invece
+# che dichiarato. Senza questa riga un avviso passa inosservato e viene riportato
+# come suite pulita, che e' esattamente quello che era successo con due
+# DeprecationWarning di NumPy nelle fixture.
+filterwarnings = [
+    "error",
+    # Unica eccezione, e va tenuta stretta: netCDF4 1.7.4 imposta `.shape` su un
+    # array dentro il proprio percorso di scrittura, cosa che NumPy 2.5 ha
+    # deprecato. E' codice di libreria e non esiste una versione piu' recente;
+    # le due occorrenze nostre dello stesso schema sono state corrette con
+    # `.copy()`. Da rimuovere quando netCDF4 si adegua: a quel punto la riga
+    # diventa inerte e la sua rimozione non rompe niente.
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+# Insieme fissato in modo esplicito. Senza, il progetto eredita le regole
+# predefinite del giorno, e un aggiornamento di ruff puo' far diventare rosso
+# il progetto senza che nessuno abbia toccato il codice.
+# E4/E7/E9 e F sono errori veri (sintassi, nomi non definiti, import inutilizzati),
+# I tiene ordinati gli import. Le regole di ammodernamento stilistico restano fuori:
+# qui `timezone.utc` e' usato in modo uniforme e va bene cosi'.
+select = ["E4", "E7", "E9", "F", "I"]
 
 [build-system]
 requires = ["hatchling"]
@@ -371,6 +394,28 @@ def test_i_valori_fuori_scala_vengono_tosati_e_contati():
     assert raw[1] == 32767
 
 
+def test_il_conteggio_dei_tosati_non_si_confonde_al_limite():
+    """La fascia stretta appena oltre il fondoscala.
+
+    32767,4 in unita' grezze arrotonda a 32767, che e' rappresentabile: non
+    e' stato tosato nulla. Contando sul valore non arrotondato risulterebbe
+    tosato, e la statistica finirebbe falsa nel manifest permanente.
+    """
+    raw, stats = encode.quantize(np.array([32767.4 * 0.001]), scale=0.001)
+    assert raw[0] == 32767
+    assert stats["clipped_count"] == 0
+
+    raw, stats = encode.quantize(np.array([32768.0 * 0.001]), scale=0.001)
+    assert raw[0] == 32767
+    assert stats["clipped_count"] == 1
+
+
+def test_il_troncamento_e_simmetrico_verso_il_basso():
+    raw, stats = encode.quantize(np.array([-40.0]), scale=0.001)
+    assert raw[0] == -32767
+    assert stats["clipped_count"] == 1
+
+
 def test_un_array_tutto_nodata_non_esplode():
     valori = np.array([np.nan, np.nan], dtype=np.float64)
     raw, stats = encode.quantize(valori, scale=0.001)
@@ -468,9 +513,14 @@ def quantize(
     massimo: float | None = None
 
     if valid.any():
-        grezzi = (arr[valid] - offset) / scale
+        # Si arrotonda prima di confrontare con i limiti, non dopo: il valore
+        # memorizzato e' l'arrotondato tosato, quindi contare i troncamenti sul
+        # non arrotondato dichiarerebbe tosati dei valori che l'arrotondamento
+        # da solo riporta in scala (tutta la fascia fra 32767 e 32767,5).
+        # clipped_count finisce nel manifest permanente: deve dire il vero.
+        grezzi = np.rint((arr[valid] - offset) / scale)
         clipped = int(np.count_nonzero((grezzi < INT16_MIN) | (grezzi > INT16_MAX)))
-        out[valid] = np.clip(np.rint(grezzi), INT16_MIN, INT16_MAX).astype(np.int16)
+        out[valid] = np.clip(grezzi, INT16_MIN, INT16_MAX).astype(np.int16)
         minimo = float(arr[valid].min())
         massimo = float(arr[valid].max())
 
@@ -563,6 +613,8 @@ Creare `tests/test_grid.py`:
 
 ```python
 """La griglia di destinazione e l'impronta delle coordinate sorgente."""
+import json
+
 import numpy as np
 import pytest
 
@@ -616,8 +668,6 @@ def test_l_impronta_cambia_se_cambiano_le_coordinate():
 
 
 def test_il_dizionario_della_griglia_e_serializzabile():
-    import json
-
     lon = np.array([[12.0, 12.5]])
     lat = np.array([[44.0, 44.2]])
     g = grid.build_grid(lon, lat, resolution=1000.0)
@@ -849,7 +899,10 @@ def _times(n=NT):
 
 def _masked(base: np.ndarray) -> np.ma.MaskedArray:
     mare = synthetic_sea_mask()
-    mask = np.broadcast_to(~mare, base.shape)
+    # La copia e' necessaria: broadcast_to restituisce una vista in sola
+    # lettura, e masked_array prova a impostarne la forma, cosa deprecata
+    # da NumPy 2.5 in poi.
+    mask = np.broadcast_to(~mare, base.shape).copy()
     return np.ma.masked_array(base, mask=mask)
 
 
@@ -932,7 +985,7 @@ def write_profile_file(path, var_names=("temp",), n_times: int = NT):
             for k in range(n_times):
                 for livello in range(NS):
                     dati[k, livello] = livello + k * 10.0
-            mask = np.broadcast_to(~mare, dati.shape)
+            mask = np.broadcast_to(~mare, dati.shape).copy()
             v[:] = np.ma.masked_array(dati, mask=mask)
     finally:
         ds.close()
@@ -951,13 +1004,16 @@ def profile_file(tmp_path):
 
 - [ ] **Step 2: Aggiungere i test dell'indice in `tests/test_grid.py`**
 
-Aggiungere in coda al file:
+Prima, aggiungere questi due import **in testa al file**, insieme a quelli che ci sono gia'. Non in coda: gli import a meta' file sono un errore di lint (`E402`) e si leggono male.
 
 ```python
 from ingest.config import MAX_NEIGHBOUR_DISTANCE_M
 from tests.conftest import ETA, XI, synthetic_coords, synthetic_sea_mask
+```
 
+Poi aggiungere le funzioni in coda al file:
 
+```python
 def _indice_di_prova(max_distance=MAX_NEIGHBOUR_DISTANCE_M):
     lon, lat = synthetic_coords()
     mare = synthetic_sea_mask()
@@ -1387,7 +1443,7 @@ git commit -m "feat: client dell'object storage con cache differenziata"
 - Consumes: `config.ADRIAC_BASE`
 - Produces:
   - `SourceFile` dataclass frozen con `name, url, date (str YYYYMMDD), output, group_short, kind`, e proprieta' `group` che restituisce `f"{output}_{group_short}"`
-  - `parse_filename(name: str) -> SourceFile | None`
+  - `parse_filename(name: str, base_url: str = config.ADRIAC_BASE) -> SourceFile | None`
   - `list_source_files(base_url: str = config.ADRIAC_BASE, session=None) -> list[SourceFile]`
   - `head(url: str, session=None) -> dict` con chiavi `bytes` e `last_modified`
   - `download(url: str, dest: Path, session=None) -> str` restituisce lo sha256 esadecimale
@@ -1667,6 +1723,7 @@ Creare `tests/test_manifest.py`:
 
 ```python
 """Il manifest e' il contratto d'archivio: deve reggere il giro completo."""
+import json
 from datetime import datetime, timezone
 
 from ingest import manifest
@@ -1717,8 +1774,6 @@ def test_giro_completo_di_serializzazione():
 
 
 def test_il_dizionario_e_json_serializzabile_e_versionato():
-    import json
-
     d = _manifest_di_prova().to_dict()
     json.dumps(d)
     assert d["schema_version"] == SCHEMA_VERSION
@@ -1916,7 +1971,7 @@ import numpy as np
 from netCDF4 import Dataset
 
 from ingest import encode, frames, grid
-from tests.conftest import synthetic_coords, synthetic_sea_mask, write_wave_file
+from tests.conftest import synthetic_coords, synthetic_sea_mask
 
 
 def _indice():
@@ -2391,7 +2446,7 @@ Creare `tests/test_profiles.py`:
 import numpy as np
 from netCDF4 import Dataset
 
-from ingest import profiles
+from ingest import encode, profiles
 from ingest.stations import Station
 from tests.conftest import NS, NT, synthetic_coords, synthetic_sea_mask
 
@@ -2451,8 +2506,6 @@ def test_estrae_una_colonna_per_istante_e_per_variabile(profile_file):
 
 def test_i_valori_estratti_sono_quelli_del_file(profile_file):
     """Nel file sintetico temp vale livello + ora*10."""
-    from ingest import encode
-
     lon, lat = synthetic_coords()
     mare = synthetic_sea_mask()
     s = _stazione(float(lon[1, 1]), float(lat[1, 1]))
@@ -2812,6 +2865,8 @@ Creare `tests/test_reconcile.py`:
 
 ```python
 """L'orchestratore: diff, guardia sulla griglia, idempotenza."""
+from datetime import datetime, timezone
+
 import boto3
 import numpy as np
 import pytest
@@ -2819,7 +2874,7 @@ from moto import mock_aws
 from netCDF4 import Dataset
 
 from ingest import grid, manifest, reconcile
-from ingest.source import SourceFile
+from ingest.source import parse_filename
 from ingest.storage import ObjectStore
 from tests.conftest import synthetic_coords, synthetic_sea_mask, write_wave_file
 
@@ -2834,8 +2889,6 @@ def store():
 
 
 def _file_sorgente(nome="20260813_adriac_1km_his_HPDwave_an.nc.gz"):
-    from ingest.source import parse_filename
-
     return parse_filename(nome)
 
 
@@ -2855,20 +2908,17 @@ def test_il_piano_e_vuoto_se_il_manifest_ha_gia_l_impronta(store, monkeypatch):
     monkeypatch.setattr(
         reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
     )
+    istante = datetime(2026, 8, 13, tzinfo=timezone.utc)
     esistente = manifest.RunManifest(
         source_url=f.url,
         source_sha256="impronta",
         source_bytes=1,
         source_last_modified="x",
-        reference_time=__import__("datetime").datetime(
-            2026, 8, 13, tzinfo=__import__("datetime").timezone.utc
-        ),
+        reference_time=istante,
         kind="an",
         group="his_HPDwave",
         grid_ref="grid.json",
-        ingested_at=__import__("datetime").datetime(
-            2026, 8, 13, tzinfo=__import__("datetime").timezone.utc
-        ),
+        ingested_at=istante,
         frames=[],
     )
     store.put_json(manifest.manifest_key("20260813", "an", "his_HPDwave"), esistente.to_dict())
