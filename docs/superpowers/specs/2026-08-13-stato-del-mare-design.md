@@ -267,7 +267,7 @@ Ogni run scrive:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "ingested_at": "2026-08-13T11:20:00Z",
   "ingest_version": "0.1.0",
   "source": {

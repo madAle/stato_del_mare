@@ -73,6 +73,24 @@ def test_senza_manifest_precedente_si_lavora():
     assert not manifest.already_ingested(None, "abc123")
 
 
+def test_un_manifest_nel_vecchio_formato_non_conta_come_gia_ingerito():
+    """Il formato del manifest e' cambiato, e schema_version deve dirlo.
+
+    Uno scritto prima della revisione finale non ha `columns` ne'
+    `source_units`: leggerlo con `from_dict` solleverebbe KeyError, contato
+    come errore e ritentato a ogni run per sempre. Con la versione alzata quel
+    file viene invece rilavorato, che e' esattamente il meccanismo per cui
+    schema_version esiste.
+    """
+    vecchio = _manifest_di_prova().to_dict()
+    vecchio["schema_version"] = 1
+    vecchio.pop("columns")
+    for frame in vecchio["frames"]:
+        frame.pop("source_units")
+
+    assert not manifest.already_ingested(vecchio, "abc123")
+
+
 def test_un_manifest_di_schema_futuro_non_conta_come_gia_ingerito():
     """Se lo schema e' cambiato il file va rilavorato, non saltato."""
     esistente = _manifest_di_prova().to_dict()

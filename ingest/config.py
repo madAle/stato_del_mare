@@ -11,7 +11,12 @@ OBSERVED_REALTIME = (
     "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtime.jsonl"
 )
 
-SCHEMA_VERSION = 1
+# Alzata a 2 dalla revisione finale: il manifest registra ora `columns` (gli
+# oggetti colonna, che nessun indice nomina) e `source_units` per frame, e i
+# frame stanno su chiavi con i minuti. Un manifest scritto prima non e'
+# leggibile con lo schema di oggi, e questa versione e' cio' che lo fa
+# rilavorare invece di farlo esplodere a ogni run.
+SCHEMA_VERSION = 2
 INGEST_VERSION = "0.1.0"
 
 # -32768 e' riservato al nodata, quindi l'intervallo utile e' asimmetrico.
