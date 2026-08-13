@@ -25,9 +25,14 @@ non va ridiscusso. Il design approvato sta in
 
 - Branch di sviluppo: `develop`. `main` è di release.
 - Documentazione, commenti e messaggi di commit in **italiano**.
-- Spec in `docs/superpowers/specs/`, piani in `docs/superpowers/plans/`.
-- Le decisioni si registrano con il **motivo**, non solo con l'esito: senza il
-  motivo verranno rimesse in discussione.
+- Spec in `docs/superpowers/specs/`, piani in `docs/superpowers/plans/`, esiti
+  delle revisioni in `docs/superpowers/revisioni/`.
+- Le decisioni si registrano con il **motivo** e con **cosa costano se sono
+  sbagliate**, non solo con l'esito: senza quelle righe verranno rimesse in
+  discussione da zero. Le 33 decisioni prese eseguendo l'ingestore stanno in
+  `docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md`.
+- I documenti di lavoro delle skill vivono in `.superpowers/`, che è escluso da
+  git: quello che deve sopravvivere va copiato in `docs/`.
 
 ## Vincolo architetturale
 
@@ -44,10 +49,18 @@ unici da stubbare nei test.
 
 ## Comandi
 
-Non esiste ancora codice. I comandi di ispezione delle fonti dati stanno in
-`STATO.md`, sezione 5.
+L'ingestore Python esiste ed è completo, in `ingest/`. La SPA non è ancora
+iniziata.
 
-Per ispezionare un NetCDF senza installare nulla a livello di sistema:
+```bash
+uv run ruff check .
+uv run pytest            # suite predefinita: i test di rete restano esclusi
+uv run pytest -m rete    # coerenza contro l'archivio ARPAE, scarica circa 23 MB per test
+uv run python -m ingest --help
+```
+
+I comandi di ispezione delle fonti dati stanno in `STATO.md`, sezione 5. Per
+ispezionare un NetCDF senza installare nulla a livello di sistema:
 
 ```bash
 uv run --quiet --with netCDF4 --with numpy python -c "..."
