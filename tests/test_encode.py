@@ -38,6 +38,28 @@ def test_i_valori_fuori_scala_vengono_tosati_e_contati():
     assert raw[1] == 32767
 
 
+def test_il_conteggio_dei_tosati_non_si_confonde_al_limite():
+    """La fascia stretta appena oltre il fondoscala.
+
+    32767,4 in unita' grezze arrotonda a 32767, che e' rappresentabile: non
+    e' stato tosato nulla. Contando sul valore non arrotondato risulterebbe
+    tosato, e la statistica finirebbe falsa nel manifest permanente.
+    """
+    raw, stats = encode.quantize(np.array([32767.4 * 0.001]), scale=0.001)
+    assert raw[0] == 32767
+    assert stats["clipped_count"] == 0
+
+    raw, stats = encode.quantize(np.array([32768.0 * 0.001]), scale=0.001)
+    assert raw[0] == 32767
+    assert stats["clipped_count"] == 1
+
+
+def test_il_troncamento_e_simmetrico_verso_il_basso():
+    raw, stats = encode.quantize(np.array([-40.0]), scale=0.001)
+    assert raw[0] == -32767
+    assert stats["clipped_count"] == 1
+
+
 def test_un_array_tutto_nodata_non_esplode():
     valori = np.array([np.nan, np.nan], dtype=np.float64)
     raw, stats = encode.quantize(valori, scale=0.001)

@@ -38,9 +38,14 @@ def quantize(
     massimo: float | None = None
 
     if valid.any():
-        grezzi = (arr[valid] - offset) / scale
+        # Si arrotonda prima di confrontare con i limiti, non dopo: il valore
+        # memorizzato e' l'arrotondato tosato, quindi contare i troncamenti sul
+        # non arrotondato dichiarerebbe tosati dei valori che l'arrotondamento
+        # da solo riporta in scala (tutta la fascia fra 32767 e 32767,5).
+        # clipped_count finisce nel manifest permanente: deve dire il vero.
+        grezzi = np.rint((arr[valid] - offset) / scale)
         clipped = int(np.count_nonzero((grezzi < INT16_MIN) | (grezzi > INT16_MAX)))
-        out[valid] = np.clip(np.rint(grezzi), INT16_MIN, INT16_MAX).astype(np.int16)
+        out[valid] = np.clip(grezzi, INT16_MIN, INT16_MAX).astype(np.int16)
         minimo = float(arr[valid].min())
         massimo = float(arr[valid].max())
 
