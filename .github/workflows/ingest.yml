@@ -1,0 +1,50 @@
+name: Ingestione ADRIAC
+
+on:
+  schedule:
+    # I file ARPAE compaiono verso le 10:30 UTC. Il primo run ha un'ora e
+    # mezza di margine, il secondo e' rete di sicurezza e di solito e' un
+    # no-op che costa qualche richiesta HEAD.
+    - cron: "0 12 * * *"
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Stampa il piano senza scrivere"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ingestione
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Libera spazio su disco
+        # I file 3D di previsione arrivano a quasi 2 GB compressi. Il runner
+        # ne ha 14 di partenza, con diversi GB occupati da immagini inutili.
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          df -h /
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Installa le dipendenze
+        run: uv sync
+
+      - name: Riconcilia
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          uv run python -m ingest reconcile \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
