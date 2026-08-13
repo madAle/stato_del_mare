@@ -4,10 +4,15 @@
 
 Questo file va letto per primo. Poi:
 
-- [.superpowers/sdd/2026-08-13-ingestore/rilievi-revisione-finale.md](.superpowers/sdd/2026-08-13-ingestore/rilievi-revisione-finale.md), i rilievi della revisione finale, e `fix-wave-report.md` accanto, che dice cosa è stato corretto e cosa no. **È da qui che si riparte.**
+- [docs/superpowers/specs/2026-08-13-stato-del-mare-design.md](docs/superpowers/specs/2026-08-13-stato-del-mare-design.md), il design approvato: modello dati, formato del pacchetto, pipeline, architettura SPA, test. È la fonte di verità su cosa costruire, ed è allineato al codice per la parte sull'ingestore. **È da qui che si riparte.**
 - [docs/superpowers/plans/2026-08-13-ingestore.md](docs/superpowers/plans/2026-08-13-ingestore.md), il piano eseguito: 15 task in TDD. Storico, non più da eseguire. Attenzione: i frammenti di codice al suo interno sono anteriori alle correzioni della revisione finale, quindi non vanno ricopiati alla lettera.
-- [docs/superpowers/specs/2026-08-13-stato-del-mare-design.md](docs/superpowers/specs/2026-08-13-stato-del-mare-design.md), il design approvato: modello dati, formato del pacchetto, pipeline, architettura SPA, test. È la fonte di verità su cosa costruire.
 - `CLAUDE.md`, contesto stabile e divieti.
+
+Sul disco, ma **fuori dal repo** (`.superpowers/` è in `.gitignore`, quindi
+questi file non arrivano a chi clona): `.superpowers/sdd/2026-08-13-ingestore/`
+contiene i rilievi della revisione finale, il report delle correzioni applicate
+(`fix-wave-report.md`, che elenca anche ciò che resta aperto) e i brief di tutti
+i task. Vale la pena leggerli prima del merge, finché ci sono.
 
 ## 1. Cos'è il progetto
 
