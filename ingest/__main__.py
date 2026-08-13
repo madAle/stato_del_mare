@@ -78,13 +78,17 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     logging.info(
-        "pianificati %d, lavorati %d, saltati %d, errori %d",
+        "pianificati %d, lavorati %d, saltati %d, rimandati %d, errori %d",
         esito["planned"],
         esito["processed"],
         esito["skipped"],
+        esito["deferred"],
         esito["errors"],
     )
-    return 1 if esito["errors"] else 0
+    # Un file rimandato e' lavoro non fatto, non lavoro non necessario: non
+    # deve poter uscire 0. E' ritentabile, perche' basta che il prossimo run
+    # trovi un file del gruppo di riferimento da cui costruire l'indice.
+    return 1 if esito["errors"] or esito["deferred"] else 0
 
 
 if __name__ == "__main__":

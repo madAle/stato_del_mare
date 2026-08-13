@@ -107,6 +107,29 @@ def write_wave_file(path, n_times: int = NT):
     return path
 
 
+def write_2dcur_file(path, n_times: int = NT):
+    """File 2D delle correnti integrate, gia' proiettate su est e nord."""
+    ds = Dataset(str(path), "w", format="NETCDF3_CLASSIC")
+    try:
+        ds.createDimension("ocean_time", n_times)
+        _write_coords(ds)
+        t = ds.createVariable("ocean_time", "f8", ("ocean_time",))
+        t.units = TIME_UNITS
+        t[:] = _times(n_times)
+
+        base = np.arange(ETA * XI, dtype=np.float64).reshape(ETA, XI) / 1000.0
+        campo = np.stack([base + k / 10.0 for k in range(n_times)])
+        for nome in ("ubar_eastward", "vbar_northward"):
+            v = ds.createVariable(
+                nome, "f4", ("ocean_time", "eta_rho", "xi_rho"), fill_value=1.0e37
+            )
+            v.units = "meter second-1"
+            v[:] = _masked(campo)
+    finally:
+        ds.close()
+    return path
+
+
 def write_sealevel_file(path, n_times: int = 6, step_minutes: int = 10):
     """File del livello del mare a passo sotto l'ora, come qck_sl.
 

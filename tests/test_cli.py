@@ -7,8 +7,14 @@ def _store_finto(monkeypatch):
     monkeypatch.setattr(cli.ObjectStore, "from_env", classmethod(lambda cls: object()))
 
 
-def _esito(errors=0):
-    return {"planned": 1, "processed": 1, "skipped": 0, "errors": errors}
+def _esito(errors=0, deferred=0):
+    return {
+        "planned": 1,
+        "processed": 1,
+        "skipped": 0,
+        "deferred": deferred,
+        "errors": errors,
+    }
 
 
 def test_un_run_pulito_esce_con_zero(monkeypatch):
@@ -21,6 +27,17 @@ def test_errori_sui_singoli_file_escono_con_uno(monkeypatch):
     """Ritentabile: il run successivo recupera dalla finestra di 8 giorni."""
     _store_finto(monkeypatch)
     monkeypatch.setattr(cli, "reconcile", lambda *a, **k: _esito(errors=1))
+    assert cli.main(["reconcile"]) == 1
+
+
+def test_i_file_rimandati_escono_con_uno(monkeypatch):
+    """Un file rimandato e' lavoro non fatto: non deve poter uscire 0.
+
+    Senza questo, un run che non riesce a costruire l'indice rimanda tutto,
+    non conta nulla come errore e riporta successo.
+    """
+    _store_finto(monkeypatch)
+    monkeypatch.setattr(cli, "reconcile", lambda *a, **k: _esito(deferred=2))
     assert cli.main(["reconcile"]) == 1
 
 

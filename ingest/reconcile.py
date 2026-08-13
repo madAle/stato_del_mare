@@ -101,6 +101,29 @@ def plan(store, files, window_days: int = config.WINDOW_DAYS, only: str | None =
     return lavoro
 
 
+def ordina_per_indice(lavoro: list[PlannedWork]) -> list[PlannedWork]:
+    """Mette per primo il file di riferimento piu' recente del piano.
+
+    L'indice di ricampionamento si costruisce solo dal gruppo di riferimento,
+    e finche' non esiste ogni altro file viene rimandato senza che nessuna
+    seconda passata lo recuperi. Apache ordina per nome e dopo `his_` il byte
+    '2' precede 'H', quindi senza questo riordino `his_2dcur` arriva sempre
+    prima di `his_HPDwave`. A regime e' innocuo; morde al primo run su bucket
+    vuoto e al run di recupero dopo un'interruzione, cioe' esattamente quando
+    la data piu' vecchia sta per uscire dalla finestra di 8 giorni.
+
+    Fra piu' file di riferimento si sceglie il piu' recente: il ramo che
+    costruisce l'indice scarica il file per conto suo, e il piu' vecchio a
+    regime e' gia' in archivio, quindi verrebbe riscaricato a ogni run senza
+    che nessun altro passo ne abbia bisogno.
+    """
+    riferimento = [w for w in lavoro if w.source.group == GRUPPO_DI_RIFERIMENTO]
+    if not riferimento:
+        return list(lavoro)
+    primo = max(riferimento, key=lambda w: (w.source.date, w.source.name))
+    return [primo] + [w for w in lavoro if w is not primo]
+
+
 def ensure_index(store, ds, workdir: Path, cache_path: Path | None = None):
     """Costruisce l'indice di ricampionamento o lo rilegge dalla cache.
 
@@ -316,8 +339,17 @@ def reconcile(
     workdir.mkdir(parents=True, exist_ok=True)
 
     file = source.list_source_files(session=session)
-    lavoro = plan(store, file, window_days=window_days, only=only)
-    esito = {"planned": len(lavoro), "processed": 0, "skipped": 0, "errors": 0}
+    lavoro = ordina_per_indice(plan(store, file, window_days=window_days, only=only))
+    esito = {
+        "planned": len(lavoro),
+        "processed": 0,
+        "skipped": 0,
+        # I rimandati vanno contati: senza, un run che rimanda tutto perche'
+        # l'indice non e' mai stato costruito riporterebbe successo con dei
+        # file spariti dal conteggio.
+        "deferred": 0,
+        "errors": 0,
+    }
 
     if dry_run:
         for w in lavoro:
@@ -344,7 +376,8 @@ def reconcile(
                         percorso.unlink(missing_ok=True)
 
             if indice is None:
-                log.info("indice non ancora disponibile, rimando: %s", w.source.name)
+                log.warning("indice non disponibile, rimando: %s", w.source.name)
+                esito["deferred"] += 1
                 continue
 
             lavorato = process_file(store, indice, w, workdir, session=session)

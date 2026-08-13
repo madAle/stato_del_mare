@@ -15,6 +15,7 @@ from tests.conftest import (
     NT,
     synthetic_coords,
     synthetic_sea_mask,
+    write_2dcur_file,
     write_profile_file,
     write_wave_file,
 )
@@ -367,6 +368,88 @@ def test_un_cambio_di_schema_forza_il_rilavoro_anche_a_sorgente_invariata(
     # Se la scorciatoia scattasse, process_file tornerebbe senza scaricare.
     with pytest.raises(Scaricato):
         reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path)
+
+
+def _scrivi_sintetico(url, dest):
+    """Sceglie la fixture giusta in base al gruppo che compare nell'URL."""
+    if "2dcur" in url:
+        write_2dcur_file(dest.with_suffix(".nc"))
+    else:
+        write_wave_file(dest.with_suffix(".nc"))
+    return "impronta-" + url.rsplit("/", 1)[-1]
+
+
+def test_il_gruppo_di_riferimento_si_lavora_per_primo(store, tmp_path, monkeypatch):
+    """L'ordine del listing ARPAE non deve decidere cosa viene perso.
+
+    L'indice di ricampionamento si costruisce solo dal gruppo di riferimento,
+    e finche' non esiste ogni altro file viene rimandato senza che nessuna
+    seconda passata lo recuperi. Apache ordina per nome, e dopo `his_` il byte
+    '2' precede 'H': his_2dcur arriva sempre prima di his_HPDwave. A regime e'
+    innocuo, ma al primo run su bucket vuoto (e al run di recupero, quando la
+    data piu' vecchia sta per uscire dalla finestra di 8 giorni) costa un
+    giorno di ubar e vbar perso per sempre.
+    """
+    cur = _file_sorgente("20260813_adriac_1km_his_2dcur_an.nc.gz")
+    hpd = _file_sorgente("20260813_adriac_1km_his_HPDwave_an.nc.gz")
+    # L'ordine e' quello che restituisce l'indice Apache.
+    monkeypatch.setattr(
+        reconcile.source, "list_source_files", lambda session=None: [cur, hpd]
+    )
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+    monkeypatch.setattr(
+        reconcile.source, "download", lambda url, dest, session=None: _scrivi_sintetico(url, dest)
+    )
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    esito = reconcile.reconcile(store, tmp_path, window_days=8)
+
+    assert store.list_keys("frames/ubar/"), "his_2dcur e' stato rimandato e mai ripreso"
+    assert esito["processed"] == 2
+    assert esito["deferred"] == 0
+    # La somma deve tornare: senza il contatore dei rimandati due file
+    # sparivano dal conteggio e il run poteva riportare successo.
+    assert (
+        esito["processed"] + esito["skipped"] + esito["deferred"] + esito["errors"]
+        == esito["planned"]
+    )
+
+
+def test_l_indice_si_costruisce_dal_file_di_riferimento_piu_recente(
+    store, tmp_path, monkeypatch
+):
+    """Fra due file del gruppo di riferimento si sceglie il piu' recente.
+
+    Il ramo che costruisce l'indice scarica il file per conto suo. Farlo dal
+    piu' vecchio significa riscaricare a ogni run un file che a regime e' gia'
+    in archivio e che nessun altro passo richiede.
+    """
+    vecchio = _file_sorgente("20260812_adriac_1km_his_HPDwave_an.nc.gz")
+    nuovo = _file_sorgente("20260813_adriac_1km_his_HPDwave_an.nc.gz")
+    monkeypatch.setattr(
+        reconcile.source, "list_source_files", lambda session=None: [vecchio, nuovo]
+    )
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+
+    scaricati = []
+
+    def traccia(url, dest, session=None):
+        scaricati.append(url)
+        return _scrivi_sintetico(url, dest)
+
+    monkeypatch.setattr(reconcile.source, "download", traccia)
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    reconcile.reconcile(store, tmp_path, window_days=8)
+
+    assert scaricati, "nessuno scaricamento: il test non sta osservando niente"
+    assert "20260813" in scaricati[0]
 
 
 def _sorgente_sintetica(monkeypatch, f):
