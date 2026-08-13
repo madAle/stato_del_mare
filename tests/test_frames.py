@@ -35,8 +35,35 @@ def test_la_chiave_del_frame():
         frames.frame_key(
             "hwave", "an", "20260813", datetime(2026, 8, 12, 1, tzinfo=timezone.utc)
         )
-        == "frames/hwave/an/20260813/2026-08-12T01.bin"
+        == "frames/hwave/an/20260813/2026-08-12T0100.bin"
     )
+
+
+def test_ogni_istante_sotto_l_ora_ha_una_chiave_propria(sealevel_file):
+    """Il livello del mare in analisi e' a 10 minuti: sei istanti per ora.
+
+    Con una chiave troncata all'ora i sei si sovrascriverebbero a vicenda e
+    sopravviverebbe l'ultimo scritto, mentre l'indice (che registra al
+    secondo) continuerebbe ad annunciarli tutti e sei. Un client che chiede
+    le 01:00 riceverebbe il campo delle 01:50 senza modo di accorgersene.
+
+    Il test non si limita a contare le chiavi distinte: rilegge l'istante
+    dal percorso e lo confronta con il valid_time del record, cosi' fallisce
+    anche una chiave distinta ma che mente sull'orario (per esempio un
+    contatore progressivo).
+    """
+    idx = _indice()
+    with Dataset(str(sealevel_file)) as ds:
+        prodotti = list(frames.extract_frames(ds, "qck_sl", "an", "20260813", idx))
+
+    assert len(prodotti) == 6
+    percorsi = [record.path for record, _ in prodotti]
+    assert len(set(percorsi)) == 6
+
+    for record, _ in prodotti:
+        stampa = record.path.rsplit("/", 1)[-1].removesuffix(".bin")
+        letto = datetime.strptime(stampa, "%Y-%m-%dT%H%M").replace(tzinfo=timezone.utc)
+        assert letto == record.valid_time
 
 
 def test_estrae_un_frame_per_campo_e_per_istante(wave_file):

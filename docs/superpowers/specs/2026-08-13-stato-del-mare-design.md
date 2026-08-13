@@ -177,7 +177,7 @@ impossibile.
 grid.json                                       descrittore del raster di destinazione
 catalog.json                                    variabili, intervalli, scale, colormap
 index/{var}/{kind}/{YYYY-MM}.json               ore disponibili, un file per mese
-frames/{var}/{kind}/{ref}/{YYYY-MM-DDTHH}.bin   campo, int16 gzip
+frames/{var}/{kind}/{ref}/{YYYY-MM-DDTHHMM}.bin campo, int16 gzip
 runs/{data}/{kind}/{gruppo}.json                contratto d'archivio, un file per gruppo
 static/bathymetry.bin                           batimetria, scritta una volta
 static/regrid_index.npz                         indice di ricampionamento, cache
@@ -188,9 +188,19 @@ stations/{id}/obs/{YYYY-MM}.json                osservazioni misurate
 
 Convenzioni sui segnaposto: `{var}` è l'id di variabile della tabella in 4.3,
 `{kind}` è `an` o `fc`, `{ref}` è l'istante di riferimento in forma `YYYYMMDD`,
-`{YYYY-MM-DDTHH}` è l'istante valido in UTC, `{data}` è la data del file
+`{YYYY-MM-DDTHHMM}` è l'istante valido in UTC, `{data}` è la data del file
 sorgente in forma `YYYY-MM-DD` e `{gruppo}` è il gruppo di file sorgente
 (per esempio `his_HPDwave`).
+
+**I minuti stanno nella chiave per tutte le variabili**, comprese quelle che
+oggi hanno solo istanti orari. È una convenzione sola, senza rami. Senza
+minuti, il livello del mare in analisi (144 step da 10 minuti, vedi 4.7)
+collasserebbe su 24 chiavi: sei frame per ora si sovrascriverebbero a vicenda,
+sopravviverebbe l'ultimo scritto, e l'indice mensile (che registra l'istante
+valido al secondo) continuerebbe ad annunciarli tutti e sei. Un client che
+chiede le 01:00 riceverebbe il campo delle 01:50 senza alcun modo di
+accorgersene: è lo stesso danno della griglia cambiata (valori plausibili nel
+posto sbagliato) spostato nel tempo invece che nello spazio.
 
 Il manifest è per gruppo di file e non per run: in un giorno si lavorano più
 file sorgente diversi per tipo, e con un manifest unico un gruppo riuscito e
@@ -268,7 +278,7 @@ Ogni run scrive:
   "grid": "grid.json",
   "frames": [
     {"var": "hwave", "valid_time": "2026-08-12T01:00:00Z",
-     "path": "frames/hwave/an/20260813/2026-08-12T01.bin",
+     "path": "frames/hwave/an/20260813/2026-08-12T0100.bin",
      "sha256": "...", "scale": 0.001, "offset": 0.0,
      "min": 0.02, "max": 1.87, "nodata_count": 729412, "clipped_count": 0}
   ]
@@ -320,6 +330,13 @@ sufficiente per le maree (periodo circa 12 h) e per la sessa adriatica (circa
 21,5 h il modo fondamentale, circa 10,9 h il secondo). Il dettaglio a 10 minuti
 serve alla dinamica veloce della marea meteorologica, che sul ramo previsionale ha
 scarso valore d'archivio.
+
+**Conseguenza sul layout** (vedi 4.2): tenere la piena risoluzione ha senso solo
+se i sei istanti di ogni ora finiscono su sei oggetti distinti. Per questo la
+chiave di un frame porta i minuti, `{YYYY-MM-DDTHHMM}`, per tutte le variabili e
+non solo per il livello del mare. Una chiave troncata all'ora annullerebbe in
+silenzio proprio ciò che questa sezione paga: cinque frame su sei sovrascritti,
+e il superstite annunciato dall'indice a sei orari diversi.
 
 **Conseguenza sulla UI**: il layer `sealevel` ha, in analisi, sei volte gli istanti
 degli altri. La timeline resta oraria e mostra gli istanti orari; gli step

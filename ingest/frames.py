@@ -60,7 +60,15 @@ def read_sea_mask(ds, nc_name: str) -> np.ndarray:
 
 
 def frame_key(var: str, kind: str, reference_date: str, valid_time: datetime) -> str:
-    stampa = valid_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
+    """frames/{var}/{kind}/{ref}/{YYYY-MM-DDTHHMM}.bin
+
+    I minuti stanno nella chiave per tutte le variabili, non solo per quelle
+    che oggi hanno istanti sotto l'ora: una convenzione sola, senza rami. Il
+    livello del mare in analisi arriva a passo di 10 minuti, e senza i minuti
+    sei istanti collasserebbero sulla stessa chiave sovrascrivendosi, mentre
+    l'indice (che registra al secondo) continuerebbe ad annunciarli tutti.
+    """
+    stampa = valid_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H%M")
     return f"frames/{var}/{kind}/{reference_date}/{stampa}.bin"
 
 

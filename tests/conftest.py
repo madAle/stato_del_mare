@@ -107,6 +107,41 @@ def write_wave_file(path, n_times: int = NT):
     return path
 
 
+def write_sealevel_file(path, n_times: int = 6, step_minutes: int = 10):
+    """File del livello del mare a passo sotto l'ora, come qck_sl.
+
+    ADRIAC pubblica 144 step da 10 minuti in analisi: qui ne bastano sei per
+    coprire un'ora intera, che e' il caso in cui una chiave troncata all'ora
+    fa collassare piu' istanti sullo stesso oggetto.
+    """
+    ds = Dataset(str(path), "w", format="NETCDF3_CLASSIC")
+    try:
+        ds.createDimension("ocean_time", n_times)
+        _write_coords(ds)
+        t = ds.createVariable("ocean_time", "f8", ("ocean_time",))
+        t.units = TIME_UNITS
+        t[:] = np.array(
+            [
+                (
+                    FIRST_TIME + timedelta(minutes=step_minutes * k) - _EPOCH
+                ).total_seconds()
+                for k in range(n_times)
+            ],
+            dtype=np.float64,
+        )
+
+        base = np.arange(ETA * XI, dtype=np.float64).reshape(ETA, XI) / 100.0
+        campo = np.stack([base + k for k in range(n_times)])
+        sl = ds.createVariable(
+            "sea_level", "f8", ("ocean_time", "eta_rho", "xi_rho"), fill_value=1.0e37
+        )
+        sl.units = "meter"
+        sl[:] = _masked(campo)
+    finally:
+        ds.close()
+    return path
+
+
 def write_profile_file(path, var_names=("temp",), n_times: int = NT):
     """File 3D su punti rho, con 30 livelli sostituiti da NS per brevita'."""
     ds = Dataset(str(path), "w", format="NETCDF3_CLASSIC")
@@ -157,3 +192,8 @@ def wave_file(tmp_path):
 @pytest.fixture
 def profile_file(tmp_path):
     return write_profile_file(tmp_path / "temp.nc")
+
+
+@pytest.fixture
+def sealevel_file(tmp_path):
+    return write_sealevel_file(tmp_path / "sealevel.nc")
