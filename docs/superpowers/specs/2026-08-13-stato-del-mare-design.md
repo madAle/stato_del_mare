@@ -3,6 +3,13 @@
 Data: 2026-08-13
 Stato: approvato in brainstorming, da tradurre in piano di implementazione
 
+> **Tre punti di questo documento hanno correzioni pendenti**, emerse scrivendo il
+> piano di implementazione e non ancora approvate: la soglia di ricampionamento in
+> 5.2, il percorso dei manifest in 4.2 e la granularità dei profili in 4.6. Le
+> dimensioni di griglia in 4.4 sono una stima da sostituire col calcolo reale.
+> Dettagli e motivazioni in `STATO.md`, sezione 4c. Leggerle prima di implementare
+> quei punti.
+
 ## 1. Obiettivo
 
 Mappa interattiva dello stato del mare in Adriatico basata sui dati pubblici ARPAE,
