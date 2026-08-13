@@ -1,4 +1,5 @@
 """Il manifest e' il contratto d'archivio: deve reggere il giro completo."""
+import json
 from datetime import datetime, timezone
 
 from ingest import manifest
@@ -49,8 +50,6 @@ def test_giro_completo_di_serializzazione():
 
 
 def test_il_dizionario_e_json_serializzabile_e_versionato():
-    import json
-
     d = _manifest_di_prova().to_dict()
     json.dumps(d)
     assert d["schema_version"] == SCHEMA_VERSION

@@ -1,4 +1,6 @@
 """La griglia di destinazione e l'impronta delle coordinate sorgente."""
+import json
+
 import numpy as np
 import pytest
 
@@ -54,8 +56,6 @@ def test_l_impronta_cambia_se_cambiano_le_coordinate():
 
 
 def test_il_dizionario_della_griglia_e_serializzabile():
-    import json
-
     lon = np.array([[12.0, 12.5]])
     lat = np.array([[44.0, 44.2]])
     g = grid.build_grid(lon, lat, resolution=1000.0)
