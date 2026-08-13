@@ -7,7 +7,7 @@ import pytest
 from moto import mock_aws
 from netCDF4 import Dataset
 
-from ingest import frames, grid, manifest, reconcile
+from ingest import config, frames, grid, manifest, reconcile
 from ingest.source import parse_filename
 from ingest.storage import ObjectStore
 from tests.conftest import synthetic_coords, synthetic_sea_mask, write_wave_file
@@ -304,6 +304,51 @@ def test_un_file_invariato_non_viene_riscaricato(store, tmp_path, monkeypatch):
     monkeypatch.setattr(reconcile.source, "download", non_chiamare)
 
     assert reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path) is None
+
+
+def test_un_cambio_di_schema_forza_il_rilavoro_anche_a_sorgente_invariata(
+    store, tmp_path, monkeypatch
+):
+    """La scorciatoia non deve scavalcare il controllo di versione dello schema.
+
+    Se il formato d'archivio cambia, i file vanno rilavorati anche quando alla
+    sorgente non si sono mossi: le loro intestazioni HTTP non cambieranno mai,
+    quindi senza questo controllo resterebbero congelati nel vecchio schema
+    per sempre.
+    """
+
+    class Scaricato(Exception):
+        pass
+
+    f = _file_sorgente()
+    testa = {"bytes": 42, "last_modified": "Thu, 13 Aug 2026 10:34:00 GMT"}
+    monkeypatch.setattr(reconcile.source, "head", lambda url, session=None: testa)
+
+    istante = datetime(2026, 8, 13, tzinfo=timezone.utc)
+    vecchio = manifest.RunManifest(
+        source_url=f.url,
+        source_sha256="qualunque",
+        source_bytes=testa["bytes"],
+        source_last_modified=testa["last_modified"],
+        reference_time=istante,
+        kind=f.kind,
+        group=f.group,
+        grid_ref="grid.json",
+        ingested_at=istante,
+        frames=[],
+    ).to_dict()
+    # Archivio scritto con uno schema precedente, sorgente identica.
+    vecchio["schema_version"] = config.SCHEMA_VERSION - 1
+    store.put_json(manifest.manifest_key(f.date, f.kind, f.group), vecchio)
+
+    def deve_scaricare(*a, **k):
+        raise Scaricato
+
+    monkeypatch.setattr(reconcile.source, "download", deve_scaricare)
+
+    # Se la scorciatoia scattasse, process_file tornerebbe None senza scaricare.
+    with pytest.raises(Scaricato):
+        reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path)
 
 
 def test_il_dry_run_non_scrive_e_non_scarica(store, tmp_path, monkeypatch):

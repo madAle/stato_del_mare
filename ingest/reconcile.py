@@ -156,6 +156,13 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
         sorgente = (esistente or {}).get("source", {})
         if (
             esistente
+            # La versione di schema va confrontata qui e non solo dentro
+            # already_ingested, che questa scorciatoia scavalca: se il formato
+            # d'archivio cambia, i file vanno rilavorati anche quando alla
+            # sorgente non si sono mossi, altrimenti resterebbero congelati nel
+            # vecchio schema per sempre (le loro intestazioni HTTP non
+            # cambieranno mai).
+            and esistente.get("schema_version") == config.SCHEMA_VERSION
             and sorgente.get("last_modified") == testa["last_modified"]
             and sorgente.get("bytes") == testa["bytes"]
         ):
