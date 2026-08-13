@@ -8,6 +8,7 @@ pubblicheremo sono sempre dati di modello, e vanno etichettate come tali.
 """
 
 import json
+import logging
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -16,6 +17,17 @@ from dataclasses import dataclass
 import requests
 
 from .config import OBSERVED_NETWORKS, OBSERVED_REALTIME
+
+log = logging.getLogger(__name__)
+
+
+class StationCollision(Exception):
+    """Due nomi di stazione diversi producono lo stesso identificativo.
+
+    Non e' un caso da ignorare: l'identificativo e' un segmento di percorso
+    sull'object store, quindi due stazioni fuse su uno stesso id mescolerebbero
+    le loro storie in un archivio permanente. Meglio fermarsi.
+    """
 
 # Le coordinate arrivano come interi moltiplicati per centomila.
 _SCALA_COORDINATE = 100_000.0
@@ -40,10 +52,65 @@ def slugify(network: str, name: str) -> str:
     normalizzato = unicodedata.normalize("NFKD", name)
     senza_accenti = normalizzato.encode("ascii", "ignore").decode("ascii")
     pezzo = _NON_ALFANUMERICO.sub("-", senza_accenti.lower()).strip("-")
+    if not pezzo:
+        raise ValueError(f"nome di stazione senza caratteri utili: {name!r}")
     return f"{network}-{pezzo}"
 
 
+def _accumula(record: dict, accumulate: dict[str, dict]) -> None:
+    """Aggiunge un record all'anagrafica in costruzione.
+
+    Solleva se il record e' malformato: il chiamante lo salta. Solleva
+    StationCollision se due nomi diversi finiscono sullo stesso identificativo,
+    e quella invece non va saltata.
+    """
+    rete = record.get("network")
+    if rete not in OBSERVED_NETWORKS:
+        return
+
+    nome = None
+    variabili: set[str] = set()
+    for blocco in record.get("data", []):
+        for codice, valore in blocco.get("vars", {}).items():
+            if codice == "B01019":
+                nome = valore.get("v")
+            if not codice.startswith(_PREFISSI_NON_OSSERVATI):
+                variabili.add(codice)
+
+    if not nome:
+        return
+
+    identificativo = slugify(rete, nome)
+    esistente = accumulate.get(identificativo)
+    if esistente is not None and esistente["name"] != nome:
+        raise StationCollision(
+            f"{identificativo!r} generato sia da {esistente['name']!r} "
+            f"sia da {nome!r}"
+        )
+
+    voce = accumulate.setdefault(
+        identificativo,
+        {
+            "name": nome,
+            "network": rete,
+            # Le coordinate si prendono dal primo record e non si aggiornano:
+            # sono infrastrutture fisse, e un aggiornamento silenzioso
+            # sposterebbe la stazione a meta' archivio.
+            "lon": record["lon"] / _SCALA_COORDINATE,
+            "lat": record["lat"] / _SCALA_COORDINATE,
+            "variables": set(),
+        },
+    )
+    voce["variables"].update(variabili)
+
+
 def parse_realtime(lines: Iterable[str]) -> list[Station]:
+    """Costruisce l'anagrafica dal flusso JSONL.
+
+    Un record malformato viene saltato senza fermare gli altri: il flusso
+    arriva da fuori e non ne controlliamo la forma, quindi una riga storta non
+    deve far perdere tutte le stazioni gia' accumulate.
+    """
     accumulate: dict[str, dict] = {}
 
     for riga in lines:
@@ -51,38 +118,12 @@ def parse_realtime(lines: Iterable[str]) -> list[Station]:
         if not riga:
             continue
         try:
-            record = json.loads(riga)
-        except json.JSONDecodeError:
+            _accumula(json.loads(riga), accumulate)
+        except StationCollision:
+            raise
+        except (json.JSONDecodeError, AttributeError, KeyError, TypeError, ValueError) as errore:
+            log.debug("riga ignorata: %s", errore)
             continue
-
-        rete = record.get("network")
-        if rete not in OBSERVED_NETWORKS:
-            continue
-
-        nome = None
-        variabili: set[str] = set()
-        for blocco in record.get("data", []):
-            for codice, valore in blocco.get("vars", {}).items():
-                if codice == "B01019":
-                    nome = valore.get("v")
-                if not codice.startswith(_PREFISSI_NON_OSSERVATI):
-                    variabili.add(codice)
-
-        if not nome:
-            continue
-
-        identificativo = slugify(rete, nome)
-        voce = accumulate.setdefault(
-            identificativo,
-            {
-                "name": nome,
-                "network": rete,
-                "lon": record["lon"] / _SCALA_COORDINATE,
-                "lat": record["lat"] / _SCALA_COORDINATE,
-                "variables": set(),
-            },
-        )
-        voce["variables"].update(variabili)
 
     return [
         Station(

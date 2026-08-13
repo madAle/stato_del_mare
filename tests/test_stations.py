@@ -1,6 +1,9 @@
 """Anagrafica delle stazioni marine dal flusso BUFR in tempo reale."""
 import json
 
+import pytest
+import responses
+
 from ingest import stations
 
 RIGA_BOA = json.dumps(
@@ -72,3 +75,47 @@ def test_il_dizionario_e_serializzabile():
     d = stations.stations_to_dict(stations.parse_realtime([RIGA_BOA]))
     json.dumps(d)
     assert d["stations"][0]["id"] == "boa-nausicaa-2"
+
+
+def test_un_record_marino_senza_coordinate_non_ferma_il_parsing():
+    """Il flusso arriva da fuori: una riga storta non deve far perdere le
+    stazioni gia' accumulate."""
+    senza_coordinate = json.dumps(
+        {
+            "network": "boa",
+            "date": "2026-08-13T04:00:00Z",
+            "data": [{"vars": {"B01019": {"v": "Rotta"}}}],
+        }
+    )
+    trovate = stations.parse_realtime([senza_coordinate, RIGA_BOA, "[]", "12"])
+    assert [s.name for s in trovate] == ["Nausicaa 2"]
+
+
+def test_un_nome_senza_caratteri_utili_viene_saltato():
+    illeggibile = json.dumps(
+        {
+            "network": "boa",
+            "lon": 1200000,
+            "lat": 4400000,
+            "data": [{"vars": {"B01019": {"v": "!!!"}}}],
+        }
+    )
+    assert stations.parse_realtime([illeggibile]) == []
+
+
+def test_due_nomi_diversi_sullo_stesso_identificativo_fermano_tutto():
+    """Un identificativo condiviso fonderebbe due archivi permanenti in uno.
+
+    Meglio fermarsi che scrivere: e' il caso in cui proseguire fa danno.
+    """
+    altra = RIGA_BOA.replace("Nausicaa 2", "Nausicaa/2")
+    with pytest.raises(stations.StationCollision):
+        stations.parse_realtime([RIGA_BOA, altra])
+
+
+@responses.activate
+def test_fetch_stations_legge_il_flusso_remoto():
+    corpo = (RIGA_BOA + "\n" + RIGA_TERRA + "\n").encode("utf-8")
+    responses.add(responses.GET, "https://esempio/realtime.jsonl", body=corpo)
+    trovate = stations.fetch_stations("https://esempio/realtime.jsonl")
+    assert [s.name for s in trovate] == ["Nausicaa 2"]
