@@ -79,22 +79,26 @@ def test_i_valori_estratti_sono_quelli_del_file(profile_file):
 def test_la_colonna_viene_presa_dalla_cella_giusta(profile_file):
     """Due stazioni su celle diverse devono dare valori diversi.
 
-    E' il test che il precedente non poteva fare: con un campo costante nello
-    spazio, righe e colonne scambiate o una cella di mare adiacente avrebbero
-    dato lo stesso risultato, e l'errore sarebbe passato inosservato.
+    La seconda cella sta fuori dalla diagonale apposta. Su una diagonale
+    il contributo per cella e' invariante allo scambio di riga e colonna,
+    quindi una trasposizione dentro extract_columns passerebbe inosservata:
+    con (2,1) invece la trasposizione leggerebbe (1,2), che ha un valore
+    diverso, e il test fallisce.
     """
     lon, lat = synthetic_coords()
     mare = synthetic_sea_mask()
     a = _stazione(float(lon[1, 1]), float(lat[1, 1]), "boa-a")
-    b = _stazione(float(lon[2, 2]), float(lat[2, 2]), "boa-b")
+    b = _stazione(float(lon[2, 1]), float(lat[2, 1]), "boa-b")
     celle = profiles.nearest_sea_cells([a, b], lon, lat, mare, max_distance_m=2000.0)
     assert celle["boa-a"] == (1, 1)
-    assert celle["boa-b"] == (2, 2)
+    assert celle["boa-b"] == (2, 1)
 
     with Dataset(str(profile_file)) as ds:
         colonne = profiles.extract_columns(ds, ("temp",), celle, profiles.PROFILE_SCALE)
 
     valori_a = encode.dequantize(colonne["boa-a"], profiles.PROFILE_SCALE)
     valori_b = encode.dequantize(colonne["boa-b"], profiles.PROFILE_SCALE)
-    # Indici piatti 5 e 10, quindi i contributi sono 0,05 e 0,10.
-    assert np.allclose(valori_a[0, 0] - valori_b[0, 0], -0.05, atol=0.01)
+    # Indici piatti 5 e 9, quindi i contributi sono 0,05 e 0,09.
+    # Con righe e colonne scambiate la seconda leggerebbe (1,2), indice 6,
+    # cioe' 0,06: la differenza attesa cambierebbe da -0,04 a -0,01.
+    assert np.allclose(valori_a[0, 0] - valori_b[0, 0], -0.04, atol=0.005)
