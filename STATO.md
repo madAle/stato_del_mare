@@ -1,10 +1,11 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-13 · **Branch:** `develop` · **Fase:** spec e piano dell'ingestore approvati e committati, implementazione da iniziare (nessun codice esiste ancora)
+**Aggiornato:** 2026-08-13 · **Branch:** `feat/ingestore` · **Fase:** ingestore implementato (15 task eseguiti), revisione finale svolta e correzioni applicate, in attesa di revisione umana e merge
 
 Questo file va letto per primo. Poi:
 
-- [docs/superpowers/plans/2026-08-13-ingestore.md](docs/superpowers/plans/2026-08-13-ingestore.md), il piano da eseguire: 15 task in TDD con il codice già scritto. **È da qui che si riparte.**
+- [.superpowers/sdd/2026-08-13-ingestore/rilievi-revisione-finale.md](.superpowers/sdd/2026-08-13-ingestore/rilievi-revisione-finale.md), i rilievi della revisione finale, e `fix-wave-report.md` accanto, che dice cosa è stato corretto e cosa no. **È da qui che si riparte.**
+- [docs/superpowers/plans/2026-08-13-ingestore.md](docs/superpowers/plans/2026-08-13-ingestore.md), il piano eseguito: 15 task in TDD. Storico, non più da eseguire. Attenzione: i frammenti di codice al suo interno sono anteriori alle correzioni della revisione finale, quindi non vanno ricopiati alla lettera.
 - [docs/superpowers/specs/2026-08-13-stato-del-mare-design.md](docs/superpowers/specs/2026-08-13-stato-del-mare-design.md), il design approvato: modello dati, formato del pacchetto, pipeline, architettura SPA, test. È la fonte di verità su cosa costruire.
 - `CLAUDE.md`, contesto stabile e divieti.
 
@@ -14,26 +15,36 @@ Mappa interattiva dello stato del mare in Adriatico dai dati pubblici ARPAE, con
 
 ## 2. Dove sta il codice e cosa fa ogni pezzo
 
-**Non esiste ancora codice.** Il repo contiene solo la spec. La struttura prevista dalla spec:
+**L'ingestore esiste ed è completo.** La SPA non è ancora iniziata.
 
 ```
 ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
   config.py       elenco variabili, endpoint, parametri di griglia
   source.py       listing ARPAE, HEAD, download verificato
-  grid.py         griglia Mercator e indice di ricampionamento
+  grid.py         griglia Mercator, indice di ricampionamento, GridMismatch
   encode.py       quantizzazione int16, gzip, direzioni in sin/cos
-  frames.py       campi 2D verso frame
+  frames.py       campi 2D verso frame, guardia sulle unità (UnitMismatch)
   profiles.py     colonne sigma sulle stazioni
-  stations.py     parsing BUFR di realtime.jsonl
+  stations.py     parsing BUFR di realtime.jsonl, fusione dell'anagrafica
   storage.py      client R2 (boto3)
-  manifest.py     manifest di run e deduplica
+  manifest.py     manifest di run, record di frame e colonne, deduplica
   catalog.py      index/ e catalog.json
   reconcile.py    orchestratore
-web/
+  __main__.py     CLI e codici di uscita
+tests/            126 test nella suite predefinita, più 4 dietro il marcatore `rete`
+.github/workflows/
+  ci.yml          ruff e pytest su push e pull request
+  ingest.yml      ingestione giornaliera, due cron
+web/              ancora da scrivere
   src/data/       TS puro: fetch da R2, cache LRU, prefetch, scelta an/fc
   src/map/        TS puro: MapLibre, custom layer WebGL, ciclo rAF, shader
   src/ui/         React: scrubber, play/pausa, legenda, status bar
 ```
+
+**Codici di uscita della CLI**, su cui il cron decide: `0` tutto bene, `1`
+qualche file fallito o rimandato (ritentabile), `2` guasto che non si risolve
+da solo e serve un umano (griglia cambiata, unità cambiate, collisione fra
+stazioni), `3` configurazione incompleta.
 
 **Il vincolo architetturale da non rompere:** `src/data/` e `src/map/` non devono conoscere React, e React non deve mai girare a 60 fps. Il ciclo di animazione vive in `src/map/` e riporta il tempo a React al massimo 10 volte al secondo. Se questo confine salta, il framework diventa insostituibile e l'autoplay singhiozza.
 
@@ -79,7 +90,7 @@ Secondo vincolo: **`src/data/` è l'unico modulo che conosce gli URL del bucket.
 
 ### 4a. Blocca il resto, e solo l'utente può farlo
 
-1. **Push del repo su GitHub.** `origin` è configurato (`git@github.com:madAle/stato_del_mare.git`) ma non è mai stato raggiunto: `origin/develop` non esiste. I due commit sono solo locali.
+1. **Push del branch `feat/ingestore` e merge.** `origin/develop` esiste; il branch dell'ingestore è ancora locale e attende revisione umana.
 2. **Rendere il repo pubblico.** Su repo pubblici i minuti di GitHub Actions sono illimitati, e questo progetto scarica circa 1,9 GB al giorno. Su repo privato i 2.000 minuti mensili gratuiti diventano un vincolo.
 3. **Account Cloudflare, bucket R2, API token, accesso pubblico in lettura, CORS.** Senza credenziali R2 l'ingestore non ha dove scrivere e non si può testare oltre i test unitari.
 
@@ -91,9 +102,10 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 105 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
-2. ~~Allineare la spec alle correzioni~~. **Fatto**: le correzioni emerse eseguendo il piano sono state applicate alla spec e sono ora voci chiuse in sezione 3.
-3. **Il piano della SPA**, da scrivere ora che l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
+1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 126 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
+2. ~~Allineare la spec alle correzioni~~. **Fatto**: le correzioni emerse eseguendo il piano e quelle della revisione finale (sezioni 4.2, 4.5, 4.6, 4.7 e 6.1) sono state applicate alla spec.
+3. **Revisione umana e merge del branch dell'ingestore**, poi il primo deploy su R2.
+4. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
 
 **Cosa il piano lascia fuori di proposito.** Le osservazioni misurate dalle boe (`stations/{id}/obs/{YYYY-MM}.json` in §4.2). ARPAE le conserva in `opendata/osservati/meteo/storico/` dal 2006, quindi **non sono deperibili**: si recuperano in qualunque momento. Il principio "l'ingestione è golosa" nasce dalla finestra di 8 giorni di ADRIAC e vale solo per ciò che ARPAE cancella. L'ingestore costruisce comunque l'anagrafica delle stazioni, che serve ai profili.
 
@@ -164,12 +176,14 @@ curl -s -L "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtim
 ## 7. Stato git
 
 - Repo unico: `/Users/ale/source/personal/stato_del_mare`
-- Branch: `develop` (nessun `main` locale)
-- Working tree pulito
-- Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`
-- **`origin/develop` non esiste: il repo non è mai stato pushato.**
+- Branch corrente: `feat/ingestore`, che parte da `develop` (nessun `main` locale)
+- Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`, con `origin/develop` presente
+- **`feat/ingestore` non è ancora stato pushato né unito.**
 
-```
-add3603  docs: livello del mare a piena risoluzione in analisi
-0c74784  docs: design di Stato del Mare
+Comandi di verifica prima del merge:
+
+```bash
+uv run ruff check .
+uv run pytest            # suite predefinita, i test di rete restano esclusi
+uv run pytest -m rete    # coerenza contro l'archivio ARPAE, scarica circa 23 MB per test
 ```

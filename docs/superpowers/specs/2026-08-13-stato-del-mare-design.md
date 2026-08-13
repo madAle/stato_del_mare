@@ -1,7 +1,9 @@
 # Stato del Mare, design
 
 Data: 2026-08-13
-Stato: approvato in brainstorming, da tradurre in piano di implementazione
+Stato: approvato. La parte sull'ingestore (sezioni 2, 3, 4, 5, 6, 8.1) è
+implementata e allineata al codice, comprese le correzioni della revisione
+finale. La parte sulla SPA (sezione 7, 8.2) è ancora da tradurre in piano.
 
 ## 1. Obiettivo
 
