@@ -1,6 +1,13 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-13 · **Branch:** `feat/ingestore` · **Fase:** ingestore implementato (15 task eseguiti), revisione finale svolta e correzioni applicate, in attesa di revisione umana e merge
+**Aggiornato:** 2026-08-13 · **Branch:** `feat/ingestore` · **Fase:** ingestore implementato (15 task eseguiti), revisione finale svolta, tutte le correzioni applicate e committate
+
+**La prima cosa da fare domani:** la ri-revisione mirata delle 14 correzioni
+(vedi 4c punto 3). Non è stata ancora fatta: i tre difetti critici vivevano tutti
+in codice che nessun test toccava, quindi va verificato, rilievo per rilievo, che
+il test nuovo sia stato visto fallire contro il codice rotto **prima** della
+correzione. Un test scritto dopo passa anche se non verifica niente, ed è così
+che quei tre difetti erano sopravvissuti a quindici revisioni di task.
 
 Questo file va letto per primo. Poi:
 
@@ -8,11 +15,17 @@ Questo file va letto per primo. Poi:
 - [docs/superpowers/plans/2026-08-13-ingestore.md](docs/superpowers/plans/2026-08-13-ingestore.md), il piano eseguito: 15 task in TDD. Storico, non più da eseguire. Attenzione: i frammenti di codice al suo interno sono anteriori alle correzioni della revisione finale, quindi non vanno ricopiati alla lettera.
 - `CLAUDE.md`, contesto stabile e divieti.
 
-Sul disco, ma **fuori dal repo** (`.superpowers/` è in `.gitignore`, quindi
-questi file non arrivano a chi clona): `.superpowers/sdd/2026-08-13-ingestore/`
-contiene i rilievi della revisione finale, il report delle correzioni applicate
-(`fix-wave-report.md`, che elenca anche ciò che resta aperto) e i brief di tutti
-i task. Vale la pena leggerli prima del merge, finché ci sono.
+- [docs/superpowers/revisioni/](docs/superpowers/revisioni/), i documenti della
+  revisione, portati dentro il repo il 2026-08-13 perché nascevano in
+  `.superpowers/`, che è in `.gitignore` e quindi non arriva a chi clona:
+  - `2026-08-13-ingestore-rilievi.md`, i rilievi della revisione finale (3
+    critici, 7 importanti, 3 minori) con la riproduzione di ciascuno;
+  - `2026-08-13-ingestore-correzioni.md`, cosa è stato corretto e come, con
+    l'elenco di **ciò che resta aperto**;
+  - `2026-08-13-ingestore-decisioni.md`, le **33 decisioni** prese durante
+    l'esecuzione, ognuna col motivo e col costo se è sbagliata. Serve a non
+    riaprirle da zero: se una va cambiata, si cambia sapendo cosa si sta
+    scambiando.
 
 ## 1. Cos'è il progetto
 
@@ -36,7 +49,7 @@ ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
   catalog.py      index/ e catalog.json
   reconcile.py    orchestratore
   __main__.py     CLI e codici di uscita
-tests/            126 test nella suite predefinita, più 4 dietro il marcatore `rete`
+tests/            127 test nella suite predefinita, più 4 dietro il marcatore `rete`
 .github/workflows/
   ci.yml          ruff e pytest su push e pull request
   ingest.yml      ingestione giornaliera, due cron
@@ -109,8 +122,38 @@ Niente.
 
 1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 126 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
 2. ~~Allineare la spec alle correzioni~~. **Fatto**: le correzioni emerse eseguendo il piano e quelle della revisione finale (sezioni 4.2, 4.5, 4.6, 4.7 e 6.1) sono state applicate alla spec.
-3. **Revisione umana e merge del branch dell'ingestore**, poi il primo deploy su R2.
-4. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
+3. **Ri-revisione mirata delle 14 correzioni.** È il passo mancante del processo,
+   ed è la prima cosa da fare. Deve verificare, rilievo per rilievo, che il test
+   nuovo sia stato visto fallire contro il codice rotto prima della correzione.
+   Diff da rivedere: da `9d600dc` compreso fino a `HEAD`.
+4. **Revisione umana e merge del branch dell'ingestore**, poi il primo deploy su R2.
+5. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
+6. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
+   discrete sui gradini del codice stato del mare WMO. Richiesta del 2026-08-13,
+   dettaglio e riferimento misurato nella sezione 1 della spec. Va con la SPA,
+   non prima: non tocca l'ingestore.
+
+**Cosa le correzioni hanno lasciato aperto di proposito** (dettaglio in
+`docs/superpowers/revisioni/2026-08-13-ingestore-correzioni.md`, sezione "Cosa
+non ho fatto"):
+
+- I **4 test di rete non sono stati eseguiti** dopo le correzioni. Il
+  ragionamento per cui non sono toccati è scritto nel report, ma è
+  un'inferenza, non una misura: `uv run pytest -m rete` va lanciato prima del
+  merge.
+- **Descrittori di griglia versionati**: la spec 4.4 promette `grid_v2.json`, il
+  codice non lo sa fare. Divergenza nota fra spec e codice.
+- **`--only` su una variabile fuori dal gruppo di riferimento non può
+  funzionare** (l'indice si costruisce solo nel ramo del gruppo di riferimento).
+  Difetto preesistente: prima rimandava in silenzio uscendo 0, adesso lo dichiara
+  e esce 1. Chi prova `--only ubar` come primo comando lo incontra.
+- **Il file di riferimento si scarica due volte per run**, circa 23 MB.
+- **Il piano non è stato aggiornato** e contiene frammenti anteriori alle
+  correzioni: rieseguirlo alla lettera reintrodurrebbe due dei tre critici.
+- **La fusione dell'anagrafica conserva le coordinate esistenti**: se ARPAE
+  spostasse davvero una boa, il sistema userebbe la posizione vecchia e nessun
+  log lo direbbe. Scelta coerente con un archivio permanente, ma il caso "boa
+  realmente spostata" oggi si risolve solo a mano.
 
 **Cosa il piano lascia fuori di proposito.** Le osservazioni misurate dalle boe (`stations/{id}/obs/{YYYY-MM}.json` in §4.2). ARPAE le conserva in `opendata/osservati/meteo/storico/` dal 2006, quindi **non sono deperibili**: si recuperano in qualunque momento. Il principio "l'ingestione è golosa" nasce dalla finestra di 8 giorni di ADRIAC e vale solo per ciò che ARPAE cancella. L'ingestore costruisce comunque l'anagrafica delle stazioni, che serve ai profili.
 

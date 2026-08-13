@@ -41,6 +41,62 @@ osservato dal 2006.
 Il modello dati e il formato del pacchetto sono progettati fin d'ora per reggerli
 tutti senza modifiche retroattive.
 
+### Isolinee etichettate sull'altezza d'onda
+
+Richiesta dell'utente il 2026-08-13, con riferimento esplicito al widget ARPAE
+delle previsioni d'onda ("ma fatta meglio").
+
+L'altezza d'onda si rende a **bande discrete**, ciascuna col proprio contorno, e
+sul contorno corre il valore della soglia ripetuto lungo il tracciato, come le
+isobate delle carte nautiche.
+
+**La condizione che lo rende possibile**: le soglie delle isolinee e i gradini
+della scala di colore devono essere la stessa lista, da una sola fonte. Due
+elenchi separati prima o poi divergono, e una linea che dice 1,25 m a due pixel
+dal punto dove il colore cambia davvero è peggio di nessuna linea, perché è
+credibile ed è sbagliata. Ne segue che la resa va a classi discrete: su una rampa
+continua non esistono confini da etichettare.
+
+**Le soglie**: il codice stato del mare WMO (0,1, 0,5, 1,25, 2,5, 4, 6, 9, 14 m)
+in linea spessa e con l'etichetta, le suddivisioni intermedie di ARPAE (0,8, 1,8,
+3,2, 5, 7, 8 m) in linea sottile e senza numero. Il numero compare dove ha un
+nome, non a ogni gradino.
+
+**Dove si calcola**: marching squares (`d3-contour`) sul campo già decodificato
+nel browser, in `src/map/`, non in ingestione. Le soglie sono una scelta di
+visualizzazione che vorremo ritoccare guardando le mappe; inciderle in ingestione
+le congela in 792 oggetti al giorno e impone di rigenerare l'archivio a ogni
+ripensamento (principio 3.5). Costo: circa 724 mila celle per soglia, quindi si
+calcola al cambio di fotogramma (al massimo 10 volte al secondo), meglio in un
+worker, con cache per fotogramma e insieme di soglie. Mai nel ciclo a 60 fps.
+
+**Resa**: due strati MapLibre sulla stessa sorgente GeoJSON, uno `line` e uno
+`symbol` con `symbol-placement: "line"` e `text-rotation-alignment: "map"`. È lo
+stesso codice di etichettatura delle isobate della batimetria (7.5), che sono
+statiche: si scrive una volta là e la seconda funzionalità costa quasi niente.
+
+### Il riferimento ARPAE, misurato il 2026-08-13
+
+Widget Leaflet a `apps.arpae.it/widgets/meteo-mare-mappe-previsione/`, alimentato
+da `apps.arpae.it/REST/meteo_mappe_previsione_<variabile>`. Il campo è un **PNG
+piatto** steso con `L.imageOverlay` su coordinate fisse: 72 immagini orarie per
+emissione, circa 190 KB l'una, quindi circa 13,7 MB per variabile per emissione
+solo per animare. Ha già scrubber e autoplay.
+
+Cosa vogliamo fare diversamente, e perché:
+
+| Loro | Noi | Motivo |
+|---|---|---|
+| Pixel colorati | Griglia int16 già in Web Mercator | Valore sotto il mouse, nitidezza a ogni ingrandimento, isolinee calcolate dal campo |
+| Palette arcobaleno, prime due classi due blu quasi identici | cmocean percettivamente uniforme | L'Adriatico passa gran parte dell'anno sotto i 0,5 m: là la loro mappa è di un colore solo |
+| Legenda fuori dalla mappa | Numero sul contorno | Toglie il viaggio dell'occhio |
+| WW3 su tutti i mari italiani, maglia larga | ADRIAC a 1 km, solo Adriatico | Risoluzione contro copertura: vedi la domanda aperta qui sotto |
+| Frecce a passo fisso nella griglia del dato, lunghezza costante | Passo fisso a schermo | A passo fisso nel dato si accavallano o spariscono secondo l'ingrandimento |
+
+**Domanda aperta, non decisa**: ADRIAC copre solo l'Adriatico. Se la copertura
+contasse quanto la qualità servirebbe una seconda sorgente (WW3), con un secondo
+ingestore e un secondo dominio. Non è previsto in v1.
+
 ## 2. Fonti dati
 
 Tutte le affermazioni di questa sezione sono state verificate scaricando i file,
