@@ -1,9 +1,10 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-13 · **Branch:** `develop` · **Fase:** spec approvata e committata, piano di implementazione da scrivere (nessun codice esiste ancora)
+**Aggiornato:** 2026-08-13 · **Branch:** `develop` · **Fase:** spec e piano dell'ingestore approvati e committati, implementazione da iniziare (nessun codice esiste ancora)
 
 Questo file va letto per primo. Poi:
 
+- [docs/superpowers/plans/2026-08-13-ingestore.md](docs/superpowers/plans/2026-08-13-ingestore.md), il piano da eseguire: 15 task in TDD con il codice già scritto. **È da qui che si riparte.**
 - [docs/superpowers/specs/2026-08-13-stato-del-mare-design.md](docs/superpowers/specs/2026-08-13-stato-del-mare-design.md), il design approvato: modello dati, formato del pacchetto, pipeline, architettura SPA, test. È la fonte di verità su cosa costruire.
 - `CLAUDE.md`, contesto stabile e divieti.
 
@@ -83,18 +84,23 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-1. **Il piano di implementazione** in `docs/superpowers/plans/`, tramite la skill `superpowers:writing-plans`. Era iniziato e si è interrotto qui.
-2. Poi i task del piano, con `superpowers:subagent-driven-development` o `superpowers:executing-plans`.
+1. **Eseguire il piano dell'ingestore**, con `superpowers:subagent-driven-development` (un subagente per task, revisione in mezzo) oppure `superpowers:executing-plans` (in sessione, a lotti). Il piano ha 15 task, ognuno con test, codice e commit già scritti.
+2. **Allineare la spec** alle correzioni, seguendo la checklist in coda al piano.
+3. **Il piano della SPA**, da scrivere solo *dopo* che l'ingestore gira: così lo si scrive contro dati osservabili su R2 invece che contro una specifica.
 
-**Tre correzioni alla spec emerse mentre scrivevo il piano, da applicare prima o durante:**
+**Cinque correzioni alla spec, applicate dal piano ma non ancora dalla spec.** Le prime tre sono emerse decomponendo i task, le ultime due dall'autorevisione del piano:
 
 | Punto spec | Cosa dice | Cosa va corretto e perché |
 |---|---|---|
 | §5.2, soglia di ricampionamento | 1,5 km | Va portata a circa **800 m**. Le celle sorgente distano 1 km, quindi qualunque punto interno a una cella di mare è entro 707 m dal suo centro (semidiagonale). Con 1,5 km i pixel di destinazione fino a 1,5 km nell'entroterra pescherebbero un valore di mare, producendo una frangia colorata visibile lungo tutta la costa. 800 m copre tutti i punti di mare legittimi e limita lo sbordamento a meno di una cella sorgente. |
 | §4.2, percorso dei manifest | `runs/{data}/{kind}/manifest.json` | Serve **un manifest per gruppo di file**: `runs/{data}/{kind}/{gruppo}.json`. In un giorno si lavorano 6 file sorgente diversi per tipo; con un manifest unico, se HPDwave riesce e temp fallisce non si può registrare il progresso parziale. |
 | §4.6, profili stazioni | `stations/{id}/columns/{YYYY-MM}.bin` | Vanno **giornalieri**: `{YYYY-MM-DD}.bin`. L'object storage non supporta l'append, quindi un file mensile andrebbe riscritto ogni giorno perdendo l'immutabilità. Giornaliero sono circa 5,8 KB per stazione. |
+| §6.2, tentativi ripetuti | "3 tentativi con backoff" | La spec lo prescrive ma nessun task lo implementava. Aggiunto in `source.py` con attesa crescente, e con la cancellazione del file parziale prima di ogni nuovo tentativo: senza, lo sha256 verrebbe calcolato su byte incompleti. |
+| §4.2, `static/bathymetry.bin` | elencato nel layout | Nessun task lo scriveva. La batimetria sta **solo nei file 3D**, non in quelli d'onda, quindi si pubblica quando si incontra il primo `his_temp`. Attenzione alla scala: con 0,01 il fondoscala sarebbe 327 m e tutto il bacino meridionale (fino a 1.246 m) verrebbe tosato in silenzio. Il piano usa 0,1 e solleva un errore se `clipped_count` non è zero. |
 
 Inoltre le dimensioni della griglia in §4.4 ("circa 850 x 1.000 celle") sono una stima. Il calcolo reale: il bbox in Mercator è circa 1.029 x 1.053 km, quindi a risoluzione 1.200 m Mercator (che a 43 gradi di latitudine corrisponde a circa 878 m al suolo) vengono **circa 858 x 878 celle**. Le dimensioni esatte le deve produrre `build_grid()` e finire in `grid.json`, non essere cablate.
+
+**Cosa il piano lascia fuori di proposito.** Le osservazioni misurate dalle boe (`stations/{id}/obs/{YYYY-MM}.json` in §4.2). ARPAE le conserva in `opendata/osservati/meteo/storico/` dal 2006, quindi **non sono deperibili**: si recuperano in qualunque momento. Il principio "l'ingestione è golosa" nasce dalla finestra di 8 giorni di ADRIAC e vale solo per ciò che ARPAE cancella. L'ingestore costruisce comunque l'anagrafica delle stazioni, che serve ai profili.
 
 ## 5. Comandi
 
@@ -146,7 +152,7 @@ curl -s -L "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtim
 
 **La griglia ADRIAC è curvilinea, non lat/lon regolare.** `lon_rho` varia lungo la direzione eta (da 17,7150 a 10,8437 sulla colonna 0). Appoggiare l'array sulla mappa come rettangolo nord-sud lo disegna storto.
 
-**Le velocità sono già proiettate su est/nord.** `ubar_eastward` e `vbar_northward`, e anche il file 3D `his_cur` ha dimensioni `s_rho, eta_rho, xi_rho`, cioè punti rho e non griglie sfalsate u/v. Non serve nessuna rotazione dei vettori. Verificato leggendo l'intestazione senza scaricare i 640 MB.
+**Le velocità sono già proiettate su est/nord e stanno su punti rho.** In 2D sono `ubar_eastward` e `vbar_northward`; in 3D il file `his_cur` espone `u_eastward` e `v_northward`, dichiarate "at RHO-points", con dimensioni `s_rho, eta_rho, xi_rho`. Niente griglie sfalsate u/v, nessuna rotazione dei vettori, nessun caso speciale nella ricerca della cella. Verificato leggendo l'intestazione senza scaricare i 640 MB.
 
 **Le texture intere in WebGL non supportano il filtraggio bilineare hardware.** Con `R16UI` e `usampler2D` il filtro è per forza `NEAREST`. L'interpolazione va scritta nello shader con quattro `texelFetch`, il che è anche meglio perché permette di escludere i vicini `nodata` invece di mediarli (col filtro hardware ogni costa avrebbe un alone di valori sbagliati).
 
