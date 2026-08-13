@@ -117,6 +117,10 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Necessario perche' i test importano le fixture con `from tests.conftest
+# import ...`: senza la radice sul path, pytest importa conftest come modulo
+# di primo livello e quell'import fallisce.
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
@@ -141,7 +145,11 @@ __pycache__/
 *.nc.gz
 *.npz
 .env
+.superpowers/
+.claude/worktrees/
 ```
+
+Le ultime due righe sono scratch degli strumenti di sviluppo e non devono mai finire nel repo. Se il file esiste gia' con quelle righe, conservarle e aggiungere le altre.
 
 - [ ] **Step 3: Scrivere il test di configurazione**
 
@@ -780,6 +788,10 @@ git commit -m "feat: griglia Web Mercator e impronta delle coordinate sorgente"
   - `save_index(index: RegridIndex, path: Path) -> None`
   - `load_index(path: Path) -> RegridIndex`
 - Fixture prodotte da `conftest.py`: `synthetic_coords()`, `synthetic_sea_mask()`, `write_wave_file(path)`, `write_profile_file(path)`
+
+- [ ] **Step 0: Creare `tests/__init__.py` vuoto**
+
+Serve perche' i test importano le fixture con `from tests.conftest import ...`. Senza il file, e senza il `pythonpath` gia' impostato nel Task 1, pytest importa `conftest` come modulo di primo livello e quell'import fallisce.
 
 - [ ] **Step 1: Scrivere `tests/conftest.py`**
 
@@ -2957,6 +2969,19 @@ def test_il_secondo_giro_non_scrive_nulla(store, tmp_path, monkeypatch, wave_fil
 ```
 
 Nota per chi implementa: i tre test finali stubbano `source.head`, `source.download` e `decompress_to_nc` per evitare la rete. Serve che `reconcile` esponga `decompress_to_nc(path) -> Path` come funzione di modulo, cosi' da poterla sostituire.
+
+**Serve anche uno stub in piu', altrimenti i test toccano la rete davvero.** `reconcile()` chiama `_aggiorna_anagrafica`, che chiama `stations.fetch_stations`, che fa una GET verso ARPAE. E' avvolto in un try/except, quindi i test passerebbero comunque, ma resterebbero lenti e dipendenti dalla rete. In ogni test che invoca `reconcile.reconcile(...)` aggiungere:
+
+```python
+monkeypatch.setattr(
+    reconcile.stations, "fetch_stations", lambda session=None: []
+)
+monkeypatch.setattr(
+    reconcile.source, "list_source_files", lambda session=None: [f]
+)
+```
+
+Il secondo stub sostituisce anche l'elenco dei file sorgente, che altrimenti verrebbe scaricato dalla pagina indice di ARPAE.
 
 - [ ] **Step 2: Eseguire i test e verificare che falliscano**
 
