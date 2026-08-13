@@ -21,8 +21,9 @@ def _manifest_di_prova():
             manifest.FrameRecord(
                 var="hwave",
                 valid_time=datetime(2026, 8, 12, 1, tzinfo=timezone.utc),
-                path="frames/hwave/an/20260813/2026-08-12T01.bin",
+                path="frames/hwave/an/20260813/2026-08-12T0100.bin",
                 sha256="def456",
+                source_units="meter",
                 scale=0.001,
                 offset=0.0,
                 min=0.02,

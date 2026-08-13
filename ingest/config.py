@@ -50,18 +50,29 @@ class FieldSpec:
     scale: float
     units: str
     colormap: str
+    source_units: str
     transform: str = "identity"
     offset: float = 0.0
 
 
+# `units` e' l'unita' dell'array pubblicato, `source_units` quella attesa
+# nell'attributo NetCDF della variabile sorgente. Sono due cose diverse e non
+# vanno confuse: ARPAE scrive "meter" dove noi pubblichiamo "m", e le due
+# componenti di direzione nascono da gradi ma escono adimensionali. Le stringhe
+# di source_units sono state lette dalle intestazioni reali dell'archivio il
+# 2026-08-13, non dedotte: sbagliarle fermerebbe ogni run.
 FIELDS: tuple[FieldSpec, ...] = (
-    FieldSpec("hwave", "his_HPDwave", "Hwave", 0.001, "m", "amp"),
-    FieldSpec("pwave", "his_HPDwave", "Pwave_top", 0.01, "s", "tempo"),
-    FieldSpec("dwave_sin", "his_HPDwave", "Dwave", 0.0001, "1", "phase", "sin"),
-    FieldSpec("dwave_cos", "his_HPDwave", "Dwave", 0.0001, "1", "phase", "cos"),
-    FieldSpec("ubar", "his_2dcur", "ubar_eastward", 0.001, "m s-1", "speed"),
-    FieldSpec("vbar", "his_2dcur", "vbar_northward", 0.001, "m s-1", "speed"),
-    FieldSpec("sealevel", "qck_sl", "sea_level", 0.001, "m", "balance"),
+    FieldSpec("hwave", "his_HPDwave", "Hwave", 0.001, "m", "amp", "meter"),
+    FieldSpec("pwave", "his_HPDwave", "Pwave_top", 0.01, "s", "tempo", "second"),
+    FieldSpec("dwave_sin", "his_HPDwave", "Dwave", 0.0001, "1", "phase", "degrees", "sin"),
+    FieldSpec("dwave_cos", "his_HPDwave", "Dwave", 0.0001, "1", "phase", "degrees", "cos"),
+    FieldSpec(
+        "ubar", "his_2dcur", "ubar_eastward", 0.001, "m s-1", "speed", "meter second-1"
+    ),
+    FieldSpec(
+        "vbar", "his_2dcur", "vbar_northward", 0.001, "m s-1", "speed", "meter second-1"
+    ),
+    FieldSpec("sealevel", "qck_sl", "sea_level", 0.001, "m", "balance", "meter"),
 )
 
 FIELD_GROUPS: tuple[str, ...] = tuple(dict.fromkeys(f.group for f in FIELDS))

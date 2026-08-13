@@ -58,7 +58,7 @@ jobs:
           case $codice in
             0) echo "Ingestione completata." ;;
             1) echo "::warning::Alcuni file non sono stati lavorati. Ritentabile: il run successivo recupera dalla finestra di 8 giorni." ;;
-            2) echo "::error::GUASTO CHE NON SI RISOLVE DA SOLO. Il run si e' fermato. Serve intervento umano PRIMA del prossimo run. Due cause possibili, entrambe nel log: la griglia sorgente e' cambiata (l'archivio si riempirebbe di valori nel posto sbagliato) oppure due stazioni diverse collidono sullo stesso identificativo (le loro storie si mescolerebbero in un archivio permanente)." ;;
+            2) echo "::error::GUASTO CHE NON SI RISOLVE DA SOLO. Il run si e' fermato. Serve intervento umano PRIMA del prossimo run. Tre cause possibili, tutte nel log: la griglia sorgente e' cambiata (l'archivio si riempirebbe di valori nel posto sbagliato), le unita' di una variabile sono cambiate (numeri plausibili e sbagliati), oppure due stazioni diverse collidono sullo stesso identificativo (le loro storie si mescolerebbero in un archivio permanente)." ;;
             3) echo "::error::Configurazione incompleta: mancano credenziali o variabili d'ambiente. Ogni tentativo fallira' allo stesso modo finche' non viene corretta." ;;
             *) echo "::error::Uscita inattesa: $codice" ;;
           esac

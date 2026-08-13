@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 import numpy as np
+import pytest
 from netCDF4 import Dataset
 
 from ingest import encode, frames, grid
@@ -109,6 +110,51 @@ def test_la_direzione_produce_seno_e_coseno_coerenti(wave_file):
     validi = ~np.isnan(seno)
     assert np.allclose(seno[validi], 1.0, atol=0.001)
     assert np.allclose(coseno[validi], 0.0, atol=0.001)
+
+
+def test_le_unita_sorgente_finiscono_nel_record(wave_file):
+    """Il manifest deve registrare l'unita' letta dal NetCDF, non quella
+    che il codice si aspetta: e' l'unica prova, a distanza di anni, di cosa
+    diceva davvero il file da cui il frame e' stato prodotto."""
+    idx = _indice()
+    with Dataset(str(wave_file)) as ds:
+        per_variabile = {
+            r.var: r for r, _ in frames.extract_frames(ds, "his_HPDwave", "an", "20260813", idx)
+        }
+    assert per_variabile["hwave"].source_units == "meter"
+    assert per_variabile["pwave"].source_units == "second"
+    # Le due componenti nascono dalla stessa variabile in gradi.
+    assert per_variabile["dwave_sin"].source_units == "degrees"
+
+
+def test_un_cambio_di_unita_alla_sorgente_ferma_l_estrazione(wave_file):
+    """Un cambio di unita' a monte e' completamente silenzioso senza guardia.
+
+    I valori si riquantizzano bene, `clipped_count` puo' restare zero, e
+    l'archivio si riempie di numeri plausibili e sbagliati. E' lo stesso
+    modello di danno che giustifica l'apparato di GridMismatch, applicato
+    all'altra meta' della stessa frase della spec 6.1.
+    """
+    with Dataset(str(wave_file), "a") as ds:
+        ds.variables["Hwave"].units = "centimeter"
+
+    idx = _indice()
+    with Dataset(str(wave_file)) as ds:
+        with pytest.raises(frames.UnitMismatch) as errore:
+            list(frames.extract_frames(ds, "his_HPDwave", "an", "20260813", idx))
+    assert "centimeter" in str(errore.value)
+    assert "meter" in str(errore.value)
+
+
+def test_l_assenza_dell_attributo_unita_ferma_l_estrazione(wave_file):
+    """Senza `units` non si puo' verificare niente: meglio fermarsi."""
+    with Dataset(str(wave_file), "a") as ds:
+        ds.variables["Hwave"].delncattr("units")
+
+    idx = _indice()
+    with Dataset(str(wave_file)) as ds:
+        with pytest.raises(frames.UnitMismatch):
+            list(frames.extract_frames(ds, "his_HPDwave", "an", "20260813", idx))
 
 
 def test_la_maschera_di_mare_si_legge_dai_dati(wave_file):

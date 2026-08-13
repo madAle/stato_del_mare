@@ -12,6 +12,38 @@ from .config import fields_for, sampling_for
 from .manifest import FrameRecord
 
 
+class UnitMismatch(Exception):
+    """L'unita' dichiarata dal NetCDF non e' quella attesa.
+
+    Come GridMismatch, e' un guasto che non si annuncia da solo: se ARPAE
+    passasse a centimetri o a millisecondi, i valori si riquantizzerebbero
+    bene, clipped_count potrebbe restare zero, e l'archivio si riempirebbe di
+    numeri plausibili e sbagliati. Fermarsi e' meglio che sbagliare.
+    """
+
+
+def read_units(ds, nc_name: str) -> str | None:
+    """L'attributo units della variabile, None se assente."""
+    return getattr(ds.variables[nc_name], "units", None)
+
+
+def check_units(ds, campo) -> str:
+    """Confronta l'unita' del file con quella attesa e la restituisce.
+
+    Il valore letto finisce nel manifest: e' l'unica prova, a distanza di
+    anni, di cosa diceva davvero il file da cui il frame e' stato prodotto.
+    """
+    letta = read_units(ds, campo.nc_name)
+    if letta != campo.source_units:
+        raise UnitMismatch(
+            f"{campo.nc_name}: unita' attesa {campo.source_units!r}, "
+            f"trovata {letta!r}. I valori si quantizzerebbero senza errori "
+            "visibili e l'archivio si riempirebbe di numeri plausibili e "
+            "sbagliati. Verificare la sorgente ADRIAC prima di riprovare."
+        )
+    return letta
+
+
 def read_times(ds) -> list[datetime]:
     """Istanti validi dal file.
 
@@ -84,6 +116,11 @@ def extract_frames(
     scelti = select_times(istanti, sampling_for(group, kind))
     campi = fields_for(group)
 
+    # Le unita' si verificano prima di scrivere qualunque cosa: un file con
+    # le unita' cambiate non deve lasciare meta' archivio nuovo e meta'
+    # vecchio.
+    unita = {campo.id: check_units(ds, campo) for campo in campi}
+
     for indice_t in scelti:
         valido = istanti[indice_t]
         for campo in campi:
@@ -97,6 +134,7 @@ def extract_frames(
                 valid_time=valido,
                 path=frame_key(campo.id, kind, reference_date, valido),
                 sha256=hashlib.sha256(blob).hexdigest(),
+                source_units=unita[campo.id],
                 scale=campo.scale,
                 offset=campo.offset,
                 min=stats["min"],

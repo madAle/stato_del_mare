@@ -131,6 +131,35 @@ def test_la_guardia_sulla_griglia_ferma_reconcile(store, tmp_path, monkeypatch, 
     assert store.get_json("catalog.json") is None
 
 
+def test_un_cambio_di_unita_ferma_reconcile(store, tmp_path, monkeypatch):
+    """UnitMismatch deve uscire da reconcile(), non essere contata come errore.
+
+    Contata come errore diventerebbe uscita 1, cioe' "ritentabile, il run
+    successivo recupera": il cron ritenterebbe per sempre un cambio di unita'
+    alla sorgente, che non si risolve da solo.
+    """
+    f = _file_sorgente()
+
+    def scarica_con_unita_sbagliate(url, dest, session=None):
+        percorso = write_wave_file(dest.with_suffix(".nc"))
+        with Dataset(str(percorso), "a") as ds:
+            ds.variables["Hwave"].units = "centimeter"
+        return "impronta"
+
+    monkeypatch.setattr(reconcile.source, "list_source_files", lambda session=None: [f])
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+    monkeypatch.setattr(reconcile.source, "download", scarica_con_unita_sbagliate)
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    with pytest.raises(frames.UnitMismatch):
+        reconcile.reconcile(store, tmp_path, window_days=8)
+
+    assert store.get_json("catalog.json") is None
+
+
 def test_l_indice_sopravvive_a_una_workdir_nuova(store, tmp_path, monkeypatch, wave_file):
     """L'indice deve tornare dal bucket, non dal disco locale.
 

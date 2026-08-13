@@ -1,5 +1,6 @@
 """I codici di uscita della CLI: e' il contratto su cui un cron decide."""
 from ingest import __main__ as cli
+from ingest.frames import UnitMismatch
 from ingest.reconcile import GridMismatch
 from ingest.stations import StationCollision
 
@@ -48,6 +49,17 @@ def test_la_griglia_cambiata_esce_con_due(monkeypatch):
 
     def esplode(*a, **k):
         raise GridMismatch("le coordinate sorgente sono cambiate")
+
+    monkeypatch.setattr(cli, "reconcile", esplode)
+    assert cli.main(["reconcile"]) == 2
+
+
+def test_il_cambio_di_unita_esce_con_due(monkeypatch):
+    """Non ritentabile: la sorgente ha cambiato unita' di misura."""
+    _store_finto(monkeypatch)
+
+    def esplode(*a, **k):
+        raise UnitMismatch("Hwave: unita' attesa 'meter', trovata 'centimeter'")
 
     monkeypatch.setattr(cli, "reconcile", esplode)
     assert cli.main(["reconcile"]) == 2

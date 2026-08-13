@@ -279,7 +279,7 @@ Ogni run scrive:
   "frames": [
     {"var": "hwave", "valid_time": "2026-08-12T01:00:00Z",
      "path": "frames/hwave/an/20260813/2026-08-12T0100.bin",
-     "sha256": "...", "scale": 0.001, "offset": 0.0,
+     "sha256": "...", "source_units": "meter", "scale": 0.001, "offset": 0.0,
      "min": 0.02, "max": 1.87, "nodata_count": 729412, "clipped_count": 0}
   ],
   "columns": [
@@ -489,7 +489,13 @@ indistinguibili da quelli buoni.
 Difesa: l'indice memorizza lo SHA-256 delle matrici di coordinate sorgente,
 ricalcolato e confrontato a ogni run. Mismatch significa job fermo senza scrivere.
 Stesso trattamento per un cambio di unità o di nome variabile, che il manifest
-registra dal NetCDF e confronta con l'atteso.
+registra dal NetCDF e confronta con l'atteso. L'unità attesa è `source_units`
+in `FieldSpec`, che è cosa dichiara il file sorgente (`meter`), non `units`,
+che è l'unità dell'array pubblicato (`m`): sono due stringhe diverse, e per le
+componenti di direzione sono anche due grandezze diverse (gradi in ingresso,
+adimensionale in uscita). Uno scarto solleva `UnitMismatch` e ferma il run con
+uscita 2, come `GridMismatch`: un cambio di unità è silenzioso, i valori si
+riquantizzano bene e `clipped_count` può restare zero.
 
 ### 6.2 Gli altri
 

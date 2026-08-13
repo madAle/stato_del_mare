@@ -9,8 +9,9 @@ Codici di uscita, pensati per un cron che deve decidere da solo cosa fare:
     1  qualche file e' fallito o e' stato rimandato, ritentabile: il run
        successivo recupera
     2  guasto che non si risolve da solo, il run si e' fermato, serve un umano:
-       la griglia sorgente e' cambiata, oppure due stazioni diverse collidono
-       sullo stesso identificativo
+       la griglia sorgente e' cambiata, le unita' di una variabile sono
+       cambiate, oppure due stazioni diverse collidono sullo stesso
+       identificativo
     3  configurazione incompleta, fallira' identico a ogni tentativo
 
 La distinzione fra 1 e gli altri due e' l'unica cosa che impedisce a un cron di
@@ -24,6 +25,7 @@ import tempfile
 from pathlib import Path
 
 from .config import WINDOW_DAYS
+from .frames import UnitMismatch
 from .reconcile import GridMismatch, reconcile
 from .stations import StationCollision
 from .storage import ObjectStore
@@ -79,6 +81,13 @@ def main(argv: list[str] | None = None) -> int:
         except GridMismatch as errore:
             logging.error("LA GRIGLIA SORGENTE E' CAMBIATA: %s", errore)
             logging.error("nessun dato scritto. Intervento umano necessario.")
+            return 2
+        except UnitMismatch as errore:
+            logging.error("LE UNITA' DELLA SORGENTE SONO CAMBIATE: %s", errore)
+            logging.error(
+                "un cambio di unita' non si annuncia: i valori restano "
+                "plausibili e diventano sbagliati. Intervento umano necessario."
+            )
             return 2
         except StationCollision as errore:
             # Come GridMismatch: una collisione di nomi nel flusso ARPAE non si

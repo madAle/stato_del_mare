@@ -31,6 +31,10 @@ class FrameRecord:
     valid_time: datetime
     path: str
     sha256: str
+    # L'unita' letta dal NetCDF sorgente, non quella che il codice si
+    # aspetta: e' l'unica prova, a distanza di anni, di cosa diceva davvero
+    # il file da cui questo frame e' stato prodotto.
+    source_units: str
     scale: float
     offset: float
     min: float | None

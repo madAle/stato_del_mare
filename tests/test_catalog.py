@@ -15,8 +15,9 @@ def _frame(var, valid_time):
     return manifest.FrameRecord(
         var=var,
         valid_time=valid_time,
-        path=f"frames/{var}/an/x/{valid_time:%Y-%m-%dT%H}.bin",
+        path=f"frames/{var}/an/x/{valid_time:%Y-%m-%dT%H%M}.bin",
         sha256="x",
+        source_units="meter",
         scale=0.001,
         offset=0.0,
         min=0.0,
