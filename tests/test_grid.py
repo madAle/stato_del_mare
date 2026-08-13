@@ -111,6 +111,39 @@ def test_il_valore_di_una_cella_di_mare_finisce_nel_frame():
     assert np.count_nonzero(fuori == 42.0) >= 1
 
 
+def test_ogni_cella_di_mare_finisce_sul_pixel_che_le_sta_sopra():
+    """Il valore giusto nel posto giusto, non solo da qualche parte.
+
+    Che un valore compaia nel frame non dice niente su dove: e' proprio la
+    classe di errore piu' insidiosa di questo modulo, perche' produce frame
+    plausibili con i valori spostati. Qui la posizione attesa si calcola per
+    conto proprio, dai centri dei pixel, senza passare da `idx.indices`: se
+    l'indice invertisse, trasponesse o ruotasse la corrispondenza, il pixel
+    sopra una cella porterebbe il valore di un'altra e il test fallirebbe.
+
+    Il campo vale l'indice piatto della cella, quindi ogni cella ha un valore
+    diverso da tutte le altre: con un campo costante l'asserzione reggerebbe
+    comunque, che e' come questa classe di errore era gia' sfuggita una volta.
+    """
+    lon, lat, mare, g, idx = _indice_di_prova()
+    valori = np.where(mare, np.arange(ETA * XI, dtype=np.float64).reshape(ETA, XI), np.nan)
+    fuori = grid.apply_index(valori, idx).ravel()
+
+    cx, cy = grid.grid_centres(g)
+    verificate = 0
+    for riga, colonna in zip(*np.nonzero(mare)):
+        sx, sy = grid.lonlat_to_mercator(lon[riga, colonna], lat[riga, colonna])
+        pixel = int(np.argmin((cx - float(sx)) ** 2 + (cy - float(sy)) ** 2))
+        assert fuori[pixel] == valori[riga, colonna], (
+            f"il pixel sopra la cella ({riga},{colonna}) porta {fuori[pixel]} "
+            f"invece di {valori[riga, colonna]}"
+        )
+        verificate += 1
+
+    # Senza questo, una maschera vuota renderebbe il test vacuo.
+    assert verificate == int(np.count_nonzero(mare))
+
+
 def test_la_terraferma_lontana_dal_mare_resta_nodata():
     """Nessun valore di mare deve sbordare fino al centro della terra.
 
