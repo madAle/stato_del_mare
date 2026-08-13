@@ -1393,6 +1393,30 @@ class ObjectStore:
             CacheControl=CACHE_BREVE,
         )
 
+    def put_binary(self, key: str, data: bytes) -> None:
+        """Oggetto binario mutabile, cioe' l'indice di ricampionamento.
+
+        Niente Content-Encoding e niente cache immutabile: questo file cambia
+        quando cambia la griglia sorgente, e congelarlo nella CDN vanificherebbe
+        proprio la guardia che deve alimentare.
+        """
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=data,
+            ContentType="application/octet-stream",
+            CacheControl=CACHE_BREVE,
+        )
+
+    def get_binary(self, key: str) -> bytes | None:
+        try:
+            risposta = self.client.get_object(Bucket=self.bucket, Key=key)
+        except ClientError as errore:
+            if errore.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                return None
+            raise
+        return risposta["Body"].read()
+
     def get_json(self, key: str) -> dict | None:
         try:
             risposta = self.client.get_object(Bucket=self.bucket, Key=key)
@@ -2659,10 +2683,40 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from ingest import catalog
+from ingest import catalog, manifest
 from ingest.storage import ObjectStore
 
 BUCKET = "prova"
+
+
+def _frame(var, valid_time):
+    return manifest.FrameRecord(
+        var=var,
+        valid_time=valid_time,
+        path=f"frames/{var}/an/x/{valid_time:%Y-%m-%dT%H}.bin",
+        sha256="x",
+        scale=0.001,
+        offset=0.0,
+        min=0.0,
+        max=1.0,
+        nodata_count=0,
+        clipped_count=0,
+    )
+
+
+def _manifest(reference_time, frames, kind="an"):
+    return manifest.RunManifest(
+        source_url="https://esempio/f.nc.gz",
+        source_sha256="x",
+        source_bytes=1,
+        source_last_modified="x",
+        reference_time=reference_time,
+        kind=kind,
+        group="his_HPDwave",
+        grid_ref="grid.json",
+        ingested_at=reference_time,
+        frames=frames,
+    )
 
 
 @pytest.fixture
@@ -2729,6 +2783,74 @@ def test_il_catalogo_si_scrive_ed_e_rileggibile(store):
     c = catalog.build_catalog(store, {"crs": "EPSG:3857"})
     catalog.write_catalog(store, c)
     assert store.get_json("catalog.json")["schema_version"] == c["schema_version"]
+
+
+def test_un_run_a_cavallo_di_due_mesi_tocca_due_indici(store):
+    """Il raggruppamento e' per frame, non per manifest.
+
+    Un run che copre la mezzanotte di fine mese tocca due indici mensili.
+    Raggruppando per manifest se ne perderebbe uno, e quelle ore
+    sparirebbero dal catalogo pur essendo su bucket.
+    """
+    m = _manifest(
+        reference_time=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        frames=[
+            _frame("hwave", datetime(2026, 8, 31, 23, tzinfo=timezone.utc)),
+            _frame("hwave", datetime(2026, 9, 1, 0, tzinfo=timezone.utc)),
+        ],
+    )
+    scritte = catalog.rebuild_indices(store, [m])
+    assert scritte == {
+        "index/hwave/an/2026-08.json",
+        "index/hwave/an/2026-09.json",
+    }
+    agosto = store.get_json("index/hwave/an/2026-08.json")
+    assert agosto["hours"] == {"2026-08-31T23:00:00Z": "20260901"}
+
+
+def test_rebuild_indices_non_cancella_quanto_gia_sul_bucket(store):
+    """Il giro di leggi, modifica e scrivi deve conservare lo storico."""
+    primo = _manifest(
+        reference_time=datetime(2026, 8, 13, tzinfo=timezone.utc),
+        frames=[_frame("hwave", datetime(2026, 8, 12, 1, tzinfo=timezone.utc))],
+    )
+    catalog.rebuild_indices(store, [primo])
+
+    secondo = _manifest(
+        reference_time=datetime(2026, 8, 14, tzinfo=timezone.utc),
+        frames=[_frame("hwave", datetime(2026, 8, 12, 2, tzinfo=timezone.utc))],
+    )
+    catalog.rebuild_indices(store, [secondo])
+
+    indice = store.get_json("index/hwave/an/2026-08.json")
+    assert set(indice["hours"]) == {
+        "2026-08-12T01:00:00Z",
+        "2026-08-12T02:00:00Z",
+    }
+
+
+def test_rebuild_indices_separa_analisi_e_previsione(store):
+    """Analisi e previsione della stessa ora vivono su indici distinti.
+
+    Fonderle renderebbe impossibile il confronto fra le due, che e' meta'
+    del valore scientifico dell'archivio.
+    """
+    istante = datetime(2026, 8, 14, 1, tzinfo=timezone.utc)
+    analisi = _manifest(
+        reference_time=datetime(2026, 8, 15, tzinfo=timezone.utc),
+        frames=[_frame("hwave", istante)],
+        kind="an",
+    )
+    previsione = _manifest(
+        reference_time=datetime(2026, 8, 13, tzinfo=timezone.utc),
+        frames=[_frame("hwave", istante)],
+        kind="fc",
+    )
+    scritte = catalog.rebuild_indices(store, [analisi, previsione])
+    assert scritte == {
+        "index/hwave/an/2026-08.json",
+        "index/hwave/fc/2026-08.json",
+    }
 ```
 
 - [ ] **Step 2: Eseguire i test e verificare che falliscano**
@@ -2903,7 +3025,13 @@ def test_il_piano_ignora_i_gruppi_non_configurati(store):
     assert "avg_2dcur" not in gruppi
 
 
-def test_il_piano_e_vuoto_se_il_manifest_ha_gia_l_impronta(store, monkeypatch):
+def test_il_piano_include_i_file_gia_ingeriti(store, monkeypatch):
+    """L'impronta si verifica dopo lo scaricamento, non in pianificazione.
+
+    `plan()` non conosce lo sha256 del sorgente senza scaricarlo, quindi
+    pianifica comunque e la deduplica avviene in `process_file`. Il nome di
+    questo test diceva il contrario e mentiva.
+    """
     f = _file_sorgente()
     monkeypatch.setattr(
         reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
@@ -2944,6 +3072,69 @@ def test_la_guardia_sulla_griglia_ferma_il_job(store, tmp_path, wave_file):
     with Dataset(str(wave_file)) as ds:
         with pytest.raises(reconcile.GridMismatch):
             reconcile.ensure_index(store, ds, tmp_path, cache_path=percorso)
+
+
+def test_la_guardia_sulla_griglia_ferma_reconcile(store, tmp_path, monkeypatch, wave_file):
+    """GridMismatch deve uscire da reconcile(), non essere contata come errore.
+
+    reconcile() cattura Exception per non far cadere l'intero run su un file
+    storto. Se quella clausola inghiottisse anche GridMismatch, il run
+    proseguirebbe scrivendo frame con i valori nel posto sbagliato, che e'
+    esattamente il danno che la guardia esiste per impedire. Verificare
+    ensure_index in isolamento non basta: la clausola larga sta qui.
+    """
+    f = _file_sorgente()
+    monkeypatch.setattr(reconcile.source, "list_source_files", lambda session=None: [f])
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+    monkeypatch.setattr(
+        reconcile.source,
+        "download",
+        lambda url, dest, session=None: (
+            write_wave_file(dest.with_suffix(".nc")),
+            "impronta",
+        )[1],
+    )
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    def esplode(*args, **kwargs):
+        raise reconcile.GridMismatch("le coordinate sorgente sono cambiate")
+
+    monkeypatch.setattr(reconcile, "ensure_index", esplode)
+
+    with pytest.raises(reconcile.GridMismatch):
+        reconcile.reconcile(store, tmp_path, window_days=8)
+
+    # Il punto della guardia: non deve essere stato scritto niente.
+    assert store.get_json("catalog.json") is None
+
+
+def test_la_guardia_scatta_anche_sull_indice_ripreso_dal_bucket(store, tmp_path, wave_file):
+    """La configurazione di produzione: workdir fredda, indice dal bucket, dominio cambiato.
+
+    Il test sulla guardia con la cache locale non passa mai dal ramo che
+    scarica l'indice dall'object store, perche' `cache_path` esiste gia'. In
+    produzione quel ramo e' l'unica strada, visto che la workdir e' effimera.
+    Che i due rami convergano e' un ragionamento letto nel codice: qui viene
+    verificato.
+    """
+    prima = tmp_path / "run1"
+    prima.mkdir()
+    with Dataset(str(wave_file)) as ds:
+        reconcile.ensure_index(store, ds, prima)
+
+    # Stesso file, coordinate spostate: e' il dominio riconfigurato a monte.
+    altro = write_wave_file(tmp_path / "altro.nc")
+    with Dataset(str(altro), "a") as ds:
+        ds.variables["lon_rho"][:] = ds.variables["lon_rho"][:] + 0.5
+
+    seconda = tmp_path / "run2"
+    seconda.mkdir()
+    with Dataset(str(altro)) as ds:
+        with pytest.raises(reconcile.GridMismatch):
+            reconcile.ensure_index(store, ds, seconda)
 
 
 def test_l_indice_si_costruisce_al_primo_giro_e_si_riusa(store, tmp_path, wave_file):
@@ -3142,6 +3333,17 @@ def ensure_index(store, ds, workdir: Path, cache_path: Path | None = None):
     lon, lat = frames.read_grid_coords(ds)
     impronta = grid.coordinate_fingerprint(lon, lat)
 
+    # L'indice vive sull'object store, non solo sul disco locale. I runner di
+    # GitHub Actions sono effimeri: un indice che stesse solo in workdir
+    # verrebbe ricostruito a ogni run dal file corrente, coinciderebbe sempre
+    # con se stesso, e la guardia non scatterebbe mai. Il disco locale resta
+    # solo come ottimizzazione dentro un singolo run.
+    if not cache_path.exists():
+        remoto = store.get_binary(INDEX_KEY)
+        if remoto is not None:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(remoto)
+
     if cache_path.exists():
         indice = grid.load_index(cache_path)
         if indice.fingerprint != impronta:
@@ -3158,6 +3360,7 @@ def ensure_index(store, ds, workdir: Path, cache_path: Path | None = None):
     indice = grid.build_regrid_index(lon, lat, mare, g)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     grid.save_index(indice, cache_path)
+    store.put_binary(INDEX_KEY, cache_path.read_bytes())
     store.put_json(GRID_KEY, grid.grid_to_dict(g))
     log.info("indice costruito: %d x %d celle", g.width, g.height)
     return indice
@@ -3167,20 +3370,46 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
     """Scarica, lavora e pubblica un file sorgente. Restituisce il manifest,
     oppure None se il file era gia' in archivio con la stessa impronta."""
     f = work.source
-    testa = source.head(f.url, session=session)
     scaricato = workdir / f.name
-    impronta = source.download(f.url, scaricato, session=session)
-
-    chiave_manifest = manifest.manifest_key(f.date, f.kind, f.group)
-    if manifest.already_ingested(store.get_json(chiave_manifest), impronta):
-        scaricato.unlink(missing_ok=True)
-        log.info("gia' in archivio, salto: %s", f.name)
-        return None
-
-    percorso_nc = decompress_to_nc(scaricato)
+    percorso_nc = None
+    # Il finally copre anche lo scaricamento e la scompattazione, non solo la
+    # lavorazione: i file di previsione 3D arrivano a quasi 2 GB contro i 14 GB
+    # del runner, e un download interrotto a meta' lascerebbe un residuo che
+    # nessuno rimuove. Qualche fallimento di rete in un run di recupero
+    # basterebbe a saturare il disco e far cadere anche i file sani.
     try:
+        testa = source.head(f.url, session=session)
+        chiave_manifest = manifest.manifest_key(f.date, f.kind, f.group)
+        esistente = store.get_json(chiave_manifest)
+
+        # Scorciatoia prima di scaricare. L'impronta autorevole resta lo
+        # sha256, ma calcolarla impone di scaricare il file: senza questo
+        # controllo il secondo run giornaliero riscaricherebbe 1,9 GB solo per
+        # ricalcolare impronte identiche a quelle gia' registrate. Dimensione e
+        # data di modifica bastano a dire che il sorgente non si e' mosso.
+        sorgente = (esistente or {}).get("source", {})
+        if (
+            esistente
+            # La versione di schema va confrontata qui e non solo dentro
+            # already_ingested, che questa scorciatoia scavalca: se il formato
+            # d'archivio cambia, i file vanno rilavorati anche quando alla
+            # sorgente non si sono mossi, altrimenti resterebbero congelati nel
+            # vecchio schema per sempre (le loro intestazioni HTTP non
+            # cambieranno mai).
+            and esistente.get("schema_version") == config.SCHEMA_VERSION
+            and sorgente.get("last_modified") == testa["last_modified"]
+            and sorgente.get("bytes") == testa["bytes"]
+        ):
+            log.info("invariato alla sorgente, salto senza scaricare: %s", f.name)
+            return None
+
+        impronta = source.download(f.url, scaricato, session=session)
+        if manifest.already_ingested(esistente, impronta):
+            log.info("gia' in archivio, salto: %s", f.name)
+            return None
+
+        percorso_nc = decompress_to_nc(scaricato)
         with Dataset(str(percorso_nc)) as ds:
-            istanti = frames.read_times(ds)
             corrente = manifest.RunManifest(
                 source_url=f.url,
                 source_sha256=impronta,
@@ -3203,7 +3432,7 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
 
             gruppi_profilo = dict(config.PROFILE_GROUPS)
             if f.group in gruppi_profilo:
-                _pubblica_profili(store, ds, index, f, gruppi_profilo[f.group], istanti)
+                _pubblica_profili(store, ds, index, f, gruppi_profilo[f.group])
 
             # La batimetria sta solo nei file 3D, non in quelli d'onda.
             # E' statica: si pubblica la prima volta che se ne incontra una.
@@ -3213,7 +3442,9 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
         store.put_json(chiave_manifest, corrente.to_dict())
         return corrente
     finally:
-        percorso_nc.unlink(missing_ok=True)
+        scaricato.unlink(missing_ok=True)
+        if percorso_nc is not None:
+            percorso_nc.unlink(missing_ok=True)
 
 
 def _pubblica_batimetria(store, ds, index):
@@ -3240,7 +3471,7 @@ def _pubblica_batimetria(store, ds, index):
     log.info("batimetria pubblicata, da %.1f a %.1f m", stats["min"], stats["max"])
 
 
-def _pubblica_profili(store, ds, index, f, var_names, istanti):
+def _pubblica_profili(store, ds, index, f, var_names):
     anagrafica = store.get_json(STATIONS_KEY)
     if not anagrafica:
         log.warning("anagrafica stazioni assente, salto i profili di %s", f.name)
@@ -3293,11 +3524,16 @@ def reconcile(
         try:
             if indice is None and w.source.group == GRUPPO_DI_RIFERIMENTO:
                 scaricato = workdir / w.source.name
-                source.download(w.source.url, scaricato, session=session)
-                percorso = decompress_to_nc(scaricato)
-                with Dataset(str(percorso)) as ds:
-                    indice = ensure_index(store, ds, workdir)
-                percorso.unlink(missing_ok=True)
+                percorso = None
+                try:
+                    source.download(w.source.url, scaricato, session=session)
+                    percorso = decompress_to_nc(scaricato)
+                    with Dataset(str(percorso)) as ds:
+                        indice = ensure_index(store, ds, workdir)
+                finally:
+                    scaricato.unlink(missing_ok=True)
+                    if percorso is not None:
+                        percorso.unlink(missing_ok=True)
 
             if indice is None:
                 log.info("indice non ancora disponibile, rimando: %s", w.source.name)
@@ -3326,6 +3562,11 @@ def reconcile(
 def _aggiorna_anagrafica(store, session=None):
     try:
         elenco = stations.fetch_stations(session=session)
+    except stations.StationCollision:
+        # Come GridMismatch: non e' un guasto passeggero da registrare e
+        # scavalcare. Due nomi diversi sullo stesso identificativo vogliono
+        # una decisione umana, non un run che prosegue.
+        raise
     except Exception:
         log.exception("anagrafica stazioni non aggiornata")
         return
@@ -3370,6 +3611,16 @@ git commit -m "feat: riconciliazione idempotente con guardia sulla griglia"
 
 Il primo comando da lanciare e' sempre `reconcile --dry-run`: stampa il piano
 senza scrivere niente, e serve a capire se il diff ragiona come ci si aspetta.
+
+Codici di uscita, pensati per un cron che deve decidere da solo cosa fare:
+
+    0  tutto bene
+    1  qualche file e' fallito, ritentabile: il run successivo recupera
+    2  la griglia sorgente e' cambiata, niente e' stato scritto, serve un umano
+    3  configurazione incompleta, fallira' identico a ogni tentativo
+
+La distinzione fra 1 e gli altri due e' l'unica cosa che impedisce a un cron di
+ritentare all'infinito un guasto che non si risolve da solo.
 """
 
 import argparse
@@ -3390,7 +3641,15 @@ def main(argv: list[str] | None = None) -> int:
     r = sottocomandi.add_parser("reconcile", help="colma la differenza con la sorgente")
     r.add_argument("--dry-run", action="store_true", help="stampa il piano senza scrivere")
     r.add_argument("--window", type=int, default=WINDOW_DAYS, help="giorni da considerare")
-    r.add_argument("--only", default=None, help="lavora solo questa variabile")
+    r.add_argument(
+        "--only",
+        default=None,
+        help=(
+            "lavora solo i file che contengono questa variabile. Attenzione: "
+            "filtra per gruppo, non per variabile, quindi --only hwave pubblica "
+            "anche periodo e direzione, che stanno nello stesso file"
+        ),
+    )
     r.add_argument("--workdir", default=None, help="cartella di lavoro temporanea")
     r.add_argument("--verbose", action="store_true")
 
@@ -3401,11 +3660,22 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
 
+    # Le credenziali si leggono prima di tutto e fuori dal try sotto: mancarle
+    # non e' un guasto passeggero, fallirebbe identico a ogni tentativo, e un
+    # traceback grezzo farebbe sembrare rotto lo strumento invece che la
+    # configurazione.
+    try:
+        store = ObjectStore.from_env()
+    except RuntimeError as errore:
+        logging.error("configurazione incompleta: %s", errore)
+        logging.error("nessun tentativo eseguito, serve intervento umano")
+        return 3
+
     with tempfile.TemporaryDirectory() as temporanea:
         workdir = Path(argomenti.workdir or temporanea)
         try:
             esito = reconcile(
-                ObjectStore.from_env(),
+                store,
                 workdir,
                 window_days=argomenti.window,
                 only=argomenti.only,
@@ -3428,6 +3698,58 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+```
+
+- [ ] **Step 1b: Scrivere `tests/test_cli.py`**
+
+I codici di uscita sono il contratto su cui un cron decide se ritentare o svegliare qualcuno. `main` prende argv e restituisce un intero, quindi si testano con due punti di sostituzione.
+
+```python
+"""I codici di uscita della CLI: e' il contratto su cui un cron decide."""
+from ingest import __main__ as cli
+from ingest.reconcile import GridMismatch
+
+
+def _store_finto(monkeypatch):
+    monkeypatch.setattr(cli.ObjectStore, "from_env", classmethod(lambda cls: object()))
+
+
+def _esito(errors=0):
+    return {"planned": 1, "processed": 1, "skipped": 0, "errors": errors}
+
+
+def test_un_run_pulito_esce_con_zero(monkeypatch):
+    _store_finto(monkeypatch)
+    monkeypatch.setattr(cli, "reconcile", lambda *a, **k: _esito())
+    assert cli.main(["reconcile"]) == 0
+
+
+def test_errori_sui_singoli_file_escono_con_uno(monkeypatch):
+    """Ritentabile: il run successivo recupera dalla finestra di 8 giorni."""
+    _store_finto(monkeypatch)
+    monkeypatch.setattr(cli, "reconcile", lambda *a, **k: _esito(errors=1))
+    assert cli.main(["reconcile"]) == 1
+
+
+def test_la_griglia_cambiata_esce_con_due(monkeypatch):
+    """Non ritentabile: niente e' stato scritto e serve un umano."""
+    _store_finto(monkeypatch)
+
+    def esplode(*a, **k):
+        raise GridMismatch("le coordinate sorgente sono cambiate")
+
+    monkeypatch.setattr(cli, "reconcile", esplode)
+    assert cli.main(["reconcile"]) == 2
+
+
+def test_le_credenziali_mancanti_escono_con_tre(monkeypatch):
+    """Fallirebbe identico a ogni tentativo: il cron non deve ritentare."""
+
+    def manca(cls):
+        raise RuntimeError("variabili d'ambiente mancanti: R2_BUCKET")
+
+    monkeypatch.setattr(cli.ObjectStore, "from_env", classmethod(manca))
+    assert cli.main(["reconcile"]) == 3
 ```
 
 - [ ] **Step 2: Verificare che la CLI risponda**
@@ -3510,8 +3832,23 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
+          set +e
           uv run python -m ingest reconcile \
             ${{ inputs.dry_run && '--dry-run' || '' }}
+          codice=$?
+          set -e
+          # I codici di uscita esistono per distinguere "riprova domani" da
+          # "serve un umano". Senza questo blocco GitHub li appiattirebbe tutti
+          # su "step fallito" e la distinzione andrebbe persa proprio dove
+          # serve, cioe' nella mail di notifica.
+          case $codice in
+            0) echo "Ingestione completata." ;;
+            1) echo "::warning::Alcuni file non sono stati lavorati. Ritentabile: il run successivo recupera dalla finestra di 8 giorni." ;;
+            2) echo "::error::LA GRIGLIA SORGENTE E' CAMBIATA. Niente e' stato scritto. Serve intervento umano PRIMA del prossimo run, altrimenti l'archivio si riempie di valori nel posto sbagliato." ;;
+            3) echo "::error::Configurazione incompleta: mancano credenziali o variabili d'ambiente. Ogni tentativo fallira' allo stesso modo finche' non viene corretta." ;;
+            *) echo "::error::Uscita inattesa: $codice" ;;
+          esac
+          exit $codice
 ```
 
 - [ ] **Step 2: Scrivere `docs/setup-r2.md`**
@@ -3519,16 +3856,21 @@ jobs:
 ```markdown
 # Configurazione manuale del bucket
 
-Da fare una volta sola, circa quindici minuti. Servono due account, entrambi
-senza carta di credito.
+Da fare una volta sola, circa quindici minuti. Servono due account. Nessuno dei
+due richiede un pagamento per quello che facciamo qui, ma Cloudflare in alcuni
+casi chiede comunque un metodo di pagamento registrato per abilitare R2, anche
+sul piano gratuito.
 
 ## 1. Cloudflare R2
 
 1. Creare un account su dash.cloudflare.com e attivare R2.
 2. Creare un bucket, per esempio `stato-del-mare`.
-3. In **Settings**, abilitare **Public access** tramite `r2.dev` oppure
-   collegare un dominio. Serve perche' la SPA legge i frame direttamente dal
-   browser, senza passare da un backend.
+3. In **Settings**, abilitare **Public access** collegando un dominio, oppure
+   tramite `r2.dev` per iniziare. Serve perche' la SPA legge i frame
+   direttamente dal browser, senza passare da un backend. Nota che Cloudflare
+   documenta `r2.dev` come endpoint di prova, non per traffico di produzione:
+   va benissimo per verificare che tutto funzioni, ma per l'uso vero conviene
+   un dominio.
 4. Sempre in Settings, impostare la policy CORS:
 
    ```json
@@ -3558,8 +3900,10 @@ mezzo, poi il costo e' di circa 40 centesimi al mese a fine primo anno.
 
 1. Rendere il repository **pubblico**. Su repo pubblici i minuti di Actions
    sono illimitati; su repo privati i 2.000 mensili gratuiti diventano un
-   vincolo, visto che ogni run scarica circa 1,9 GB. Le credenziali stanno
-   nei secret e restano private in ogni caso.
+   vincolo, visto che il primo run di ogni giornata scarica circa 1,9 GB. (Il
+   secondo run costa quasi nulla: confronta dimensione e data di modifica alla
+   sorgente e scarica solo cio' che e' cambiato.) Le credenziali stanno nei
+   secret e restano private in ogni caso.
 2. In **Settings > Secrets and variables > Actions** aggiungere:
    `R2_BUCKET`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
 
@@ -3569,8 +3913,25 @@ Dalla scheda Actions, lanciare **Ingestione ADRIAC** a mano con `dry_run`
 attivo: stampa il piano senza scrivere niente. Se l'elenco dei file ha senso,
 rilanciare senza `dry_run`.
 
+Attenzione a una trappola comune: i workflow schedulati partono solo quando il
+file e' sul **branch predefinito** del repository. Finche' resta su un branch di
+lavoro il cron non scatta, anche se l'avvio manuale funziona.
+
+Se un run fallisce, il messaggio in cima al log dice cosa fare: gli errori sui
+singoli file si recuperano da soli al run successivo, mentre griglia cambiata e
+configurazione incompleta richiedono un intervento prima che abbia senso
+riprovare.
+
 Il primo run e' piu' lento degli altri perche' costruisce l'indice di
-ricampionamento, che poi resta in cache.
+ricampionamento e lo carica sul bucket come `static/regrid_index.npz`. I run
+successivi lo riscaricano da li'.
+
+Quel file non e' un dettaglio di prestazioni: e' la memoria di come era fatta
+la griglia ARPAE l'ultima volta. Serve a far scattare la guardia se il dominio
+cambia. **Non cancellarlo dal bucket**: senza, ogni run ricostruirebbe l'indice
+dal file corrente, che coincide sempre con se stesso, e una riconfigurazione
+del modello passerebbe inosservata riempiendo l'archivio di valori nel posto
+sbagliato.
 ```
 
 - [ ] **Step 3: Verificare la sintassi del workflow**
@@ -3603,16 +3964,18 @@ Questo e' il test che vale piu' di tutti gli altri: verifica l'intera catena, ci
 
 - [ ] **Step 1: Aggiungere il marcatore in `pyproject.toml`**
 
-Sostituire la sezione `[tool.pytest.ini_options]` con:
+**Non sostituire la sezione**: `[tool.pytest.ini_options]` contiene gia' `pythonpath` (senza cui gli import delle fixture falliscono) e `filterwarnings` (il cancello che fa fallire la suite su un avviso). Vanno conservati entrambi.
+
+Modificare solo la riga `addopts` e aggiungere `markers`, lasciando il resto com'e':
 
 ```toml
-[tool.pytest.ini_options]
-testpaths = ["tests"]
 addopts = "-q -m 'not rete'"
 markers = [
     "rete: richiede l'accesso alla sorgente ARPAE in linea",
 ]
 ```
+
+A modifica fatta, la sezione deve contenere `testpaths`, `addopts`, `pythonpath`, `filterwarnings` e `markers`. Verificarlo rileggendo il file prima di proseguire.
 
 - [ ] **Step 2: Scrivere `tests/test_coerenza.py`**
 
@@ -3709,10 +4072,14 @@ def test_il_valore_su_nausicaa_sopravvive_a_tutta_la_catena(file_reale):
     letto = valori[riga_dest, colonna_dest]
 
     assert not np.isnan(letto), "la boa e' finita su un pixel nodata"
-    # La tolleranza copre la quantizzazione (1 mm) e il nearest-neighbour:
-    # il pixel di destinazione puo' pescare una cella adiacente, che al largo
-    # di Cesenatico differisce di pochi centimetri di altezza d'onda.
-    assert abs(letto - atteso) < 0.5, f"letto {letto}, atteso {atteso}"
+    # Misurato sull'archivio reale il 2026-08-13: lo scarto era 0,0003 m, cioe'
+    # il solo passo di quantizzazione. La tolleranza e' comunque 0,15 m perche'
+    # le due selezioni non sono la stessa: l'attesa sceglie la cella piu' vicina
+    # in gradi, la pipeline in metri Mercator, e con la boa vicina a un confine
+    # possono cadere su celle adiacenti, che con mare mosso differiscono di
+    # qualche centimetro. Non allargarla oltre: mezzo metro nasconderebbe uno
+    # spostamento di piu' celle, che e' proprio cio' che questo test cerca.
+    assert abs(letto - atteso) < 0.15, f"letto {letto}, atteso {atteso}"
 
 
 def test_gli_istanti_del_file_di_analisi_sono_del_giorno_prima(file_reale):
