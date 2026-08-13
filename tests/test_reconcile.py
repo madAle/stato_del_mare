@@ -226,6 +226,63 @@ def test_la_guardia_scatta_anche_sull_indice_ripreso_dal_bucket(store, tmp_path,
             reconcile.ensure_index(store, ds, seconda)
 
 
+def test_grid_json_si_riscrive_a_ogni_run(store, tmp_path, wave_file):
+    """`grid.json` non deve vivere solo nel ramo che costruisce l'indice.
+
+    Quel ramo passa una volta sola nella vita del bucket. Se poi il file
+    sparisce (una put_json fallita dopo una put_binary riuscita, una
+    cancellazione accidentale) non torna piu': l'indice e' in cache e il ramo
+    di costruzione e' irraggiungibile. Il client non puo' posizionare la
+    texture e la pagina resta rotta con un catalogo sintatticamente valido.
+    """
+    percorso = tmp_path / "regrid_index.npz"
+    with Dataset(str(wave_file)) as ds:
+        reconcile.ensure_index(store, ds, tmp_path, cache_path=percorso)
+
+    atteso = store.get_json(reconcile.GRID_KEY)
+    assert atteso and atteso["width"] > 0 and atteso["height"] > 0
+
+    store.client.delete_object(Bucket=BUCKET, Key=reconcile.GRID_KEY)
+    assert store.get_json(reconcile.GRID_KEY) is None
+
+    # Secondo run: l'indice arriva dalla cache, il ramo di costruzione non
+    # viene mai percorso.
+    with Dataset(str(wave_file)) as ds:
+        reconcile.ensure_index(store, ds, tmp_path, cache_path=percorso)
+
+    assert store.get_json(reconcile.GRID_KEY) == atteso
+
+
+def test_senza_descrittore_di_griglia_il_catalogo_non_si_scrive(
+    store, tmp_path, monkeypatch
+):
+    """Meglio nessun catalogo che un catalogo con `"grid": {}`.
+
+    Se nel piano non c'e' nessun file del gruppo di riferimento, l'indice non
+    si costruisce e `grid.json` non esiste. Scrivere comunque il catalogo
+    pubblicherebbe un descrittore vuoto: il client non saprebbe dove mettere
+    la texture, e la pagina sarebbe rotta con un file sintatticamente valido.
+    """
+    cur = _file_sorgente("20260813_adriac_1km_his_2dcur_an.nc.gz")
+    monkeypatch.setattr(reconcile.source, "list_source_files", lambda session=None: [cur])
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+    monkeypatch.setattr(
+        reconcile.source, "download", lambda url, dest, session=None: _scrivi_sintetico(url, dest)
+    )
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    esito = reconcile.reconcile(store, tmp_path, window_days=8)
+
+    assert esito["deferred"] == 1
+    assert store.get_json(reconcile.GRID_KEY) is None
+    assert store.get_json("catalog.json") is None
+    # E il run non deve poter riportare successo.
+    assert esito["errors"] + esito["deferred"] > 0
+
+
 def test_l_indice_si_costruisce_al_primo_giro_e_si_riusa(store, tmp_path, wave_file):
     percorso = tmp_path / "regrid_index.npz"
     with Dataset(str(wave_file)) as ds:

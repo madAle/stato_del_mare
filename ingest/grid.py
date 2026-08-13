@@ -108,6 +108,23 @@ def grid_to_dict(g: MercatorGrid) -> dict:
     }
 
 
+_CAMPI_DESCRITTORE = ("x_min", "x_max", "y_min", "y_max", "width", "height", "resolution_m")
+
+
+def grid_dict_is_valid(d) -> bool:
+    """Un descrittore serve al client per posizionare la texture.
+
+    Un catalogo con un descrittore vuoto o monco e' sintatticamente valido e
+    inutilizzabile: la pagina resta rotta senza che niente segnali un guasto.
+    Meglio rifiutarsi di scriverlo.
+    """
+    if not isinstance(d, dict):
+        return False
+    if any(c not in d for c in _CAMPI_DESCRITTORE):
+        return False
+    return d["width"] > 0 and d["height"] > 0 and d["resolution_m"] > 0
+
+
 def coordinate_fingerprint(lon_rho, lat_rho) -> str:
     """Impronta delle coordinate sorgente.
 

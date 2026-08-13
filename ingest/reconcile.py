@@ -157,6 +157,11 @@ def ensure_index(store, ds, workdir: Path, cache_path: Path | None = None):
                 "L'indice in cache produrrebbe valori nel posto sbagliato. "
                 "Verificare il dominio ADRIAC e rigenerare l'indice a mano."
             )
+        # Anche qui, non solo nel ramo di costruzione: quel ramo passa una
+        # volta sola nella vita del bucket, quindi un grid.json perso non
+        # tornerebbe mai piu' e il client resterebbe senza modo di
+        # posizionare la texture. La scrittura e' idempotente.
+        _pubblica_griglia(store, indice.grid)
         return indice
 
     mare = frames.read_sea_mask(ds, VARIABILE_DI_RIFERIMENTO)
@@ -165,9 +170,16 @@ def ensure_index(store, ds, workdir: Path, cache_path: Path | None = None):
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     grid.save_index(indice, cache_path)
     store.put_binary(INDEX_KEY, cache_path.read_bytes())
-    store.put_json(GRID_KEY, grid.grid_to_dict(g))
+    _pubblica_griglia(store, g)
     log.info("indice costruito: %d x %d celle", g.width, g.height)
     return indice
+
+
+def _pubblica_griglia(store, g: grid.MercatorGrid) -> None:
+    descrittore = grid.grid_to_dict(g)
+    if not grid.grid_dict_is_valid(descrittore):
+        raise ValueError(f"descrittore di griglia non valido: {descrittore}")
+    store.put_json(GRID_KEY, descrittore)
 
 
 def process_file(store, index, work: PlannedWork, workdir: Path, session=None) -> EsitoFile:
@@ -402,7 +414,21 @@ def reconcile(
     if prodotti:
         catalog.rebuild_indices(store, prodotti)
 
-    descrittore = store.get_json(GRID_KEY) or {}
+    descrittore = store.get_json(GRID_KEY)
+    if not grid.grid_dict_is_valid(descrittore):
+        # Fermarsi e' meglio che sbagliare: un catalogo con un descrittore
+        # vuoto e' sintatticamente valido e inservibile, il client non sa
+        # dove mettere la texture e la pagina e' rotta senza che niente lo
+        # segnali. Il catalogo precedente, se c'e', resta buono.
+        log.error(
+            "descrittore di griglia assente o non valido (%s): il catalogo non "
+            "viene scritto. Serve un run in cui l'indice venga costruito o "
+            "riletto.",
+            GRID_KEY,
+        )
+        esito["errors"] += 1
+        return esito
+
     catalog.write_catalog(store, catalog.build_catalog(store, descrittore))
     return esito
 
