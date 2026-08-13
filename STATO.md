@@ -108,7 +108,9 @@ Secondo vincolo: **`src/data/` è l'unico modulo che conosce gli URL del bucket.
 
 ### 4a. Blocca il resto, e solo l'utente può farlo
 
-1. **Push del branch `feat/ingestore` e merge.** `origin/develop` esiste; il branch dell'ingestore è ancora locale e attende revisione umana.
+1. **Merge del branch `feat/ingestore`.** È stato pushato il 2026-08-13 e attende
+   la ri-revisione mirata (4c punto 3) e la revisione umana. GitHub propone la
+   pull request a `https://github.com/madAle/stato_del_mare/pull/new/feat/ingestore`.
 2. **Rendere il repo pubblico.** Su repo pubblici i minuti di GitHub Actions sono illimitati, e questo progetto scarica circa 1,9 GB al giorno. Su repo privato i 2.000 minuti mensili gratuiti diventano un vincolo.
 3. **Account Cloudflare, bucket R2, API token, accesso pubblico in lettura, CORS.** Senza credenziali R2 l'ingestore non ha dove scrivere e non si può testare oltre i test unitari.
 
@@ -225,8 +227,9 @@ curl -s -L "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtim
 
 - Repo unico: `/Users/ale/source/personal/stato_del_mare`
 - Branch corrente: `feat/ingestore`, che parte da `develop` (nessun `main` locale)
-- Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`, con `origin/develop` presente
-- **`feat/ingestore` non è ancora stato pushato né unito.**
+- Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`, con `origin/develop` e `origin/feat/ingestore` presenti
+- **`feat/ingestore` è pushato e allineato** (verificato il 2026-08-13: nessun commit locale in più), **ma non è ancora unito.**
+- Sul disco resta `.superpowers/sdd/2026-08-13-ingestore/` (escluso da git): registro di esecuzione e brief dei task. I documenti che contano sono già stati copiati in `docs/superpowers/revisioni/`, quindi quella cartella si può cancellare quando il branch è unito.
 
 Comandi di verifica prima del merge:
 
