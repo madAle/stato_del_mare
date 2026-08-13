@@ -7,10 +7,17 @@ import pytest
 from moto import mock_aws
 from netCDF4 import Dataset
 
-from ingest import config, frames, grid, manifest, reconcile
+from ingest import config, encode, frames, grid, manifest, profiles, reconcile
 from ingest.source import parse_filename
 from ingest.storage import ObjectStore
-from tests.conftest import synthetic_coords, synthetic_sea_mask, write_wave_file
+from tests.conftest import (
+    NS,
+    NT,
+    synthetic_coords,
+    synthetic_sea_mask,
+    write_profile_file,
+    write_wave_file,
+)
 
 BUCKET = "prova"
 
@@ -349,6 +356,95 @@ def test_un_cambio_di_schema_forza_il_rilavoro_anche_a_sorgente_invariata(
     # Se la scorciatoia scattasse, process_file tornerebbe None senza scaricare.
     with pytest.raises(Scaricato):
         reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path)
+
+
+def _indice_sintetico():
+    lon, lat = synthetic_coords()
+    mare = synthetic_sea_mask()
+    g = grid.build_grid(lon, lat, resolution=400.0)
+    return grid.build_regrid_index(lon, lat, mare, g)
+
+
+def _anagrafica_di_prova(store):
+    """Una sola stazione, esattamente sul centro della cella (1,1)."""
+    lon, lat = synthetic_coords()
+    store.put_json(
+        reconcile.STATIONS_KEY,
+        {
+            "stations": [
+                {
+                    "id": "boa-prova",
+                    "name": "Prova",
+                    "network": "boa",
+                    "lon": float(lon[1, 1]),
+                    "lat": float(lat[1, 1]),
+                    "variables": [],
+                }
+            ]
+        },
+    )
+
+
+def test_i_gruppi_di_profilo_non_si_sovrascrivono(store, tmp_path, monkeypatch):
+    """Tre gruppi di profilo, tre oggetti colonna distinti.
+
+    `_pubblica_profili` viene chiamata una volta per gruppo. Con una chiave
+    senza segmento di gruppo le tre scritture finivano sullo stesso oggetto,
+    marcato per giunta `immutable`, e sopravviveva solo l'ultima secondo
+    l'ordine di listing ARPAE: salinita' e le due componenti di corrente
+    (1,19 GB al giorno di scaricamento) venivano buttate.
+    """
+    _anagrafica_di_prova(store)
+    indice = _indice_sintetico()
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    manifesti = {}
+    for gruppo, variabili in config.PROFILE_GROUPS:
+        corto = gruppo.removeprefix("his_")
+        f = _file_sorgente(f"20260813_adriac_1km_his_{corto}_an.nc.gz")
+        assert f.group == gruppo
+        monkeypatch.setattr(
+            reconcile.source,
+            "download",
+            lambda url, dest, session=None, v=variabili, g=gruppo: (
+                write_profile_file(dest.with_suffix(".nc"), var_names=v),
+                f"impronta-{g}",
+            )[1],
+        )
+        manifesti[gruppo] = reconcile.process_file(
+            store, indice, reconcile.PlannedWork(f, "mai ingerito"), tmp_path
+        )
+
+    chiavi = store.list_keys("stations/boa-prova/columns/")
+    assert len(chiavi) == 3, f"i tre gruppi si sono sovrascritti: {chiavi}"
+
+    for gruppo, variabili in config.PROFILE_GROUPS:
+        corrente = manifesti[gruppo]
+        # Il contratto d'archivio: senza queste voci l'oggetto colonna e' un
+        # blob di int16 indistinto, illeggibile senza il codice che l'ha
+        # scritto. Nessun indice e nessun catalogo lo nomina.
+        assert len(corrente.columns) == 1
+        colonna = corrente.columns[0]
+        assert colonna.path in chiavi
+        assert gruppo in colonna.path
+        assert colonna.station_id == "boa-prova"
+        assert colonna.variables == tuple(variabili)
+        assert colonna.shape == (NT, len(variabili), NS)
+        assert colonna.scale == profiles.PROFILE_SCALE
+
+        # E il contratto deve dire il vero: l'oggetto si rilegge con la forma
+        # dichiarata e le variabili sono nell'ordine dichiarato.
+        letto = encode.decompress(store.get_binary(colonna.path))
+        assert letto.size == NT * len(variabili) * NS
+        valori = encode.dequantize(
+            letto.reshape(colonna.shape), profiles.PROFILE_SCALE
+        )
+        # Nel file sintetico la variabile in posizione k parte da k * 100.
+        for k in range(len(variabili)):
+            assert np.allclose(valori[0, k, 0], k * 100.0 + 0.05, atol=0.01)
 
 
 def test_il_dry_run_non_scrive_e_non_scarica(store, tmp_path, monkeypatch):

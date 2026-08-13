@@ -63,9 +63,17 @@ def nearest_sea_cells(
     return fuori
 
 
-def column_key(station_id: str, date: str) -> str:
+def column_key(station_id: str, group: str, date: str) -> str:
+    """stations/{id}/columns/{gruppo}/{YYYY-MM-DD}.bin
+
+    Il segmento di gruppo e' obbligatorio: i profili si estraggono da tre
+    file sorgente distinti (temperatura, salinita', correnti), lavorati in
+    tre passaggi separati. Senza quel segmento le tre scritture finirebbero
+    sullo stesso oggetto, marcato per giunta come immutabile, e ne
+    sopravvivrebbe una sola.
+    """
     iso = f"{date[0:4]}-{date[4:6]}-{date[6:8]}"
-    return f"stations/{station_id}/columns/{iso}.bin"
+    return f"stations/{station_id}/columns/{group}/{iso}.bin"
 
 
 def extract_columns(

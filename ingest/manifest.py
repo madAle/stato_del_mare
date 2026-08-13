@@ -51,6 +51,53 @@ class FrameRecord:
 
 
 @dataclass
+class ColumnRecord:
+    """Un oggetto colonna verticale sul bucket.
+
+    Le colonne non compaiono in nessun indice e in nessun catalogo, quindi
+    questo record e' l'unico posto in cui sono scritti la forma dell'array,
+    l'ordine delle variabili e la scala. Senza, il file e' un blob di int16
+    indistinto, illeggibile senza il codice che l'ha prodotto: esattamente
+    cio' che il principio di auto-descrizione vieta.
+    """
+
+    station_id: str
+    path: str
+    group: str
+    variables: tuple[str, ...]
+    shape: tuple[int, ...]
+    scale: float
+    sha256: str
+
+    def to_dict(self) -> dict:
+        return {
+            "station_id": self.station_id,
+            "path": self.path,
+            "group": self.group,
+            "variables": list(self.variables),
+            "shape": list(self.shape),
+            "scale": self.scale,
+            "sha256": self.sha256,
+            # L'ordine degli assi non e' deducibile dalla sola forma quando
+            # due dimensioni hanno per caso la stessa lunghezza.
+            "dims": ["ocean_time", "variable", "s_rho"],
+            "dtype": "int16",
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ColumnRecord":
+        return cls(
+            station_id=d["station_id"],
+            path=d["path"],
+            group=d["group"],
+            variables=tuple(d["variables"]),
+            shape=tuple(d["shape"]),
+            scale=d["scale"],
+            sha256=d["sha256"],
+        )
+
+
+@dataclass
 class RunManifest:
     source_url: str
     source_sha256: str
@@ -62,6 +109,7 @@ class RunManifest:
     grid_ref: str
     ingested_at: datetime
     frames: list[FrameRecord] = field(default_factory=list)
+    columns: list[ColumnRecord] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -79,6 +127,7 @@ class RunManifest:
             "group": self.group,
             "grid": self.grid_ref,
             "frames": [f.to_dict() for f in self.frames],
+            "columns": [c.to_dict() for c in self.columns],
         }
 
     @classmethod
@@ -94,6 +143,7 @@ class RunManifest:
             grid_ref=d["grid"],
             ingested_at=_load_time(d["ingested_at"]),
             frames=[FrameRecord.from_dict(f) for f in d["frames"]],
+            columns=[ColumnRecord.from_dict(c) for c in d["columns"]],
         )
 
 

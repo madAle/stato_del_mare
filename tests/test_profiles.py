@@ -39,13 +39,21 @@ def test_una_stazione_sopra_la_terraferma_prende_la_cella_di_mare_vicina():
     assert celle["boa-costa"][0] <= 3
 
 
-def test_la_chiave_della_colonna_e_giornaliera():
+def test_la_chiave_della_colonna_e_giornaliera_e_per_gruppo():
     """L'object storage non supporta l'append: un file mensile andrebbe
-    riscritto ogni giorno, perdendo l'immutabilita'."""
+    riscritto ogni giorno, perdendo l'immutabilita'.
+
+    Il segmento di gruppo non e' decorativo: i tre gruppi di profilo si
+    lavorano in tre passaggi distinti, e senza quel segmento si
+    sovrascriverebbero a vicenda sulla stessa chiave.
+    """
     assert (
-        profiles.column_key("boa-nausicaa-2", "20260813")
-        == "stations/boa-nausicaa-2/columns/2026-08-13.bin"
+        profiles.column_key("boa-nausicaa-2", "his_temp", "20260813")
+        == "stations/boa-nausicaa-2/columns/his_temp/2026-08-13.bin"
     )
+    assert profiles.column_key(
+        "boa-nausicaa-2", "his_salt", "20260813"
+    ) != profiles.column_key("boa-nausicaa-2", "his_temp", "20260813")
 
 
 def test_estrae_una_colonna_per_istante_e_per_variabile(profile_file):

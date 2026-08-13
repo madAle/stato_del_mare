@@ -182,7 +182,7 @@ runs/{data}/{kind}/{gruppo}.json                contratto d'archivio, un file pe
 static/bathymetry.bin                           batimetria, scritta una volta
 static/regrid_index.npz                         indice di ricampionamento, cache
 stations/stations.json                          anagrafica
-stations/{id}/columns/{YYYY-MM-DD}.bin          profili sigma grezzi, giornalieri
+stations/{id}/columns/{gruppo}/{YYYY-MM-DD}.bin profili sigma grezzi, giornalieri
 stations/{id}/obs/{YYYY-MM}.json                osservazioni misurate
 ```
 
@@ -281,9 +281,19 @@ Ogni run scrive:
      "path": "frames/hwave/an/20260813/2026-08-12T0100.bin",
      "sha256": "...", "scale": 0.001, "offset": 0.0,
      "min": 0.02, "max": 1.87, "nodata_count": 729412, "clipped_count": 0}
+  ],
+  "columns": [
+    {"station_id": "boa-nausicaa-2", "group": "his_cur",
+     "path": "stations/boa-nausicaa-2/columns/his_cur/2026-08-13.bin",
+     "variables": ["u_eastward", "v_northward"],
+     "shape": [24, 2, 30], "dims": ["ocean_time", "variable", "s_rho"],
+     "dtype": "int16", "scale": 0.01, "sha256": "..."}
   ]
 }
 ```
+
+`columns` è vuoto per i gruppi 2D e `frames` è vuoto per i gruppi di profilo:
+un gruppo sorgente produce l'uno o l'altro, mai entrambi.
 
 `min` e `max` per frame servono al client per la scala di colore senza dover
 scandire l'array a ogni cambio di istante. `clipped_count` è un segnale di
@@ -298,10 +308,26 @@ Catturati fin da subito, senza UI. Per ogni stazione, la cella di mare ADRIAC pi
 vicina; per ogni ora, i 30 valori sigma di temperatura, salinità e correnti,
 salvati **grezzi**, senza conversione in metri.
 
-Un file **giornaliero** per stazione: `stations/{id}/columns/{YYYY-MM-DD}.bin`.
-L'object storage non supporta l'append, quindi un file mensile andrebbe
-riscritto ogni giorno perdendo l'immutabilità. Il costo è trascurabile, circa
-5,8 KB al giorno per stazione.
+Un file **giornaliero per stazione e per gruppo sorgente**:
+`stations/{id}/columns/{gruppo}/{YYYY-MM-DD}.bin`. L'object storage non
+supporta l'append, quindi un file mensile andrebbe riscritto ogni giorno
+perdendo l'immutabilità. Il costo è trascurabile, circa 5,8 KB al giorno per
+stazione.
+
+**Il segmento `{gruppo}` è obbligatorio.** Le quattro variabili arrivano da tre
+file sorgente distinti (`his_temp`, `his_salt`, `his_cur`), lavorati in tre
+passaggi separati: senza quel segmento le tre scritture finiscono sullo stesso
+oggetto, marcato per giunta `immutable`, e ne sopravvive una sola. Sarebbero
+1,19 GB al giorno scaricati (la voce più grande del bilancio di banda) per poi
+buttarne tre quarti.
+
+**Le colonne si registrano nel manifest del gruppo** (vedi 4.5), con percorso,
+identificativo di stazione, ordine delle variabili, forma dell'array, ordine
+degli assi, scala e sha256. Non compaiono in nessun indice e in nessun
+catalogo, quindi il manifest è l'unico posto in cui resta scritto cosa
+contengono: senza, quel file è un blob di int16 indistinto, leggibile solo da
+chi ha sottomano il codice che lo ha prodotto. È il principio 3.5 applicato
+alla lettera.
 
 Rimandare la conversione è deliberato: `s_rho`, `Cs_r`, `hc` e la batimetria sono
 statici e già archiviati, quindi la profondità reale si ricostruisce in qualunque

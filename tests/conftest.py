@@ -166,7 +166,12 @@ def write_profile_file(path, var_names=("temp",), n_times: int = NT):
         # se la colonna venisse presa dalla cella sbagliata, che e' proprio
         # l'errore piu' insidioso di questo modulo.
         per_cella = np.arange(ETA * XI, dtype=np.float64).reshape(ETA, XI) / 100.0
-        for nome in var_names:
+        # Ogni variabile parte da un centinaio diverso, in base alla sua
+        # posizione in var_names. Senza, due variabili dello stesso file
+        # avrebbero contenuto identico e uno scambio del loro ordine dentro la
+        # colonna estratta passerebbe inosservato, che e' proprio cio' che il
+        # manifest deve poter dichiarare senza mentire.
+        for indice_variabile, nome in enumerate(var_names):
             v = ds.createVariable(
                 nome,
                 "f4",
@@ -176,7 +181,9 @@ def write_profile_file(path, var_names=("temp",), n_times: int = NT):
             dati = np.zeros((n_times, NS, ETA, XI), dtype=np.float64)
             for k in range(n_times):
                 for livello in range(NS):
-                    dati[k, livello] = livello + k * 10.0 + per_cella
+                    dati[k, livello] = (
+                        indice_variabile * 100.0 + livello + k * 10.0 + per_cella
+                    )
             mask = np.broadcast_to(~mare, dati.shape).copy()
             v[:] = np.ma.masked_array(dati, mask=mask)
     finally:

@@ -8,6 +8,7 @@ lanciarlo una volta.
 """
 
 import gzip
+import hashlib
 import logging
 import shutil
 from dataclasses import dataclass
@@ -198,7 +199,9 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None):
 
             gruppi_profilo = dict(config.PROFILE_GROUPS)
             if f.group in gruppi_profilo:
-                _pubblica_profili(store, ds, index, f, gruppi_profilo[f.group])
+                corrente.columns.extend(
+                    _pubblica_profili(store, ds, index, f, gruppi_profilo[f.group])
+                )
 
             # La batimetria sta solo nei file 3D, non in quelli d'onda.
             # E' statica: si pubblica la prima volta che se ne incontra una.
@@ -237,11 +240,17 @@ def _pubblica_batimetria(store, ds, index):
     log.info("batimetria pubblicata, da %.1f a %.1f m", stats["min"], stats["max"])
 
 
-def _pubblica_profili(store, ds, index, f, var_names):
+def _pubblica_profili(store, ds, index, f, var_names) -> list[manifest.ColumnRecord]:
+    """Pubblica una colonna per stazione e restituisce i record da registrare.
+
+    I record servono al manifest: le colonne non compaiono in nessun indice e
+    in nessun catalogo, quindi il manifest del gruppo e' l'unico posto in cui
+    resta scritto cosa contiene quel blob di int16.
+    """
     anagrafica = store.get_json(STATIONS_KEY)
     if not anagrafica:
         log.warning("anagrafica stazioni assente, salto i profili di %s", f.name)
-        return
+        return []
     elenco = [
         stations.Station(
             id=s["id"],
@@ -256,10 +265,23 @@ def _pubblica_profili(store, ds, index, f, var_names):
     lon, lat = frames.read_grid_coords(ds)
     celle = profiles.nearest_sea_cells(elenco, lon, lat, index.sea_mask)
     colonne = profiles.extract_columns(ds, var_names, celle, profiles.PROFILE_SCALE)
+    registrate: list[manifest.ColumnRecord] = []
     for identificativo, valori in colonne.items():
-        store.put_frame(
-            profiles.column_key(identificativo, f.date), encode.compress(valori.ravel())
+        chiave = profiles.column_key(identificativo, f.group, f.date)
+        blob = encode.compress(valori.ravel())
+        store.put_frame(chiave, blob)
+        registrate.append(
+            manifest.ColumnRecord(
+                station_id=identificativo,
+                path=chiave,
+                group=f.group,
+                variables=tuple(var_names),
+                shape=tuple(int(n) for n in valori.shape),
+                scale=profiles.PROFILE_SCALE,
+                sha256=hashlib.sha256(blob).hexdigest(),
+            )
         )
+    return registrate
 
 
 def reconcile(
