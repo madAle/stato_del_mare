@@ -61,7 +61,10 @@ def test_estrae_una_colonna_per_istante_e_per_variabile(profile_file):
 
 
 def test_i_valori_estratti_sono_quelli_del_file(profile_file):
-    """Nel file sintetico temp vale livello + ora*10."""
+    """Nel file sintetico temp vale livello + ora*10 + indice_piatto/100.
+
+    La cella (1,1) ha indice piatto 5, quindi il suo contributo e' 0,05.
+    """
     lon, lat = synthetic_coords()
     mare = synthetic_sea_mask()
     s = _stazione(float(lon[1, 1]), float(lat[1, 1]))
@@ -69,5 +72,29 @@ def test_i_valori_estratti_sono_quelli_del_file(profile_file):
     with Dataset(str(profile_file)) as ds:
         colonne = profiles.extract_columns(ds, ("temp",), celle, profiles.PROFILE_SCALE)
     valori = encode.dequantize(colonne["boa-prova"], profiles.PROFILE_SCALE)
-    assert np.allclose(valori[0, 0], [0.0, 1.0, 2.0], atol=0.01)
-    assert np.allclose(valori[1, 0], [10.0, 11.0, 12.0], atol=0.01)
+    assert np.allclose(valori[0, 0], [0.05, 1.05, 2.05], atol=0.01)
+    assert np.allclose(valori[1, 0], [10.05, 11.05, 12.05], atol=0.01)
+
+
+def test_la_colonna_viene_presa_dalla_cella_giusta(profile_file):
+    """Due stazioni su celle diverse devono dare valori diversi.
+
+    E' il test che il precedente non poteva fare: con un campo costante nello
+    spazio, righe e colonne scambiate o una cella di mare adiacente avrebbero
+    dato lo stesso risultato, e l'errore sarebbe passato inosservato.
+    """
+    lon, lat = synthetic_coords()
+    mare = synthetic_sea_mask()
+    a = _stazione(float(lon[1, 1]), float(lat[1, 1]), "boa-a")
+    b = _stazione(float(lon[2, 2]), float(lat[2, 2]), "boa-b")
+    celle = profiles.nearest_sea_cells([a, b], lon, lat, mare, max_distance_m=2000.0)
+    assert celle["boa-a"] == (1, 1)
+    assert celle["boa-b"] == (2, 2)
+
+    with Dataset(str(profile_file)) as ds:
+        colonne = profiles.extract_columns(ds, ("temp",), celle, profiles.PROFILE_SCALE)
+
+    valori_a = encode.dequantize(colonne["boa-a"], profiles.PROFILE_SCALE)
+    valori_b = encode.dequantize(colonne["boa-b"], profiles.PROFILE_SCALE)
+    # Indici piatti 5 e 10, quindi i contributi sono 0,05 e 0,10.
+    assert np.allclose(valori_a[0, 0] - valori_b[0, 0], -0.05, atol=0.01)

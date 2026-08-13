@@ -126,9 +126,14 @@ def write_profile_file(path, var_names=("temp",), n_times: int = NT):
         h[:] = np.full((ETA, XI), 20.0)
 
         mare = synthetic_sea_mask()
+        # Il campo varia anche nello spazio, non solo in tempo e livello.
+        # Senza questa variazione un test sui valori estratti passerebbe anche
+        # se la colonna venisse presa dalla cella sbagliata, che e' proprio
+        # l'errore piu' insidioso di questo modulo.
+        per_cella = np.arange(ETA * XI, dtype=np.float64).reshape(ETA, XI) / 100.0
         for nome in var_names:
             v = ds.createVariable(
-                "temp" if nome == "temp" else nome,
+                nome,
                 "f4",
                 ("ocean_time", "s_rho", "eta_rho", "xi_rho"),
                 fill_value=1.0e37,
@@ -136,7 +141,7 @@ def write_profile_file(path, var_names=("temp",), n_times: int = NT):
             dati = np.zeros((n_times, NS, ETA, XI), dtype=np.float64)
             for k in range(n_times):
                 for livello in range(NS):
-                    dati[k, livello] = livello + k * 10.0
+                    dati[k, livello] = livello + k * 10.0 + per_cella
             mask = np.broadcast_to(~mare, dati.shape).copy()
             v[:] = np.ma.masked_array(dati, mask=mask)
     finally:

@@ -10,11 +10,15 @@ sproporzionato ma inevitabile: NetCDF non supporta richieste parziali per
 cella.
 """
 
+import logging
+
 import numpy as np
 from scipy.spatial import cKDTree
 
 from . import encode, grid
 from .config import MAX_NEIGHBOUR_DISTANCE_M
+
+log = logging.getLogger(__name__)
 
 # Centesimi di unita': va bene per gradi Celsius, salinita' pratica e m/s.
 PROFILE_SCALE = 0.01
@@ -45,6 +49,15 @@ def nearest_sea_cells(
         distanza, posizione = albero.query([float(px), float(py)])
         al_suolo = distanza * np.cos(np.radians(stazione.lat))
         if not np.isfinite(distanza) or al_suolo > max_distance_m:
+            # Il log non e' decorativo: senza, una stazione lagunare sparisce
+            # dall'archivio in silenzio e nessuno se ne accorge per mesi.
+            log.warning(
+                "stazione %s saltata: la cella di mare piu' vicina dista %.0f m, "
+                "oltre la soglia di %.0f m",
+                stazione.id,
+                al_suolo,
+                max_distance_m,
+            )
             continue
         fuori[stazione.id] = (int(righe[posizione]), int(colonne[posizione]))
     return fuori
