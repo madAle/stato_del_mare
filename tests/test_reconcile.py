@@ -158,10 +158,35 @@ def test_l_indice_sopravvive_a_una_workdir_nuova(store, tmp_path, monkeypatch, w
         indice = reconcile.ensure_index(store, ds, seconda)
 
     assert (seconda / "regrid_index.npz").exists()
-    assert indice.fingerprint == grid.coordinate_fingerprint(
-        *frames.read_grid_coords(Dataset(str(wave_file)))
-    )
+    with Dataset(str(wave_file)) as ds:
+        assert indice.fingerprint == grid.coordinate_fingerprint(*frames.read_grid_coords(ds))
     assert len(costruzioni) == 1
+
+
+def test_la_guardia_scatta_anche_sull_indice_ripreso_dal_bucket(store, tmp_path, wave_file):
+    """La configurazione di produzione: workdir fredda, indice dal bucket, dominio cambiato.
+
+    Il test sulla guardia con la cache locale non passa mai dal ramo che
+    scarica l'indice dall'object store, perche' `cache_path` esiste gia'. In
+    produzione quel ramo e' l'unica strada, visto che la workdir e' effimera.
+    Che i due rami convergano e' un ragionamento letto nel codice: qui viene
+    verificato.
+    """
+    prima = tmp_path / "run1"
+    prima.mkdir()
+    with Dataset(str(wave_file)) as ds:
+        reconcile.ensure_index(store, ds, prima)
+
+    # Stesso file, coordinate spostate: e' il dominio riconfigurato a monte.
+    altro = write_wave_file(tmp_path / "altro.nc")
+    with Dataset(str(altro), "a") as ds:
+        ds.variables["lon_rho"][:] = ds.variables["lon_rho"][:] + 0.5
+
+    seconda = tmp_path / "run2"
+    seconda.mkdir()
+    with Dataset(str(altro)) as ds:
+        with pytest.raises(reconcile.GridMismatch):
+            reconcile.ensure_index(store, ds, seconda)
 
 
 def test_l_indice_si_costruisce_al_primo_giro_e_si_riusa(store, tmp_path, wave_file):
