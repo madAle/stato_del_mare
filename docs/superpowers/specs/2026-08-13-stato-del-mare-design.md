@@ -285,16 +285,31 @@ momento. Rimandiamo la parte difficile senza perdere il dato.
 Solo da file di **analisi**: i profili da previsione costerebbero circa 2,8 GB al
 giorno di download aggiuntivo per un caso d'uso non previsto.
 
-### 4.7 Livello del mare, unico downsampling deliberato
+### 4.7 Livello del mare, risoluzione asimmetrica
 
-La sorgente è a 10 minuti; noi teniamo **solo gli step al minuto 00**, scartando gli
-altri cinque di ogni ora senza mediarli (una media cambierebbe la natura fisica del
-dato rispetto agli altri layer, che sono valori istantanei). La timeline è oraria,
-quindi un layer a 10 minuti non sarebbe visualizzabile senza lavoro aggiuntivo, e
-costerebbe circa 22 GB all'anno per i soli fotogrammi intermedi.
+La sorgente è a 10 minuti. Conserviamo la piena risoluzione **solo per l'analisi**;
+la previsione la campioniamo a passo orario tenendo solo gli step al minuto 00,
+scartando gli altri cinque **senza mediarli** (una media cambierebbe la natura
+fisica del dato rispetto agli altri layer, che sono valori istantanei).
 
-È l'unico punto in cui il progetto viola il principio 3.1, ed è irreversibile.
-Registrato qui esplicitamente perché sia una scelta e non una svista.
+L'asimmetria riflette una differenza reale fra i due tipi. L'analisi è il documento
+permanente: è l'unica ricostruzione di com'era davvero il mare quel giorno, e le
+acque alte e le maree meteorologiche sono precisamente i fenomeni in cui il
+dettaglio sotto l'ora conta. La previsione è effimera: viene superata dall'analisi
+entro tre giorni, e il suo valore residuo è documentare cosa ci aspettavamo, non
+cosa è successo. Per quello il passo orario è abbondante, e sono i tre quarti del
+costo.
+
+Cosa perdiamo sulla previsione: nulla di strutturale. Il passo orario resta
+sufficiente per le maree (periodo circa 12 h) e per la sessa adriatica (circa
+21,5 h il modo fondamentale, circa 10,9 h il secondo). Il dettaglio a 10 minuti
+serve alla dinamica veloce della marea meteorologica, che sul ramo previsionale ha
+scarso valore d'archivio.
+
+**Conseguenza sulla UI**: il layer `sealevel` ha, in analisi, sei volte gli istanti
+degli altri. La timeline resta oraria e mostra gli istanti orari; gli step
+intermedi restano nell'archivio, raggiungibili quando (e se) verrà costruita una
+vista a risoluzione fine. Il dato è catturato in ogni caso, che è il punto.
 
 ### 4.8 Volumi
 
@@ -304,14 +319,14 @@ Frame prodotti al giorno, a ingestione completa:
 |---|---|---|---|---|
 | Onde (`hwave`, `pwave`, `dwave_sin`, `dwave_cos`) | 4 | 96 | 288 | 384 |
 | Correnti (`ubar`, `vbar`) | 2 | 48 | 144 | 192 |
-| Livello (`sealevel`, orario) | 1 | 24 | 72 | 96 |
-| | | | | **672** |
+| Livello (`sealevel`: `an` a 10 min, `fc` orario) | 1 | 144 | 72 | 216 |
+| | | | | **792** |
 
 Frame compresso circa 125 KB (850.000 celle int16, di cui circa il 65% nodata che
-comprime a quasi nulla). Quindi **circa 84 MB al giorno, circa 30 GB all'anno**.
+comprime a quasi nulla). Quindi **circa 99 MB al giorno, circa 36 GB all'anno**.
 
-I 10 GB gratuiti di R2 si esauriscono verso il quarto mese; da lì il costo è
-0,015 dollari per GB al mese, cioè circa 30 centesimi al mese a fine primo anno, in
+I 10 GB gratuiti di R2 si esauriscono verso il terzo mese e mezzo; da lì il costo è
+0,015 dollari per GB al mese, cioè circa 40 centesimi al mese a fine primo anno, in
 crescita di altrettanto ogni anno.
 
 Download giornaliero dell'ingestore: circa 1,9 GB (86 MB onde, 96 MB correnti,
@@ -627,6 +642,6 @@ storico perso per sempre, quindi questa tappa ha priorità sulla presentazione.
 | Nessuna piramide di tile | Il dominio sta in una texture |
 | Analisi e previsione entrambe conservate, tutte le scadenze | Abilita l'analisi di skill per lead time |
 | Profili 3D solo da analisi | I profili da previsione costerebbero circa 2,8 GB al giorno |
-| Livello del mare campionato a passo orario | Timeline oraria; circa 22 GB all'anno risparmiati (vedi 4.7) |
+| Livello del mare a 10 min in analisi, orario in previsione | L'analisi è documento permanente, la previsione è effimera (vedi 4.7) |
 | React con confine imperativo verso WebGL | Ecosistema di librerie senza conflitto col ciclo di render |
 | Basemap OSM standard in v1 | Zero setup, coerente con l'overlay seamark, sostituibile in un pomeriggio |
