@@ -147,6 +147,53 @@ def fetch_stations(url: str = OBSERVED_REALTIME, session=None) -> list[Station]:
         )
 
 
+def merge_stations(existing: list[Station], fresh: list[Station]) -> list[Station]:
+    """Fonde l'anagrafica sul bucket con quella appena letta.
+
+    `realtime.jsonl` e' un'istantanea scorrevole, non un elenco completo: una
+    stazione in manutenzione ne esce e rientra quando torna in servizio.
+    Sostituire l'anagrafica invece di fonderla la farebbe sparire, e con lei
+    l'estrazione della sua colonna per tutto il tempo dell'assenza: dentro la
+    finestra di 8 giorni quel dato e' perso per sempre. L'anagrafica e' anche
+    l'unico posto in cui e' scritto a chi appartiene un file colonna storico.
+
+    Le coordinate di una stazione gia' nota non si aggiornano: sono
+    infrastrutture fisse, e spostarle a meta' archivio cambierebbe il
+    significato delle colonne gia' scritte. E' la stessa regola gia' applicata
+    dentro un singolo run in `_accumula`.
+    """
+    fuse = {s.id: s for s in existing}
+    for stazione in fresh:
+        precedente = fuse.get(stazione.id)
+        if precedente is None:
+            fuse[stazione.id] = stazione
+            continue
+        fuse[stazione.id] = Station(
+            id=stazione.id,
+            name=stazione.name,
+            network=stazione.network,
+            lon=precedente.lon,
+            lat=precedente.lat,
+            variables=stazione.variables,
+        )
+    return [fuse[identificativo] for identificativo in sorted(fuse)]
+
+
+def stations_from_dict(d: dict | None) -> list[Station]:
+    """Inverso di stations_to_dict. Un dizionario assente vale elenco vuoto."""
+    return [
+        Station(
+            id=s["id"],
+            name=s["name"],
+            network=s["network"],
+            lon=s["lon"],
+            lat=s["lat"],
+            variables=tuple(s["variables"]),
+        )
+        for s in (d or {}).get("stations", [])
+    ]
+
+
 def stations_to_dict(stations: list[Station]) -> dict:
     return {
         "stations": [

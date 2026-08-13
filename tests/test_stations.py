@@ -35,6 +35,21 @@ RIGA_TERRA = json.dumps(
 )
 
 
+def test_la_fusione_non_sposta_una_stazione_gia_nota():
+    """Le coordinate di una stazione nota non si aggiornano.
+
+    Sono infrastrutture fisse: spostarle a meta' archivio cambierebbe il
+    significato delle colonne gia' scritte con quelle vecchie.
+    """
+    prima = stations.Station("boa-x", "X", "boa", 12.5, 44.5, ("B22070",))
+    spostata = stations.Station("boa-x", "X", "boa", 13.9, 45.9, ("B22070", "B22001"))
+    fuse = stations.merge_stations([prima], [spostata])
+    assert len(fuse) == 1
+    assert (fuse[0].lon, fuse[0].lat) == (12.5, 44.5)
+    # Il resto invece si aggiorna: le variabili misurate cambiano nel tempo.
+    assert fuse[0].variables == ("B22070", "B22001")
+
+
 def test_tiene_solo_le_reti_marine():
     trovate = stations.parse_realtime([RIGA_BOA, RIGA_TERRA])
     assert [s.name for s in trovate] == ["Nausicaa 2"]

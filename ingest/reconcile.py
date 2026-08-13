@@ -306,17 +306,7 @@ def _pubblica_profili(store, ds, index, f, var_names) -> list[manifest.ColumnRec
     if not anagrafica:
         log.warning("anagrafica stazioni assente, salto i profili di %s", f.name)
         return []
-    elenco = [
-        stations.Station(
-            id=s["id"],
-            name=s["name"],
-            network=s["network"],
-            lon=s["lon"],
-            lat=s["lat"],
-            variables=tuple(s["variables"]),
-        )
-        for s in anagrafica["stations"]
-    ]
+    elenco = stations.stations_from_dict(anagrafica)
     lon, lat = frames.read_grid_coords(ds)
     celle = profiles.nearest_sea_cells(elenco, lon, lat, index.sea_mask)
     colonne = profiles.extract_columns(ds, var_names, celle, profiles.PROFILE_SCALE)
@@ -444,5 +434,22 @@ def _aggiorna_anagrafica(store, session=None):
     except Exception:
         log.exception("anagrafica stazioni non aggiornata")
         return
-    if elenco:
-        store.put_json(STATIONS_KEY, stations.stations_to_dict(elenco))
+    if not elenco:
+        return
+
+    precedenti = stations.stations_from_dict(store.get_json(STATIONS_KEY))
+    noti = {s.id for s in precedenti}
+    presenti = {s.id for s in elenco}
+    for identificativo in sorted(presenti - noti):
+        log.info("stazione comparsa nell'anagrafica: %s", identificativo)
+    for identificativo in sorted(noti - presenti):
+        # Non e' un errore, ma nemmeno un non evento: una boa ferma per
+        # settimane e' un buco nell'archivio che qualcuno deve poter notare.
+        log.info(
+            "stazione assente dal flusso in tempo reale, conservata: %s", identificativo
+        )
+
+    store.put_json(
+        STATIONS_KEY,
+        stations.stations_to_dict(stations.merge_stations(precedenti, elenco)),
+    )

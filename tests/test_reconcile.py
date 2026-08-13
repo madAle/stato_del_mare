@@ -1,4 +1,5 @@
 """L'orchestratore: diff, guardia sulla griglia, idempotenza."""
+import logging
 from datetime import datetime, timezone
 
 import boto3
@@ -7,7 +8,7 @@ import pytest
 from moto import mock_aws
 from netCDF4 import Dataset
 
-from ingest import config, encode, frames, grid, manifest, profiles, reconcile
+from ingest import config, encode, frames, grid, manifest, profiles, reconcile, stations
 from ingest.source import parse_filename
 from ingest.storage import ObjectStore
 from tests.conftest import (
@@ -603,6 +604,38 @@ def test_gli_indici_si_riparano_dopo_un_run_morto_prima_della_fase_indici(
             tzinfo=timezone.utc
         )
         assert store.exists(frames.frame_key("hwave", "an", riferimento, valido))
+
+
+def test_una_boa_in_manutenzione_non_sparisce_dall_anagrafica(store, monkeypatch, caplog):
+    """`realtime.jsonl` e' un'istantanea scorrevole, non un elenco completo.
+
+    Una stazione in manutenzione ne esce. Ricostruendo l'anagrafica da zero
+    sparirebbe, e `_pubblica_profili` smetterebbe di estrarne la colonna per
+    tutto il tempo dell'assenza: dentro una finestra di 8 giorni quel dato e'
+    perso per sempre. L'anagrafica e' anche l'unico posto in cui e' scritto a
+    chi appartiene un file colonna storico.
+    """
+    ferma = stations.Station("boa-ferma", "Ferma", "boa", 12.5, 44.5, ("B22070",))
+    attiva = stations.Station("boa-attiva", "Attiva", "boa", 12.6, 44.6, ("B22070",))
+    store.put_json(reconcile.STATIONS_KEY, stations.stations_to_dict([ferma, attiva]))
+
+    nuova = stations.Station("boa-nuova", "Nuova", "boa", 12.7, 44.7, ("B22070",))
+    monkeypatch.setattr(
+        reconcile.stations, "fetch_stations", lambda session=None: [attiva, nuova]
+    )
+
+    with caplog.at_level(logging.INFO):
+        reconcile._aggiorna_anagrafica(store)
+
+    finale = {s["id"] for s in store.get_json(reconcile.STATIONS_KEY)["stations"]}
+    assert finale == {"boa-ferma", "boa-attiva", "boa-nuova"}
+
+    # Comparse e sparizioni vanno registrate: senza, nessuno si accorge che
+    # una boa e' ferma da due settimane.
+    testo = caplog.text
+    assert "boa-nuova" in testo
+    assert "boa-ferma" in testo
+    assert "boa-attiva" not in testo
 
 
 def _indice_sintetico():
