@@ -30,6 +30,15 @@ pythonpath = ["."]
 [tool.ruff]
 line-length = 100
 
+[tool.ruff.lint]
+# Insieme fissato in modo esplicito. Senza, il progetto eredita le regole
+# predefinite del giorno, e un aggiornamento di ruff puo' far diventare rosso
+# il progetto senza che nessuno abbia toccato il codice.
+# E4/E7/E9 e F sono errori veri (sintassi, nomi non definiti, import inutilizzati),
+# I tiene ordinati gli import. Le regole di ammodernamento stilistico restano fuori:
+# qui `timezone.utc` e' usato in modo uniforme e va bene cosi'.
+select = ["E4", "E7", "E9", "F", "I"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
