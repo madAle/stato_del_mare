@@ -5,10 +5,40 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from ingest import catalog
+from ingest import catalog, manifest
 from ingest.storage import ObjectStore
 
 BUCKET = "prova"
+
+
+def _frame(var, valid_time):
+    return manifest.FrameRecord(
+        var=var,
+        valid_time=valid_time,
+        path=f"frames/{var}/an/x/{valid_time:%Y-%m-%dT%H}.bin",
+        sha256="x",
+        scale=0.001,
+        offset=0.0,
+        min=0.0,
+        max=1.0,
+        nodata_count=0,
+        clipped_count=0,
+    )
+
+
+def _manifest(reference_time, frames, kind="an"):
+    return manifest.RunManifest(
+        source_url="https://esempio/f.nc.gz",
+        source_sha256="x",
+        source_bytes=1,
+        source_last_modified="x",
+        reference_time=reference_time,
+        kind=kind,
+        group="his_HPDwave",
+        grid_ref="grid.json",
+        ingested_at=reference_time,
+        frames=frames,
+    )
 
 
 @pytest.fixture
@@ -75,3 +105,71 @@ def test_il_catalogo_si_scrive_ed_e_rileggibile(store):
     c = catalog.build_catalog(store, {"crs": "EPSG:3857"})
     catalog.write_catalog(store, c)
     assert store.get_json("catalog.json")["schema_version"] == c["schema_version"]
+
+
+def test_un_run_a_cavallo_di_due_mesi_tocca_due_indici(store):
+    """Il raggruppamento e' per frame, non per manifest.
+
+    Un run che copre la mezzanotte di fine mese tocca due indici mensili.
+    Raggruppando per manifest se ne perderebbe uno, e quelle ore
+    sparirebbero dal catalogo pur essendo su bucket.
+    """
+    m = _manifest(
+        reference_time=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        frames=[
+            _frame("hwave", datetime(2026, 8, 31, 23, tzinfo=timezone.utc)),
+            _frame("hwave", datetime(2026, 9, 1, 0, tzinfo=timezone.utc)),
+        ],
+    )
+    scritte = catalog.rebuild_indices(store, [m])
+    assert scritte == {
+        "index/hwave/an/2026-08.json",
+        "index/hwave/an/2026-09.json",
+    }
+    agosto = store.get_json("index/hwave/an/2026-08.json")
+    assert agosto["hours"] == {"2026-08-31T23:00:00Z": "20260901"}
+
+
+def test_rebuild_indices_non_cancella_quanto_gia_sul_bucket(store):
+    """Il giro di leggi, modifica e scrivi deve conservare lo storico."""
+    primo = _manifest(
+        reference_time=datetime(2026, 8, 13, tzinfo=timezone.utc),
+        frames=[_frame("hwave", datetime(2026, 8, 12, 1, tzinfo=timezone.utc))],
+    )
+    catalog.rebuild_indices(store, [primo])
+
+    secondo = _manifest(
+        reference_time=datetime(2026, 8, 14, tzinfo=timezone.utc),
+        frames=[_frame("hwave", datetime(2026, 8, 12, 2, tzinfo=timezone.utc))],
+    )
+    catalog.rebuild_indices(store, [secondo])
+
+    indice = store.get_json("index/hwave/an/2026-08.json")
+    assert set(indice["hours"]) == {
+        "2026-08-12T01:00:00Z",
+        "2026-08-12T02:00:00Z",
+    }
+
+
+def test_rebuild_indices_separa_analisi_e_previsione(store):
+    """Analisi e previsione della stessa ora vivono su indici distinti.
+
+    Fonderle renderebbe impossibile il confronto fra le due, che e' meta'
+    del valore scientifico dell'archivio.
+    """
+    istante = datetime(2026, 8, 14, 1, tzinfo=timezone.utc)
+    analisi = _manifest(
+        reference_time=datetime(2026, 8, 15, tzinfo=timezone.utc),
+        frames=[_frame("hwave", istante)],
+        kind="an",
+    )
+    previsione = _manifest(
+        reference_time=datetime(2026, 8, 13, tzinfo=timezone.utc),
+        frames=[_frame("hwave", istante)],
+        kind="fc",
+    )
+    scritte = catalog.rebuild_indices(store, [analisi, previsione])
+    assert scritte == {
+        "index/hwave/an/2026-08.json",
+        "index/hwave/fc/2026-08.json",
+    }
