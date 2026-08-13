@@ -21,7 +21,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not rete'"
 # Necessario perche' i test importano le fixture con `from tests.conftest
 # import ...`: senza la radice sul path, pytest importa conftest come modulo
 # di primo livello e quell'import fallisce.
@@ -39,6 +39,9 @@ filterwarnings = [
     # `.copy()`. Da rimuovere quando netCDF4 si adegua: a quel punto la riga
     # diventa inerte e la sua rimozione non rompe niente.
     "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
+]
+markers = [
+    "rete: richiede l'accesso alla sorgente ARPAE in linea",
 ]
 
 [tool.ruff]
