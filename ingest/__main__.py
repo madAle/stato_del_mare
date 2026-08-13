@@ -2,6 +2,16 @@
 
 Il primo comando da lanciare e' sempre `reconcile --dry-run`: stampa il piano
 senza scrivere niente, e serve a capire se il diff ragiona come ci si aspetta.
+
+Codici di uscita, pensati per un cron che deve decidere da solo cosa fare:
+
+    0  tutto bene
+    1  qualche file e' fallito, ritentabile: il run successivo recupera
+    2  la griglia sorgente e' cambiata, niente e' stato scritto, serve un umano
+    3  configurazione incompleta, fallira' identico a ogni tentativo
+
+La distinzione fra 1 e gli altri due e' l'unica cosa che impedisce a un cron di
+ritentare all'infinito un guasto che non si risolve da solo.
 """
 
 import argparse
@@ -41,11 +51,22 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
 
+    # Le credenziali si leggono prima di tutto e fuori dal try sotto: mancarle
+    # non e' un guasto passeggero, fallirebbe identico a ogni tentativo, e un
+    # traceback grezzo farebbe sembrare rotto lo strumento invece che la
+    # configurazione.
+    try:
+        store = ObjectStore.from_env()
+    except RuntimeError as errore:
+        logging.error("configurazione incompleta: %s", errore)
+        logging.error("nessun tentativo eseguito, serve intervento umano")
+        return 3
+
     with tempfile.TemporaryDirectory() as temporanea:
         workdir = Path(argomenti.workdir or temporanea)
         try:
             esito = reconcile(
-                ObjectStore.from_env(),
+                store,
                 workdir,
                 window_days=argomenti.window,
                 only=argomenti.only,
