@@ -3,6 +3,8 @@ import numpy as np
 import pytest
 
 from ingest import grid
+from ingest.config import MAX_NEIGHBOUR_DISTANCE_M
+from tests.conftest import ETA, XI, synthetic_coords, synthetic_sea_mask
 
 
 def test_giro_completo_mercator():
@@ -61,10 +63,6 @@ def test_il_dizionario_della_griglia_e_serializzabile():
     json.dumps(d)  # non deve sollevare
     assert d["crs"] == "EPSG:3857"
     assert d["width"] == g.width
-
-
-from ingest.config import MAX_NEIGHBOUR_DISTANCE_M
-from tests.conftest import ETA, XI, synthetic_coords, synthetic_sea_mask
 
 
 def _indice_di_prova(max_distance=MAX_NEIGHBOUR_DISTANCE_M):
