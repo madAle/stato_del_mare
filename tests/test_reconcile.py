@@ -37,7 +37,13 @@ def test_il_piano_ignora_i_gruppi_non_configurati(store):
     assert "avg_2dcur" not in gruppi
 
 
-def test_il_piano_e_vuoto_se_il_manifest_ha_gia_l_impronta(store, monkeypatch):
+def test_il_piano_include_i_file_gia_ingeriti(store, monkeypatch):
+    """L'impronta si verifica dopo lo scaricamento, non in pianificazione.
+
+    `plan()` non conosce lo sha256 del sorgente senza scaricarlo, quindi
+    pianifica comunque e la deduplica avviene in `process_file`. Il nome di
+    questo test diceva il contrario e mentiva.
+    """
     f = _file_sorgente()
     monkeypatch.setattr(
         reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
@@ -78,6 +84,43 @@ def test_la_guardia_sulla_griglia_ferma_il_job(store, tmp_path, wave_file):
     with Dataset(str(wave_file)) as ds:
         with pytest.raises(reconcile.GridMismatch):
             reconcile.ensure_index(store, ds, tmp_path, cache_path=percorso)
+
+
+def test_la_guardia_sulla_griglia_ferma_reconcile(store, tmp_path, monkeypatch, wave_file):
+    """GridMismatch deve uscire da reconcile(), non essere contata come errore.
+
+    reconcile() cattura Exception per non far cadere l'intero run su un file
+    storto. Se quella clausola inghiottisse anche GridMismatch, il run
+    proseguirebbe scrivendo frame con i valori nel posto sbagliato, che e'
+    esattamente il danno che la guardia esiste per impedire. Verificare
+    ensure_index in isolamento non basta: la clausola larga sta qui.
+    """
+    f = _file_sorgente()
+    monkeypatch.setattr(reconcile.source, "list_source_files", lambda session=None: [f])
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+    monkeypatch.setattr(
+        reconcile.source,
+        "download",
+        lambda url, dest, session=None: (
+            write_wave_file(dest.with_suffix(".nc")),
+            "impronta",
+        )[1],
+    )
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    def esplode(*args, **kwargs):
+        raise reconcile.GridMismatch("le coordinate sorgente sono cambiate")
+
+    monkeypatch.setattr(reconcile, "ensure_index", esplode)
+
+    with pytest.raises(reconcile.GridMismatch):
+        reconcile.reconcile(store, tmp_path, window_days=8)
+
+    # Il punto della guardia: non deve essere stato scritto niente.
+    assert store.get_json("catalog.json") is None
 
 
 def test_l_indice_si_costruisce_al_primo_giro_e_si_riusa(store, tmp_path, wave_file):
