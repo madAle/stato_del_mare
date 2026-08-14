@@ -35,6 +35,44 @@ def _manifest_di_prova():
     )
 
 
+def _colonna_di_prova():
+    return manifest.ColumnRecord(
+        station_id="boa-nausicaa-2",
+        path="stations/boa-nausicaa-2/columns/his_temp/2026-08-13.bin",
+        group="his_temp",
+        variables=("temp",),
+        shape=(24, 1, 30),
+        scale=0.01,
+        sha256="fed789",
+    )
+
+
+def test_giro_completo_di_una_colonna_passando_per_json():
+    """La meta' in lettura del contratto d'archivio dei profili verticali.
+
+    Le colonne non compaiono in nessun indice e in nessun catalogo: questo
+    record e' l'unico posto in cui sono scritti forma, ordine delle variabili e
+    scala, quindi rileggerlo storto rende il blob di int16 indecifrabile. Ed e'
+    un percorso caldo a regime: ogni giorno i profili gia' ingeriti passano
+    dalla deduplica, quindi da `RunManifest.from_dict` e da qui.
+
+    Il giro passa per JSON e non solo per il dizionario: e' come il record
+    torna davvero dal bucket, e da li' `variables` e `shape` arrivano come
+    liste. Ricostruirle in tuple e' cio' che il confronto sotto verifica.
+    """
+    originale = _manifest_di_prova()
+    originale.columns.append(_colonna_di_prova())
+
+    tornato = manifest.RunManifest.from_dict(json.loads(json.dumps(originale.to_dict())))
+
+    assert tornato == originale
+    colonna = tornato.columns[0]
+    assert isinstance(colonna.variables, tuple)
+    assert isinstance(colonna.shape, tuple)
+    assert colonna.variables == ("temp",)
+    assert colonna.shape == (24, 1, 30)
+
+
 def test_la_chiave_e_per_gruppo_non_per_run():
     """Un giorno contiene piu' file sorgente per tipo: con un manifest unico
     il progresso parziale non si registrerebbe."""
