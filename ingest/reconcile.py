@@ -283,7 +283,7 @@ def _pubblica_batimetria(store, ds, index):
     con scala 0,01 il fondoscala sarebbe 327 m, quindi tutto il bacino
     meridionale verrebbe tosato.
     """
-    profondita = np.asarray(ds.variables["h"][:], dtype=np.float64)
+    profondita = np.asarray(frames.read_variable(ds, "h")[:], dtype=np.float64)
     mascherata = np.where(index.sea_mask, profondita, np.nan)
     ricampionata = grid.apply_index(mascherata, index)
     quantizzata, stats = encode.quantize(ricampionata, BATHYMETRY_SCALE)

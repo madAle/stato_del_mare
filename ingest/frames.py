@@ -76,7 +76,7 @@ def read_times(ds) -> list[datetime]:
     datato D contiene i dati di D-1, e fidarsi del nome sposterebbe tutto
     l'archivio di 24 ore.
     """
-    variabile = ds.variables["ocean_time"]
+    variabile = read_variable(ds, "ocean_time")
     grezzi = num2date(
         variabile[:],
         variabile.units,
@@ -101,7 +101,10 @@ def select_times(times: list[datetime], sampling: str) -> list[int]:
 
 
 def read_grid_coords(ds) -> tuple[np.ndarray, np.ndarray]:
-    return np.asarray(ds.variables["lon_rho"][:]), np.asarray(ds.variables["lat_rho"][:])
+    return (
+        np.asarray(read_variable(ds, "lon_rho")[:]),
+        np.asarray(read_variable(ds, "lat_rho")[:]),
+    )
 
 
 def read_sea_mask(ds, nc_name: str) -> np.ndarray:
@@ -149,7 +152,7 @@ def extract_frames(
     for indice_t in scelti:
         valido = istanti[indice_t]
         for campo in campi:
-            grezzo = ds.variables[campo.nc_name][indice_t]
+            grezzo = read_variable(ds, campo.nc_name)[indice_t]
             trasformato = encode.apply_transform(grezzo, campo.transform)
             ricampionato = grid.apply_index(trasformato, index)
             quantizzato, stats = encode.quantize(ricampionato, campo.scale, campo.offset)
