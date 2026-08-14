@@ -1,8 +1,9 @@
 """Estrazione delle colonne verticali sulle celle delle stazioni."""
 import numpy as np
+import pytest
 from netCDF4 import Dataset
 
-from ingest import encode, profiles
+from ingest import encode, frames, profiles
 from ingest.stations import Station
 from tests.conftest import NS, NT, synthetic_coords, synthetic_sea_mask
 
@@ -82,6 +83,27 @@ def test_i_valori_estratti_sono_quelli_del_file(profile_file):
     valori = encode.dequantize(colonne["boa-prova"], profiles.PROFILE_SCALE)
     assert np.allclose(valori[0, 0], [0.05, 1.05, 2.05], atol=0.01)
     assert np.allclose(valori[1, 0], [10.05, 11.05, 12.05], atol=0.01)
+
+
+def test_una_variabile_di_profilo_rinominata_ferma_l_estrazione(profile_file):
+    """Un rename qui vale quanto un rename fra i campi 2D.
+
+    I campi 2D passano da `check_units`, che monta la guardia prima di
+    leggere. Le colonne non hanno un passo equivalente: leggevano il nome
+    direttamente e un `KeyError` sarebbe finito fra i guasti passeggeri.
+    """
+    lon, lat = synthetic_coords()
+    mare = synthetic_sea_mask()
+    s = _stazione(float(lon[1, 1]), float(lat[1, 1]))
+    celle = profiles.nearest_sea_cells([s], lon, lat, mare, max_distance_m=2000.0)
+
+    with Dataset(str(profile_file), "a") as ds:
+        ds.renameVariable("temp", "temp_v2")
+
+    with Dataset(str(profile_file)) as ds:
+        with pytest.raises(frames.VariableMissing) as errore:
+            profiles.extract_columns(ds, ("temp",), celle, profiles.PROFILE_SCALE)
+    assert "temp" in str(errore.value)
 
 
 def test_la_colonna_viene_presa_dalla_cella_giusta(profile_file):

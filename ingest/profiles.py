@@ -17,6 +17,7 @@ from scipy.spatial import cKDTree
 
 from . import encode, grid
 from .config import MAX_NEIGHBOUR_DISTANCE_M
+from .frames import read_variable
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +98,10 @@ def extract_columns(
     }
 
     for indice_variabile, nome in enumerate(var_names):
-        variabile = ds.variables[nome]
+        # Non ds.variables[nome]: i campi 2D hanno la guardia dentro
+        # check_units, le colonne non hanno un passo equivalente e un nome
+        # sparito uscirebbe come KeyError, cioe' fra i guasti passeggeri.
+        variabile = read_variable(ds, nome)
         for indice_t in range(n_istanti):
             fetta = np.ma.filled(variabile[indice_t].astype(np.float64), np.nan)
             for identificativo, (riga, colonna) in cells.items():

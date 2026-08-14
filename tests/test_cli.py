@@ -11,7 +11,7 @@ from ingest.reconcile import GridMismatch
 from ingest.source import parse_filename
 from ingest.stations import StationCollision
 from ingest.storage import ObjectStore
-from tests.conftest import write_wave_file
+from tests.conftest import synthetic_coords, write_profile_file, write_wave_file
 
 BUCKET = "prova"
 
@@ -133,6 +133,68 @@ def test_una_variabile_rinominata_esce_con_due(store, tmp_path, monkeypatch):
 
     assert cli.main(["reconcile", "--workdir", str(tmp_path)]) == 2
     # E come per la griglia: fermarsi vuol dire non lasciare niente dietro.
+    assert store.get_json("catalog.json") is None
+
+
+def test_una_variabile_di_profilo_rinominata_esce_con_due(store, tmp_path, monkeypatch):
+    """La stessa promessa vale per le colonne, non solo per i campi 2D.
+
+    `extract_columns` leggeva `ds.variables[nome]` per conto suo, senza passare
+    dalla guardia: un rename di `temp`, `salt`, `u_eastward` o `v_northward`
+    usciva ancora come `KeyError`, la clausola larga di `reconcile` lo contava
+    come fallimento passeggero e la CLI usciva 1. Il cron avrebbe ritentato due
+    volte al giorno per sempre mentre la finestra ARPAE di 8 giorni scorreva
+    via, e le colonne di quei giorni sono perse in modo definitivo.
+
+    Il giro e' completo apposta: il difetto non sta nel sollevare l'eccezione
+    ma nel tradurla in un codice di uscita, e ci vogliono due file perche' le
+    colonne si estraggono solo dopo che l'indice e' stato costruito dal gruppo
+    di riferimento.
+    """
+    lon, lat = synthetic_coords()
+    store.put_json(
+        "stations/stations.json",
+        {
+            "stations": [
+                {
+                    "id": "boa-prova",
+                    "name": "Prova",
+                    "network": "boa",
+                    "lon": float(lon[1, 1]),
+                    "lat": float(lat[1, 1]),
+                    "variables": [],
+                }
+            ]
+        },
+    )
+
+    onda = parse_filename("20260813_adriac_1km_his_HPDwave_an.nc.gz")
+    profilo = parse_filename("20260813_adriac_1km_his_temp_an.nc.gz")
+
+    def scarica(url, dest, session=None):
+        percorso = dest.with_suffix(".nc")
+        if "HPDwave" in url:
+            write_wave_file(percorso)
+        else:
+            write_profile_file(percorso, var_names=("temp",))
+            with Dataset(str(percorso), "a") as ds:
+                ds.renameVariable("temp", "temp_v2")
+        return "impronta-" + url.rsplit("/", 1)[-1]
+
+    monkeypatch.setattr(cli.ObjectStore, "from_env", classmethod(lambda cls: store))
+    monkeypatch.setattr(
+        reconcile.source, "list_source_files", lambda session=None: [onda, profilo]
+    )
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+    monkeypatch.setattr(reconcile.source, "download", scarica)
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    assert cli.main(["reconcile", "--workdir", str(tmp_path)]) == 2
+    # Fermarsi vuol dire fermarsi: il catalogo non deve annunciare un giorno
+    # che in archivio e' incompleto.
     assert store.get_json("catalog.json") is None
 
 
