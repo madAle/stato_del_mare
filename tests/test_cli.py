@@ -1,12 +1,30 @@
 """I codici di uscita della CLI: e' il contratto su cui un cron decide."""
+import boto3
+import pytest
+from moto import mock_aws
+from netCDF4 import Dataset
+
 from ingest import __main__ as cli
+from ingest import reconcile
 from ingest.frames import UnitMismatch
 from ingest.reconcile import GridMismatch
+from ingest.source import parse_filename
 from ingest.stations import StationCollision
+from ingest.storage import ObjectStore
+from tests.conftest import write_wave_file
+
+BUCKET = "prova"
 
 
 def _store_finto(monkeypatch):
     monkeypatch.setattr(cli.ObjectStore, "from_env", classmethod(lambda cls: object()))
+
+
+@pytest.fixture
+def store():
+    with mock_aws():
+        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket=BUCKET)
+        yield ObjectStore(BUCKET, None, "chiave", "segreto", region="us-east-1")
 
 
 def _esito(errors=0, deferred=0):
@@ -79,6 +97,43 @@ def test_la_collisione_fra_stazioni_esce_con_due(monkeypatch):
 
     monkeypatch.setattr(cli, "reconcile", esplode)
     assert cli.main(["reconcile"]) == 2
+
+
+def test_una_variabile_rinominata_esce_con_due(store, tmp_path, monkeypatch):
+    """Non ritentabile: la sorgente ha rinominato una variabile.
+
+    La spec 6.1 promette a un cambio di nome variabile lo stesso trattamento
+    di un cambio di unita', cioe' run fermo e uscita 2. Senza guardia il nome
+    assente emergeva come `KeyError`, la clausola larga di `reconcile` lo
+    contava come fallimento passeggero e la CLI usciva 1, che il workflow rende
+    come "ritentabile, il run successivo recupera": il cron avrebbe ritentato
+    due volte al giorno per sempre mentre la finestra di 8 giorni scorreva via.
+    E' lo stesso guasto della collisione fra stazioni su un'altra causa.
+
+    Il giro qui e' completo, dalla sorgente al codice di uscita: il difetto non
+    stava nel sollevare l'eccezione ma nel tradurla in un codice, quindi un
+    test che si fermasse all'eccezione non lo vedrebbe.
+    """
+    f = parse_filename("20260813_adriac_1km_his_HPDwave_an.nc.gz")
+
+    def scarica_rinominato(url, dest, session=None):
+        percorso = write_wave_file(dest.with_suffix(".nc"))
+        with Dataset(str(percorso), "a") as ds:
+            ds.renameVariable("Hwave", "Hwave_v2")
+        return "impronta"
+
+    monkeypatch.setattr(cli.ObjectStore, "from_env", classmethod(lambda cls: store))
+    monkeypatch.setattr(reconcile.source, "list_source_files", lambda session=None: [f])
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+    monkeypatch.setattr(reconcile.source, "download", scarica_rinominato)
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    assert cli.main(["reconcile", "--workdir", str(tmp_path)]) == 2
+    # E come per la griglia: fermarsi vuol dire non lasciare niente dietro.
+    assert store.get_json("catalog.json") is None
 
 
 def test_le_credenziali_mancanti_escono_con_tre(monkeypatch):

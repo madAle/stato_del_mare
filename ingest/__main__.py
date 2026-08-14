@@ -10,8 +10,8 @@ Codici di uscita, pensati per un cron che deve decidere da solo cosa fare:
        successivo recupera
     2  guasto che non si risolve da solo, il run si e' fermato, serve un umano:
        la griglia sorgente e' cambiata, le unita' di una variabile sono
-       cambiate, oppure due stazioni diverse collidono sullo stesso
-       identificativo
+       cambiate, una variabile attesa e' stata rinominata, oppure due stazioni
+       diverse collidono sullo stesso identificativo
     3  configurazione incompleta, fallira' identico a ogni tentativo
 
 La distinzione fra 1 e gli altri due e' l'unica cosa che impedisce a un cron di
@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 
 from .config import WINDOW_DAYS
-from .frames import UnitMismatch
+from .frames import UnitMismatch, VariableMissing
 from .reconcile import GridMismatch, reconcile
 from .stations import StationCollision
 from .storage import ObjectStore
@@ -87,6 +87,18 @@ def main(argv: list[str] | None = None) -> int:
             logging.error(
                 "un cambio di unita' non si annuncia: i valori restano "
                 "plausibili e diventano sbagliati. Intervento umano necessario."
+            )
+            return 2
+        except VariableMissing as errore:
+            # Come il cambio di unita': la spec 6.1 promette lo stesso
+            # trattamento a un cambio di nome variabile. Senza questa clausola
+            # il nome assente arrivava qui come KeyError contato fra gli
+            # errori del run, quindi uscita 1, cioe' "ritentabile": il cron
+            # avrebbe ritentato per sempre un guasto che non guarisce da solo.
+            logging.error("UNA VARIABILE SORGENTE E' SPARITA: %s", errore)
+            logging.error(
+                "nessun run successivo la fa tornare: va aggiornata la "
+                "configurazione. Intervento umano necessario."
             )
             return 2
         except StationCollision as errore:

@@ -553,7 +553,9 @@ che è l'unità dell'array pubblicato (`m`): sono due stringhe diverse, e per le
 componenti di direzione sono anche due grandezze diverse (gradi in ingresso,
 adimensionale in uscita). Uno scarto solleva `UnitMismatch` e ferma il run con
 uscita 2, come `GridMismatch`: un cambio di unità è silenzioso, i valori si
-riquantizzano bene e `clipped_count` può restare zero.
+riquantizzano bene e `clipped_count` può restare zero. Un nome variabile che non
+c'è più solleva `VariableMissing` e ferma il run allo stesso modo: non è un file
+storto da riprovare domani, e nessun run successivo lo rimedia da solo.
 
 ### 6.2 Gli altri
 

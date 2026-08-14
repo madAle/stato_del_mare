@@ -157,6 +157,23 @@ def test_l_assenza_dell_attributo_unita_ferma_l_estrazione(wave_file):
             list(frames.extract_frames(ds, "his_HPDwave", "an", "20260813", idx))
 
 
+def test_una_variabile_rinominata_ferma_l_estrazione(wave_file):
+    """A regime, con l'indice gia' in archivio, il rename emerge da qui.
+
+    E' l'altra meta' della stessa frase della spec 6.1: un nome cambiato non
+    e' un file storto da saltare e riprovare domani, e' la sorgente che ha
+    cambiato contratto.
+    """
+    with Dataset(str(wave_file), "a") as ds:
+        ds.renameVariable("Hwave", "Hwave_v2")
+
+    idx = _indice()
+    with Dataset(str(wave_file)) as ds:
+        with pytest.raises(frames.VariableMissing) as errore:
+            list(frames.extract_frames(ds, "his_HPDwave", "an", "20260813", idx))
+    assert "Hwave" in str(errore.value)
+
+
 def test_la_maschera_di_mare_si_legge_dai_dati(wave_file):
     with Dataset(str(wave_file)) as ds:
         mare = frames.read_sea_mask(ds, "Hwave")

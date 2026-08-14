@@ -22,9 +22,34 @@ class UnitMismatch(Exception):
     """
 
 
+class VariableMissing(Exception):
+    """Una variabile attesa non c'e' piu' nel NetCDF.
+
+    La spec 6.1 promette a un cambio di nome variabile lo stesso trattamento di
+    un cambio di unita'. Senza questa eccezione il nome assente emergeva come
+    KeyError, che la clausola larga di reconcile contava come fallimento
+    passeggero: uscita 1, cioe' "riprova domani", e il cron avrebbe ritentato
+    due volte al giorno per sempre mentre la finestra di 8 giorni scorreva via.
+    Un rename alla sorgente non si risolve da solo.
+    """
+
+
+def read_variable(ds, nc_name: str):
+    """La variabile del NetCDF, o VariableMissing se il nome non c'e' piu'."""
+    try:
+        return ds.variables[nc_name]
+    except KeyError:
+        raise VariableMissing(
+            f"la variabile {nc_name!r} non e' nel file, che contiene "
+            f"{sorted(ds.variables)}. La sorgente l'ha rinominata o rimossa: "
+            "nessun run successivo lo rimedia da solo. Verificare la sorgente "
+            "ADRIAC e aggiornare la configurazione prima di riprovare."
+        ) from None
+
+
 def read_units(ds, nc_name: str) -> str | None:
     """L'attributo units della variabile, None se assente."""
-    return getattr(ds.variables[nc_name], "units", None)
+    return getattr(read_variable(ds, nc_name), "units", None)
 
 
 def check_units(ds, campo) -> str:
@@ -85,7 +110,7 @@ def read_sea_mask(ds, nc_name: str) -> np.ndarray:
     ADRIAC non pubblica una maschera esplicita: le celle di terra arrivano
     mascherate dal _FillValue.
     """
-    fetta = ds.variables[nc_name][0]
+    fetta = read_variable(ds, nc_name)[0]
     if fetta.ndim == 3:  # variabile 3D: si prende il livello di superficie
         fetta = fetta[-1]
     return ~np.ma.getmaskarray(fetta)

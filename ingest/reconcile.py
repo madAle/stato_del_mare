@@ -394,10 +394,11 @@ def reconcile(
                 esito["skipped"] += 1
             else:
                 esito["processed"] += 1
-        except (GridMismatch, frames.UnitMismatch):
-            # Nessuna delle due si risolve da sola, e inghiottirle qui
+        except (GridMismatch, frames.UnitMismatch, frames.VariableMissing):
+            # Nessuna delle tre si risolve da sola, e inghiottirle qui
             # significherebbe uscita 1, cioe' "riprova domani" per sempre
-            # mentre l'archivio si riempie di valori sbagliati.
+            # mentre l'archivio si riempie di valori sbagliati (o non si
+            # riempie affatto, nel caso di una variabile rinominata).
             raise
         except Exception:
             log.exception("errore su %s", w.source.name)
