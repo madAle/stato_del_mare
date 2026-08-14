@@ -1,12 +1,15 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-14 · **Branch:** `feat/ingestore` · **Fase:** ingestore completo e rivisto, processo automatico chiuso, in attesa di revisione umana e merge
+**Aggiornato:** 2026-08-14 · **Branch:** `develop` · **Fase:** ingestore unito su `develop` e pushato, mai eseguito contro un bucket vero
 
-**Il punto esatto in cui riprendere:** la revisione umana del branch e il merge
-(4a punto 1). Il processo automatico è finito: la ri-revisione mirata è stata
-fatta il 2026-08-14 e ha chiuso tutti e 13 i rilievi, verificando per ciascuno
-che togliendo la correzione un test diventi rosso. Le tre voci che ha aperto lei
-sono state chiuse a loro volta (4c punto 3).
+**Il punto esatto in cui riprendere:** configurare Cloudflare R2 e far girare
+l'ingestore per la prima volta (4a). Il codice è finito e rivisto, ma **non ha
+mai scritto su un bucket reale**: finché non gira, ogni giorno che passa è
+storico ADRIAC perso per sempre, perché la sorgente conserva solo 8 giorni.
+Sono tre cose che solo tu puoi fare, elencate in 4a, e nessuna richiede me.
+
+Quando il primo run è andato a buon fine, il passo successivo è il piano della
+SPA (4c), da scrivere guardando dati veri su R2 invece che una specifica.
 
 Questo file va letto per primo. Poi:
 
@@ -109,11 +112,9 @@ Secondo vincolo: **`src/data/` è l'unico modulo che conosce gli URL del bucket.
 
 ### 4a. Blocca il resto, e solo l'utente può farlo
 
-1. **Merge del branch `feat/ingestore`.** È stato pushato il 2026-08-13 e attende
-   la ri-revisione mirata (4c punto 3) e la revisione umana. GitHub propone la
-   pull request a `https://github.com/madAle/stato_del_mare/pull/new/feat/ingestore`.
-2. **Rendere il repo pubblico.** Su repo pubblici i minuti di GitHub Actions sono illimitati, e questo progetto scarica circa 1,9 GB al giorno. Su repo privato i 2.000 minuti mensili gratuiti diventano un vincolo.
-3. **Account Cloudflare, bucket R2, API token, accesso pubblico in lettura, CORS.** Senza credenziali R2 l'ingestore non ha dove scrivere e non si può testare oltre i test unitari.
+1. **Rendere il repo pubblico.** Su repo pubblici i minuti di GitHub Actions sono illimitati, e questo progetto scarica circa 1,9 GB al giorno. Su repo privato i 2.000 minuti mensili gratuiti diventano un vincolo.
+2. **Account Cloudflare, bucket R2, API token, accesso pubblico in lettura, CORS.** Senza credenziali R2 l'ingestore non ha dove scrivere e non si può testare oltre i test unitari. La procedura sta in `docs/setup-r2.md`.
+3. **I quattro segreti nelle impostazioni del repo su GitHub**, che `ingest.yml` si aspetta con questi nomi esatti: `R2_BUCKET`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. Fatto questo il cron parte da solo, e il primo run è anche il primo collaudo vero.
 
 Punto pratico: finché l'ingestore non gira, **ogni giorno che passa è storico perso per sempre** (finestra ADRIAC di 8 giorni). Questo dà priorità all'ingestore sulla presentabilità della SPA.
 
@@ -141,9 +142,14 @@ Niente.
    `tests/test_vincoli.py` cammina l'albero sintattico del pacchetto e fallisce
    se una lettura diretta ricompare. La regola non è più affidata alla
    disciplina di chi scrive.
-4. **Revisione umana e merge del branch dell'ingestore**, poi il primo deploy su R2.
-5. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
-6. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
+4. ~~Merge del branch dell'ingestore~~. **Fatto il 2026-08-14**: unito su
+   `develop` con un merge non fast-forward, suite verde sul risultato del merge,
+   pushato.
+5. **Il primo run contro R2 vero.** Serve la configurazione in 4a. È anche il
+   primo collaudo del sistema: fin qui l'ingestore ha scritto solo su bucket
+   finti nei test e su nessun bucket vero.
+6. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
+7. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
    discrete sui gradini del codice stato del mare WMO. Richiesta del 2026-08-13,
    dettaglio e riferimento misurato nella sezione 1 della spec. Va con la SPA,
    non prima: non tocca l'ingestore.
@@ -248,12 +254,13 @@ curl -s -L "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtim
 ## 7. Stato git
 
 - Repo unico: `/Users/ale/source/personal/stato_del_mare`
-- Branch corrente: `feat/ingestore`, che parte da `develop` (nessun `main` locale)
-- Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`, con `origin/develop` e `origin/feat/ingestore` presenti
-- **`feat/ingestore` è pushato e allineato** (verificato il 2026-08-13: nessun commit locale in più), **ma non è ancora unito.**
-- Sul disco resta `.superpowers/sdd/2026-08-13-ingestore/` (escluso da git): registro di esecuzione e brief dei task. I documenti che contano sono già stati copiati in `docs/superpowers/revisioni/`, quindi quella cartella si può cancellare quando il branch è unito.
+- Branch corrente: `develop` (nessun `main` locale)
+- Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`
+- **`develop` è allineato a `origin/develop`** (verificato il 2026-08-14: nessun commit locale in più), albero pulito
+- `feat/ingestore` è stato unito con un merge non fast-forward e cancellato in locale. Resta su `origin` come `origin/feat/ingestore`: se servisse rileggere la storia dell'esecuzione commit per commit, è lì.
+- Lo spazio di lavoro `.superpowers/sdd/2026-08-13-ingestore/` è stato cancellato a lavoro concluso. I documenti che contavano erano già stati copiati in `docs/superpowers/revisioni/`.
 
-Comandi di verifica prima del merge:
+Comandi di verifica:
 
 ```bash
 uv run ruff check .
