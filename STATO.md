@@ -1,14 +1,12 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-13 · **Branch:** `feat/ingestore` · **Fase:** ingestore implementato (15 task eseguiti), revisione finale svolta, tutte le correzioni applicate e committate
+**Aggiornato:** 2026-08-14 · **Branch:** `feat/ingestore` · **Fase:** ingestore completo e rivisto, processo automatico chiuso, in attesa di revisione umana e merge
 
-**Il punto esatto in cui riprendere:** la ri-revisione mirata delle 14
-correzioni della revisione finale (dettaglio in 4c punto 3). È il passo mancante
-del processo. Non è stata ancora fatta: i tre difetti critici vivevano tutti in
-codice che nessun test toccava, quindi va verificato, rilievo per rilievo, che il
-test nuovo sia stato visto fallire contro il codice rotto **prima** della
-correzione. Un test scritto dopo passa anche se non verifica niente, ed è così
-che quei tre difetti erano sopravvissuti a quindici revisioni di task.
+**Il punto esatto in cui riprendere:** la revisione umana del branch e il merge
+(4a punto 1). Il processo automatico è finito: la ri-revisione mirata è stata
+fatta il 2026-08-14 e ha chiuso tutti e 13 i rilievi, verificando per ciascuno
+che togliendo la correzione un test diventi rosso. Le tre voci che ha aperto lei
+sono state chiuse a loro volta (4c punto 3).
 
 Questo file va letto per primo. Poi:
 
@@ -42,7 +40,9 @@ ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
   source.py       listing ARPAE, HEAD, download verificato
   grid.py         griglia Mercator, indice di ricampionamento, GridMismatch
   encode.py       quantizzazione int16, gzip, direzioni in sin/cos
-  frames.py       campi 2D verso frame, guardia sulle unità (UnitMismatch)
+  frames.py       campi 2D verso frame, guardie sulla sorgente (UnitMismatch,
+                  VariableMissing); read_variable è l'unico punto da cui il
+                  pacchetto legge una variabile del NetCDF
   profiles.py     colonne sigma sulle stazioni
   stations.py     parsing BUFR di realtime.jsonl, fusione dell'anagrafica
   storage.py      client R2 (boto3)
@@ -50,7 +50,7 @@ ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
   catalog.py      index/ e catalog.json
   reconcile.py    orchestratore
   __main__.py     CLI e codici di uscita
-tests/            127 test nella suite predefinita, più 4 dietro il marcatore `rete`
+tests/            134 test nella suite predefinita, più 4 dietro il marcatore `rete`
 .github/workflows/
   ci.yml          ruff e pytest su push e pull request
   ingest.yml      ingestione giornaliera, due cron
@@ -62,8 +62,8 @@ web/              ancora da scrivere
 
 **Codici di uscita della CLI**, su cui il cron decide: `0` tutto bene, `1`
 qualche file fallito o rimandato (ritentabile), `2` guasto che non si risolve
-da solo e serve un umano (griglia cambiata, unità cambiate, collisione fra
-stazioni), `3` configurazione incompleta.
+da solo e serve un umano (griglia cambiata, unità cambiate, variabile rinominata
+o sparita, collisione fra stazioni), `3` configurazione incompleta.
 
 **Il vincolo architetturale da non rompere:** `src/data/` e `src/map/` non devono conoscere React, e React non deve mai girare a 60 fps. Il ciclo di animazione vive in `src/map/` e riporta il tempo a React al massimo 10 volte al secondo. Se questo confine salta, il framework diventa insostituibile e l'autoplay singhiozza.
 
@@ -123,21 +123,24 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 127 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
+1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 134 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
 2. ~~Allineare la spec alle correzioni~~. **Fatto**: le correzioni emerse eseguendo il piano e quelle della revisione finale (sezioni 4.2, 4.5, 4.6, 4.7 e 6.1) sono state applicate alla spec.
-3. **Ri-revisione mirata delle 14 correzioni.** È il passo mancante del processo,
-   ed è la prima cosa da fare. Deve verificare, rilievo per rilievo, che il test
-   nuovo sia stato visto fallire contro il codice rotto prima della correzione.
-   Diff da rivedere: `git diff 9d600dc~1..HEAD`, cioè tutti i commit da `9d600dc`
-   compreso in poi.
+3. ~~Ri-revisione mirata delle 14 correzioni~~. **Fatto il 2026-08-14**: 13
+   rilievi su 13 chiusi, ognuno verificato rimettendo il difetto e guardando la
+   suite diventare rossa sul test scritto per quel rilievo. Le tre voci che la
+   ri-revisione ha aperto sono state chiuse subito dopo, in tre commit separati:
+   - il rename di una variabile sorgente usciva **1** invece di 2, cioè "riprova
+     domani", e il cron avrebbe ritentato per sempre mentre la finestra di 8
+     giorni scorreva via. Emergeva da due punti diversi, non uno: a bucket vuoto
+     dalla maschera di mare, a regime dalla lettura delle unità;
+   - `ColumnRecord.from_dict` non era eseguita da nessun test;
+   - lo stesso rename nelle variabili di profilo usciva ancora 1.
 
-   Come: è la ri-revisione mirata prevista da `superpowers:subagent-driven-development`
-   dopo l'ondata di correzioni finale, e il processo ne concede **una sola**.
-   L'elenco dei rilievi da spuntare sta in
-   `docs/superpowers/revisioni/2026-08-13-ingestore-rilievi.md`, quello che è
-   stato fatto per ciascuno in `...-correzioni.md`. Il criterio non è "il codice
-   sembra giusto" ma "esiste un test che, tolta la correzione, diventa rosso":
-   dove il report non mostra il rosso catturato, va riprodotto.
+   Chiuso anche il problema di fondo che le tre voci avevano in comune: tutte le
+   letture della sorgente passano ora da `frames.read_variable`, e
+   `tests/test_vincoli.py` cammina l'albero sintattico del pacchetto e fallisce
+   se una lettura diretta ricompare. La regola non è più affidata alla
+   disciplina di chi scrive.
 4. **Revisione umana e merge del branch dell'ingestore**, poi il primo deploy su R2.
 5. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
 6. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
@@ -149,10 +152,16 @@ Niente.
 `docs/superpowers/revisioni/2026-08-13-ingestore-correzioni.md`, sezione "Cosa
 non ho fatto"):
 
-- I **4 test di rete non sono stati eseguiti** dopo le correzioni. Il
-  ragionamento per cui non sono toccati è scritto nel report, ma è
-  un'inferenza, non una misura: `uv run pytest -m rete` va lanciato prima del
-  merge.
+- ~~I 4 test di rete non sono stati eseguiti dopo le correzioni~~. **Fatto**:
+  eseguiti il 2026-08-14 contro l'archivio ARPAE reale, 4 verdi.
+- **La deduplica salta il file senza aprirlo** quando dimensione e data di
+  modifica non sono cambiate. È una scelta deliberata per non riscaricare
+  1,9 GB al secondo run giornaliero, ma restringe la portata delle guardie
+  6.1: un cambio di contratto interno al file resterebbe invisibile finché
+  l'intestazione HTTP non si muove. Perché il buco si materializzi servirebbe
+  un rename che produce un file della stessa identica lunghezza in byte con la
+  stessa data: il costo è un giorno di ritardo nell'accorgersene, non un dato
+  perso, perché il file resta nella finestra.
 - **Descrittori di griglia versionati**: la spec 4.4 promette `grid_v2.json`, il
   codice non lo sa fare. Divergenza nota fra spec e codice.
 - **`--only` su una variabile fuori dal gruppo di riferimento non può

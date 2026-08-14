@@ -557,6 +557,25 @@ riquantizzano bene e `clipped_count` può restare zero. Un nome variabile che no
 c'è più solleva `VariableMissing` e ferma il run allo stesso modo: non è un file
 storto da riprovare domani, e nessun run successivo lo rimedia da solo.
 
+**Ogni lettura di una variabile sorgente passa da `frames.read_variable`**, che è
+il punto in cui il nome assente diventa `VariableMissing`. Una lettura diretta di
+`ds.variables[...]` lo farebbe emergere come `KeyError`, che la clausola larga di
+`reconcile()` conta come fallimento passeggero: uscita 1, cioè "riprova domani",
+e il cron ritenterebbe per sempre. È già successo due volte, sui campi 2D e sulle
+colonne dei profili, quindi la regola non è affidata alla disciplina:
+`tests/test_vincoli.py` cammina l'albero sintattico del pacchetto e fallisce se
+una lettura diretta ricompare fuori da `read_variable`.
+
+**Fin dove arriva la guardia.** Il file si apre solo se vale la pena scaricarlo:
+se dimensione e data di modifica non sono cambiate, la deduplica lo salta senza
+leggerne il contenuto (vedi 5.1), quindi un cambio di contratto interno resta
+invisibile finché l'intestazione HTTP non si muove. È il compromesso deliberato
+per non riscaricare 1,9 GB al secondo run giornaliero. Perché il buco si
+materializzi servirebbe un rename che produce un file della stessa identica
+lunghezza in byte, con la stessa data di modifica: il costo è un giorno di
+ritardo nell'accorgersene, non un dato perso, perché il file resta nella finestra
+di 8 giorni e il run successivo lo riprende appena l'intestazione cambia.
+
 ### 6.2 Gli altri
 
 | Situazione | Comportamento |
