@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.nc
+*.nc.gz
+*.npz
+.env
+.superpowers/
+.claude/worktrees/

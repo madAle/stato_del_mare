@@ -1,0 +1,64 @@
+[project]
+name = "stato-del-mare-ingest"
+version = "0.1.0"
+description = "Ingestore dei dati ARPAE ADRIAC verso object storage"
+requires-python = ">=3.12"
+dependencies = [
+    "netCDF4>=1.6",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "boto3>=1.34",
+    "requests>=2.31",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "moto[s3]>=5.0",
+    "responses>=0.25",
+    "ruff>=0.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -m 'not rete'"
+# Necessario perche' i test importano le fixture con `from tests.conftest
+# import ...`: senza la radice sul path, pytest importa conftest come modulo
+# di primo livello e quell'import fallisce.
+pythonpath = ["."]
+# "Output pristine" e' un vincolo del progetto: qui diventa verificabile invece
+# che dichiarato. Senza questa riga un avviso passa inosservato e viene riportato
+# come suite pulita, che e' esattamente quello che era successo con due
+# DeprecationWarning di NumPy nelle fixture.
+filterwarnings = [
+    "error",
+    # Unica eccezione, e va tenuta stretta: netCDF4 1.7.4 imposta `.shape` su un
+    # array dentro il proprio percorso di scrittura, cosa che NumPy 2.5 ha
+    # deprecato. E' codice di libreria e non esiste una versione piu' recente;
+    # le due occorrenze nostre dello stesso schema sono state corrette con
+    # `.copy()`. Da rimuovere quando netCDF4 si adegua: a quel punto la riga
+    # diventa inerte e la sua rimozione non rompe niente.
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
+]
+markers = [
+    "rete: richiede l'accesso alla sorgente ARPAE in linea",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Insieme fissato in modo esplicito. Senza, il progetto eredita le regole
+# predefinite del giorno, e un aggiornamento di ruff puo' far diventare rosso
+# il progetto senza che nessuno abbia toccato il codice.
+# E4/E7/E9 e F sono errori veri (sintassi, nomi non definiti, import inutilizzati),
+# I tiene ordinati gli import. Le regole di ammodernamento stilistico restano fuori:
+# qui `timezone.utc` e' usato in modo uniforme e va bene cosi'.
+select = ["E4", "E7", "E9", "F", "I"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ingest"]

@@ -1,14 +1,9 @@
 # Stato del Mare, design
 
 Data: 2026-08-13
-Stato: approvato in brainstorming, da tradurre in piano di implementazione
-
-> **Tre punti di questo documento hanno correzioni pendenti**, emerse scrivendo il
-> piano di implementazione e non ancora approvate: la soglia di ricampionamento in
-> 5.2, il percorso dei manifest in 4.2 e la granularità dei profili in 4.6. Le
-> dimensioni di griglia in 4.4 sono una stima da sostituire col calcolo reale.
-> Dettagli e motivazioni in `STATO.md`, sezione 4c. Leggerle prima di implementare
-> quei punti.
+Stato: approvato. La parte sull'ingestore (sezioni 2, 3, 4, 5, 6, 8.1) è
+implementata e allineata al codice, comprese le correzioni della revisione
+finale. La parte sulla SPA (sezione 7, 8.2) è ancora da tradurre in piano.
 
 ## 1. Obiettivo
 
@@ -45,6 +40,62 @@ osservato dal 2006.
 
 Il modello dati e il formato del pacchetto sono progettati fin d'ora per reggerli
 tutti senza modifiche retroattive.
+
+### Isolinee etichettate sull'altezza d'onda
+
+Richiesta dell'utente il 2026-08-13, con riferimento esplicito al widget ARPAE
+delle previsioni d'onda ("ma fatta meglio").
+
+L'altezza d'onda si rende a **bande discrete**, ciascuna col proprio contorno, e
+sul contorno corre il valore della soglia ripetuto lungo il tracciato, come le
+isobate delle carte nautiche.
+
+**La condizione che lo rende possibile**: le soglie delle isolinee e i gradini
+della scala di colore devono essere la stessa lista, da una sola fonte. Due
+elenchi separati prima o poi divergono, e una linea che dice 1,25 m a due pixel
+dal punto dove il colore cambia davvero è peggio di nessuna linea, perché è
+credibile ed è sbagliata. Ne segue che la resa va a classi discrete: su una rampa
+continua non esistono confini da etichettare.
+
+**Le soglie**: il codice stato del mare WMO (0,1, 0,5, 1,25, 2,5, 4, 6, 9, 14 m)
+in linea spessa e con l'etichetta, le suddivisioni intermedie di ARPAE (0,8, 1,8,
+3,2, 5, 7, 8 m) in linea sottile e senza numero. Il numero compare dove ha un
+nome, non a ogni gradino.
+
+**Dove si calcola**: marching squares (`d3-contour`) sul campo già decodificato
+nel browser, in `src/map/`, non in ingestione. Le soglie sono una scelta di
+visualizzazione che vorremo ritoccare guardando le mappe; inciderle in ingestione
+le congela in 792 oggetti al giorno e impone di rigenerare l'archivio a ogni
+ripensamento (principio 3.5). Costo: circa 724 mila celle per soglia, quindi si
+calcola al cambio di fotogramma (al massimo 10 volte al secondo), meglio in un
+worker, con cache per fotogramma e insieme di soglie. Mai nel ciclo a 60 fps.
+
+**Resa**: due strati MapLibre sulla stessa sorgente GeoJSON, uno `line` e uno
+`symbol` con `symbol-placement: "line"` e `text-rotation-alignment: "map"`. È lo
+stesso codice di etichettatura delle isobate della batimetria (7.5), che sono
+statiche: si scrive una volta là e la seconda funzionalità costa quasi niente.
+
+### Il riferimento ARPAE, misurato il 2026-08-13
+
+Widget Leaflet a `apps.arpae.it/widgets/meteo-mare-mappe-previsione/`, alimentato
+da `apps.arpae.it/REST/meteo_mappe_previsione_<variabile>`. Il campo è un **PNG
+piatto** steso con `L.imageOverlay` su coordinate fisse: 72 immagini orarie per
+emissione, circa 190 KB l'una, quindi circa 13,7 MB per variabile per emissione
+solo per animare. Ha già scrubber e autoplay.
+
+Cosa vogliamo fare diversamente, e perché:
+
+| Loro | Noi | Motivo |
+|---|---|---|
+| Pixel colorati | Griglia int16 già in Web Mercator | Valore sotto il mouse, nitidezza a ogni ingrandimento, isolinee calcolate dal campo |
+| Palette arcobaleno, prime due classi due blu quasi identici | cmocean percettivamente uniforme | L'Adriatico passa gran parte dell'anno sotto i 0,5 m: là la loro mappa è di un colore solo |
+| Legenda fuori dalla mappa | Numero sul contorno | Toglie il viaggio dell'occhio |
+| WW3 su tutti i mari italiani, maglia larga | ADRIAC a 1 km, solo Adriatico | Risoluzione contro copertura: vedi la domanda aperta qui sotto |
+| Frecce a passo fisso nella griglia del dato, lunghezza costante | Passo fisso a schermo | A passo fisso nel dato si accavallano o spariscono secondo l'ingrandimento |
+
+**Domanda aperta, non decisa**: ADRIAC copre solo l'Adriatico. Se la copertura
+contasse quanto la qualità servirebbe una seconda sorgente (WW3), con un secondo
+ingestore e un secondo dominio. Non è previsto in v1.
 
 ## 2. Fonti dati
 
@@ -184,18 +235,35 @@ impossibile.
 grid.json                                       descrittore del raster di destinazione
 catalog.json                                    variabili, intervalli, scale, colormap
 index/{var}/{kind}/{YYYY-MM}.json               ore disponibili, un file per mese
-frames/{var}/{kind}/{ref}/{YYYY-MM-DDTHH}.bin   campo, int16 gzip
-runs/{YYYY-MM-DD}/{kind}/manifest.json          contratto d'archivio del run
+frames/{var}/{kind}/{ref}/{YYYY-MM-DDTHHMM}.bin campo, int16 gzip
+runs/{data}/{kind}/{gruppo}.json                contratto d'archivio, un file per gruppo
 static/bathymetry.bin                           batimetria, scritta una volta
 static/regrid_index.npz                         indice di ricampionamento, cache
 stations/stations.json                          anagrafica
-stations/{id}/columns/{YYYY-MM}.bin             profili sigma grezzi
+stations/{id}/columns/{gruppo}/{YYYY-MM-DD}.bin profili sigma grezzi, giornalieri
 stations/{id}/obs/{YYYY-MM}.json                osservazioni misurate
 ```
 
 Convenzioni sui segnaposto: `{var}` è l'id di variabile della tabella in 4.3,
 `{kind}` è `an` o `fc`, `{ref}` è l'istante di riferimento in forma `YYYYMMDD`,
-`{YYYY-MM-DDTHH}` è l'istante valido in UTC.
+`{YYYY-MM-DDTHHMM}` è l'istante valido in UTC, `{data}` è la data del file
+sorgente in forma `YYYY-MM-DD` e `{gruppo}` è il gruppo di file sorgente
+(per esempio `his_HPDwave`).
+
+**I minuti stanno nella chiave per tutte le variabili**, comprese quelle che
+oggi hanno solo istanti orari. È una convenzione sola, senza rami. Senza
+minuti, il livello del mare in analisi (144 step da 10 minuti, vedi 4.7)
+collasserebbe su 24 chiavi: sei frame per ora si sovrascriverebbero a vicenda,
+sopravviverebbe l'ultimo scritto, e l'indice mensile (che registra l'istante
+valido al secondo) continuerebbe ad annunciarli tutti e sei. Un client che
+chiede le 01:00 riceverebbe il campo delle 01:50 senza alcun modo di
+accorgersene: è lo stesso danno della griglia cambiata (valori plausibili nel
+posto sbagliato) spostato nel tempo invece che nello spazio.
+
+Il manifest è per gruppo di file e non per run: in un giorno si lavorano più
+file sorgente diversi per tipo, e con un manifest unico un gruppo riuscito e
+uno fallito nello stesso giorno non potrebbero registrare il progresso
+parziale separatamente.
 
 Un file per frame, non un pacchetto giornaliero: i frame sono immutabili, quindi
 `Cache-Control: public, max-age=31536000, immutable`, e il client scarica solo le
@@ -235,9 +303,12 @@ L'angolo si ricompone con `atan2` a valle.
 ### 4.4 Griglia di destinazione
 
 `grid.json` definisce il raster in Web Mercator (EPSG:3857): bbox, larghezza,
-altezza, risoluzione. Alla risoluzione nativa del modello (~900 m/px) sono circa
-850 x 1.000 celle: **una texture sola, nessuna piramide di tile**, ben dentro i
-limiti GPU di qualsiasi dispositivo.
+altezza, risoluzione. Alla risoluzione di 1.200 m Mercator (circa 878 m al
+suolo a 43 gradi di latitudine, cioè la risoluzione nativa del modello ADRIAC)
+sono **858 x 844 celle**, valore reale prodotto da `build_grid()` e misurato
+contro l'archivio il 2026-08-13: **una texture sola, nessuna piramide di
+tile**, ben dentro i limiti GPU di qualsiasi dispositivo. Le dimensioni non
+vanno mai cablate: le calcola il codice dai dati.
 
 Web Mercator e non lat/lon regolare perché la mappa è una slippy map: alle nostre
 latitudini la deformazione mercatoriana sull'altezza del dominio è circa il 30%, e
@@ -252,7 +323,7 @@ Ogni run scrive:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "ingested_at": "2026-08-13T11:20:00Z",
   "ingest_version": "0.1.0",
   "source": {
@@ -265,12 +336,22 @@ Ogni run scrive:
   "grid": "grid.json",
   "frames": [
     {"var": "hwave", "valid_time": "2026-08-12T01:00:00Z",
-     "path": "frames/hwave/an/20260813/2026-08-12T01.bin",
-     "sha256": "...", "scale": 0.001, "offset": 0.0,
+     "path": "frames/hwave/an/20260813/2026-08-12T0100.bin",
+     "sha256": "...", "source_units": "meter", "scale": 0.001, "offset": 0.0,
      "min": 0.02, "max": 1.87, "nodata_count": 729412, "clipped_count": 0}
+  ],
+  "columns": [
+    {"station_id": "boa-nausicaa-2", "group": "his_cur",
+     "path": "stations/boa-nausicaa-2/columns/his_cur/2026-08-13.bin",
+     "variables": ["u_eastward", "v_northward"],
+     "shape": [24, 2, 30], "dims": ["ocean_time", "variable", "s_rho"],
+     "dtype": "int16", "scale": 0.01, "sha256": "..."}
   ]
 }
 ```
+
+`columns` è vuoto per i gruppi 2D e `frames` è vuoto per i gruppi di profilo:
+un gruppo sorgente produce l'uno o l'altro, mai entrambi.
 
 `min` e `max` per frame servono al client per la scala di colore senza dover
 scandire l'array a ogni cambio di istante. `clipped_count` è un segnale di
@@ -284,6 +365,27 @@ checksum con quello registrato nel manifest corrispondente. Uguale significa sal
 Catturati fin da subito, senza UI. Per ogni stazione, la cella di mare ADRIAC più
 vicina; per ogni ora, i 30 valori sigma di temperatura, salinità e correnti,
 salvati **grezzi**, senza conversione in metri.
+
+Un file **giornaliero per stazione e per gruppo sorgente**:
+`stations/{id}/columns/{gruppo}/{YYYY-MM-DD}.bin`. L'object storage non
+supporta l'append, quindi un file mensile andrebbe riscritto ogni giorno
+perdendo l'immutabilità. Il costo è trascurabile, circa 5,8 KB al giorno per
+stazione.
+
+**Il segmento `{gruppo}` è obbligatorio.** Le quattro variabili arrivano da tre
+file sorgente distinti (`his_temp`, `his_salt`, `his_cur`), lavorati in tre
+passaggi separati: senza quel segmento le tre scritture finiscono sullo stesso
+oggetto, marcato per giunta `immutable`, e ne sopravvive una sola. Sarebbero
+1,19 GB al giorno scaricati (la voce più grande del bilancio di banda) per poi
+buttarne tre quarti.
+
+**Le colonne si registrano nel manifest del gruppo** (vedi 4.5), con percorso,
+identificativo di stazione, ordine delle variabili, forma dell'array, ordine
+degli assi, scala e sha256. Non compaiono in nessun indice e in nessun
+catalogo, quindi il manifest è l'unico posto in cui resta scritto cosa
+contengono: senza, quel file è un blob di int16 indistinto, leggibile solo da
+chi ha sottomano il codice che lo ha prodotto. È il principio 3.5 applicato
+alla lettera.
 
 Rimandare la conversione è deliberato: `s_rho`, `Cs_r`, `hc` e la batimetria sono
 statici e già archiviati, quindi la profondità reale si ricostruisce in qualunque
@@ -312,6 +414,13 @@ sufficiente per le maree (periodo circa 12 h) e per la sessa adriatica (circa
 21,5 h il modo fondamentale, circa 10,9 h il secondo). Il dettaglio a 10 minuti
 serve alla dinamica veloce della marea meteorologica, che sul ramo previsionale ha
 scarso valore d'archivio.
+
+**Conseguenza sul layout** (vedi 4.2): tenere la piena risoluzione ha senso solo
+se i sei istanti di ogni ora finiscono su sei oggetti distinti. Per questo la
+chiave di un frame porta i minuti, `{YYYY-MM-DDTHHMM}`, per tutte le variabili e
+non solo per il livello del mare. Una chiave troncata all'ora annullerebbe in
+silenzio proprio ciò che questa sezione paga: cinque frame su sei sovrascritti,
+e il superstite annunciato dall'indice a sei orari diversi.
 
 **Conseguenza sulla UI**: il layer `sealevel` ha, in analisi, sei volte gli istanti
 degli altri. La timeline resta oraria e mostra gli istanti orari; gli step
@@ -367,8 +476,16 @@ La geometria è identica ogni giorno, quindi la corrispondenza cella Mercator ve
 cella ROMS si calcola una volta e si riusa. Cache su `static/regrid_index.npz`.
 
 Costruzione: `scipy.spatial.cKDTree` sulle **sole 121.543 celle di mare**,
-interrogato con i centri delle celle di destinazione, distanza massima 1,5 km.
+interrogato con i centri delle celle di destinazione, distanza massima **800 m**.
 Vicino più prossimo, non interpolazione.
+
+La soglia è geometrica: le celle sorgente distano 1 km fra loro, quindi
+qualunque punto interno a una cella di mare è entro 707 m dal suo centro
+(la semidiagonale). 800 m copre tutti i punti di mare legittimi e limita lo
+sbordamento sulla terraferma a meno di una cella sorgente. Una soglia più
+larga, per esempio 1,5 km, farebbe pescare un valore di mare fino a 1,5 km
+nell'entroterra, producendo una frangia colorata visibile lungo tutta la
+costa.
 
 Costruire l'albero solo sul mare garantisce che **nessun valore attraversi la
 costa**. Un'interpolazione bilineare in ingestione medierebbe celle di mare con
@@ -430,7 +547,34 @@ indistinguibili da quelli buoni.
 Difesa: l'indice memorizza lo SHA-256 delle matrici di coordinate sorgente,
 ricalcolato e confrontato a ogni run. Mismatch significa job fermo senza scrivere.
 Stesso trattamento per un cambio di unità o di nome variabile, che il manifest
-registra dal NetCDF e confronta con l'atteso.
+registra dal NetCDF e confronta con l'atteso. L'unità attesa è `source_units`
+in `FieldSpec`, che è cosa dichiara il file sorgente (`meter`), non `units`,
+che è l'unità dell'array pubblicato (`m`): sono due stringhe diverse, e per le
+componenti di direzione sono anche due grandezze diverse (gradi in ingresso,
+adimensionale in uscita). Uno scarto solleva `UnitMismatch` e ferma il run con
+uscita 2, come `GridMismatch`: un cambio di unità è silenzioso, i valori si
+riquantizzano bene e `clipped_count` può restare zero. Un nome variabile che non
+c'è più solleva `VariableMissing` e ferma il run allo stesso modo: non è un file
+storto da riprovare domani, e nessun run successivo lo rimedia da solo.
+
+**Ogni lettura di una variabile sorgente passa da `frames.read_variable`**, che è
+il punto in cui il nome assente diventa `VariableMissing`. Una lettura diretta di
+`ds.variables[...]` lo farebbe emergere come `KeyError`, che la clausola larga di
+`reconcile()` conta come fallimento passeggero: uscita 1, cioè "riprova domani",
+e il cron ritenterebbe per sempre. È già successo due volte, sui campi 2D e sulle
+colonne dei profili, quindi la regola non è affidata alla disciplina:
+`tests/test_vincoli.py` cammina l'albero sintattico del pacchetto e fallisce se
+una lettura diretta ricompare fuori da `read_variable`.
+
+**Fin dove arriva la guardia.** Il file si apre solo se vale la pena scaricarlo:
+se dimensione e data di modifica non sono cambiate, la deduplica lo salta senza
+leggerne il contenuto (vedi 5.1), quindi un cambio di contratto interno resta
+invisibile finché l'intestazione HTTP non si muove. È il compromesso deliberato
+per non riscaricare 1,9 GB al secondo run giornaliero. Perché il buco si
+materializzi servirebbe un rename che produce un file della stessa identica
+lunghezza in byte, con la stessa data di modifica: il costo è un giorno di
+ritardo nell'accorgersene, non un dato perso, perché il file resta nella finestra
+di 8 giorni e il run successivo lo riprende appena l'intestazione cambia.
 
 ### 6.2 Gli altri
 
@@ -441,7 +585,7 @@ registra dal NetCDF e confronta con l'atteso.
 | NetCDF corrotto, variabile assente | Salta quel file, gli altri proseguono. |
 | Upload interrotto a metà | I frame caricati restano (immutabili); senza manifest, il run dopo rilavora e riscrive identico. |
 | Valori fuori range int16 | Clip, conteggio nel manifest (`clipped_count`). |
-| Stazione senza cella di mare entro 1,5 km | Salta con log. Possibile per le stazioni lagunari. |
+| Stazione senza cella di mare entro 800 m | Salta con log. Possibile per le stazioni lagunari. |
 
 Nessuno richiede intervento umano: la riconciliazione li assorbe al run successivo.
 

@@ -1,12 +1,30 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-13 · **Branch:** `develop` · **Fase:** spec e piano dell'ingestore approvati e committati, implementazione da iniziare (nessun codice esiste ancora)
+**Aggiornato:** 2026-08-14 · **Branch:** `feat/ingestore` · **Fase:** ingestore completo e rivisto, processo automatico chiuso, in attesa di revisione umana e merge
+
+**Il punto esatto in cui riprendere:** la revisione umana del branch e il merge
+(4a punto 1). Il processo automatico è finito: la ri-revisione mirata è stata
+fatta il 2026-08-14 e ha chiuso tutti e 13 i rilievi, verificando per ciascuno
+che togliendo la correzione un test diventi rosso. Le tre voci che ha aperto lei
+sono state chiuse a loro volta (4c punto 3).
 
 Questo file va letto per primo. Poi:
 
-- [docs/superpowers/plans/2026-08-13-ingestore.md](docs/superpowers/plans/2026-08-13-ingestore.md), il piano da eseguire: 15 task in TDD con il codice già scritto. **È da qui che si riparte.**
-- [docs/superpowers/specs/2026-08-13-stato-del-mare-design.md](docs/superpowers/specs/2026-08-13-stato-del-mare-design.md), il design approvato: modello dati, formato del pacchetto, pipeline, architettura SPA, test. È la fonte di verità su cosa costruire.
+- [docs/superpowers/specs/2026-08-13-stato-del-mare-design.md](docs/superpowers/specs/2026-08-13-stato-del-mare-design.md), il design approvato: modello dati, formato del pacchetto, pipeline, architettura SPA, test. È la fonte di verità **su cosa costruire**, ed è allineato al codice per la parte sull'ingestore. Da leggere prima di scrivere codice nuovo, non per riprendere il lavoro in corso: per quello vale la riga qui sopra.
+- [docs/superpowers/plans/2026-08-13-ingestore.md](docs/superpowers/plans/2026-08-13-ingestore.md), il piano eseguito: 15 task in TDD. Storico, non più da eseguire. Attenzione: i frammenti di codice al suo interno sono anteriori alle correzioni della revisione finale, quindi non vanno ricopiati alla lettera.
 - `CLAUDE.md`, contesto stabile e divieti.
+
+- [docs/superpowers/revisioni/](docs/superpowers/revisioni/), i documenti della
+  revisione, portati dentro il repo il 2026-08-13 perché nascevano in
+  `.superpowers/`, che è in `.gitignore` e quindi non arriva a chi clona:
+  - `2026-08-13-ingestore-rilievi.md`, i rilievi della revisione finale (3
+    critici, 7 importanti, 3 minori) con la riproduzione di ciascuno;
+  - `2026-08-13-ingestore-correzioni.md`, cosa è stato corretto e come, con
+    l'elenco di **ciò che resta aperto**;
+  - `2026-08-13-ingestore-decisioni.md`, le **33 decisioni** prese durante
+    l'esecuzione, ognuna col motivo e col costo se è sbagliata. Serve a non
+    riaprirle da zero: se una va cambiata, si cambia sapendo cosa si sta
+    scambiando.
 
 ## 1. Cos'è il progetto
 
@@ -14,26 +32,38 @@ Mappa interattiva dello stato del mare in Adriatico dai dati pubblici ARPAE, con
 
 ## 2. Dove sta il codice e cosa fa ogni pezzo
 
-**Non esiste ancora codice.** Il repo contiene solo la spec. La struttura prevista dalla spec:
+**L'ingestore esiste ed è completo.** La SPA non è ancora iniziata.
 
 ```
 ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
   config.py       elenco variabili, endpoint, parametri di griglia
   source.py       listing ARPAE, HEAD, download verificato
-  grid.py         griglia Mercator e indice di ricampionamento
+  grid.py         griglia Mercator, indice di ricampionamento, GridMismatch
   encode.py       quantizzazione int16, gzip, direzioni in sin/cos
-  frames.py       campi 2D verso frame
+  frames.py       campi 2D verso frame, guardie sulla sorgente (UnitMismatch,
+                  VariableMissing); read_variable è l'unico punto da cui il
+                  pacchetto legge una variabile del NetCDF
   profiles.py     colonne sigma sulle stazioni
-  stations.py     parsing BUFR di realtime.jsonl
+  stations.py     parsing BUFR di realtime.jsonl, fusione dell'anagrafica
   storage.py      client R2 (boto3)
-  manifest.py     manifest di run e deduplica
+  manifest.py     manifest di run, record di frame e colonne, deduplica
   catalog.py      index/ e catalog.json
   reconcile.py    orchestratore
-web/
+  __main__.py     CLI e codici di uscita
+tests/            134 test nella suite predefinita, più 4 dietro il marcatore `rete`
+.github/workflows/
+  ci.yml          ruff e pytest su push e pull request
+  ingest.yml      ingestione giornaliera, due cron
+web/              ancora da scrivere
   src/data/       TS puro: fetch da R2, cache LRU, prefetch, scelta an/fc
   src/map/        TS puro: MapLibre, custom layer WebGL, ciclo rAF, shader
   src/ui/         React: scrubber, play/pausa, legenda, status bar
 ```
+
+**Codici di uscita della CLI**, su cui il cron decide: `0` tutto bene, `1`
+qualche file fallito o rimandato (ritentabile), `2` guasto che non si risolve
+da solo e serve un umano (griglia cambiata, unità cambiate, variabile rinominata
+o sparita, collisione fra stazioni), `3` configurazione incompleta.
 
 **Il vincolo architetturale da non rompere:** `src/data/` e `src/map/` non devono conoscere React, e React non deve mai girare a 60 fps. Il ciclo di animazione vive in `src/map/` e riporta il tempo a React al massimo 10 volte al secondo. Se questo confine salta, il framework diventa insostituibile e l'autoplay singhiozza.
 
@@ -61,6 +91,13 @@ Secondo vincolo: **`src/data/` è l'unico modulo che conosce gli URL del bucket.
 | Interpolazione temporale continua fra ore adiacenti | Il senso dell'app è l'andamento nel tempo |
 | Finestra iniziale scrubber: 48 h passate + 72 h previste | |
 | Avvisi guasti: **solo mail di GitHub Actions** | Scelta dell'utente, niente `health.json` né banner in pagina |
+| Distanza massima di ricampionamento: **800 m** (non 1,5 km come nella prima stesura della spec) | Le celle sorgente distano 1 km fra loro: 707 m (la semidiagonale) copre ogni punto interno a una cella di mare; 800 m limita lo sbordamento sulla terraferma a meno di una cella sorgente |
+| Manifest **per gruppo di file**, non per run: `runs/{data}/{kind}/{gruppo}.json` | In un giorno si lavorano più file sorgente diversi per tipo; con un manifest unico, un gruppo riuscito e uno fallito nello stesso giorno non potrebbero registrare il progresso parziale separatamente |
+| Profili stazioni **giornalieri e per gruppo sorgente**: `stations/{id}/columns/{gruppo}/{YYYY-MM-DD}.bin` (non mensili) | L'object storage non supporta l'append, quindi un file mensile andrebbe riscritto ogni giorno perdendo l'immutabilità. Giornaliero costa circa 5,8 KB al giorno per stazione. Il segmento di gruppo evita che `his_temp`, `his_salt` e `his_cur` si sovrascrivano a vicenda |
+| Le colonne si **registrano nel manifest del gruppo** (percorso, stazione, variabili, forma, assi, scala, sha256) | Non compaiono in nessun indice né catalogo: senza il record nel manifest sono blob di int16 illeggibili senza il codice che li ha scritti |
+| Download sorgente: **3 tentativi con attesa crescente**, file parziale cancellato prima di ogni nuovo tentativo | Un errore passeggero a metà di un download da quasi 2 GB non deve costare l'intero run; senza la cancellazione, lo sha256 verrebbe calcolato su byte incompleti |
+| Batimetria pubblicata **solo quando si incontra il primo file 3D** (`his_temp`), scala 0,1 | Non sta nei file d'onda. Con scala 0,01 il fondoscala sarebbe 327 m e il bacino meridionale (fino a 1.245,9 m) verrebbe tosato in silenzio; si solleva un errore se `clipped_count` non è zero |
+| Dimensioni griglia reali: **858 x 844 celle** a 1.200 m Mercator, misurate contro l'archivio il 2026-08-13 | Non sono cablate: le produce `build_grid()` dai dati sorgente e finiscono in `grid.json` |
 
 **Divieti espliciti:**
 
@@ -72,7 +109,9 @@ Secondo vincolo: **`src/data/` è l'unico modulo che conosce gli URL del bucket.
 
 ### 4a. Blocca il resto, e solo l'utente può farlo
 
-1. **Push del repo su GitHub.** `origin` è configurato (`git@github.com:madAle/stato_del_mare.git`) ma non è mai stato raggiunto: `origin/develop` non esiste. I due commit sono solo locali.
+1. **Merge del branch `feat/ingestore`.** È stato pushato il 2026-08-13 e attende
+   la ri-revisione mirata (4c punto 3) e la revisione umana. GitHub propone la
+   pull request a `https://github.com/madAle/stato_del_mare/pull/new/feat/ingestore`.
 2. **Rendere il repo pubblico.** Su repo pubblici i minuti di GitHub Actions sono illimitati, e questo progetto scarica circa 1,9 GB al giorno. Su repo privato i 2.000 minuti mensili gratuiti diventano un vincolo.
 3. **Account Cloudflare, bucket R2, API token, accesso pubblico in lettura, CORS.** Senza credenziali R2 l'ingestore non ha dove scrivere e non si può testare oltre i test unitari.
 
@@ -84,27 +123,67 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-1. **Eseguire il piano dell'ingestore**, con `superpowers:subagent-driven-development` (un subagente per task, revisione in mezzo) oppure `superpowers:executing-plans` (in sessione, a lotti). Il piano ha 15 task, ognuno con test, codice e commit già scritti.
-2. **Allineare la spec** alle correzioni, seguendo la checklist in coda al piano.
-3. **Il piano della SPA**, da scrivere solo *dopo* che l'ingestore gira: così lo si scrive contro dati osservabili su R2 invece che contro una specifica.
+1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 134 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
+2. ~~Allineare la spec alle correzioni~~. **Fatto**: le correzioni emerse eseguendo il piano e quelle della revisione finale (sezioni 4.2, 4.5, 4.6, 4.7 e 6.1) sono state applicate alla spec.
+3. ~~Ri-revisione mirata delle 14 correzioni~~. **Fatto il 2026-08-14**: 13
+   rilievi su 13 chiusi, ognuno verificato rimettendo il difetto e guardando la
+   suite diventare rossa sul test scritto per quel rilievo. Le tre voci che la
+   ri-revisione ha aperto sono state chiuse subito dopo, in tre commit separati:
+   - il rename di una variabile sorgente usciva **1** invece di 2, cioè "riprova
+     domani", e il cron avrebbe ritentato per sempre mentre la finestra di 8
+     giorni scorreva via. Emergeva da due punti diversi, non uno: a bucket vuoto
+     dalla maschera di mare, a regime dalla lettura delle unità;
+   - `ColumnRecord.from_dict` non era eseguita da nessun test;
+   - lo stesso rename nelle variabili di profilo usciva ancora 1.
 
-**Cinque correzioni alla spec, applicate dal piano ma non ancora dalla spec.** Le prime tre sono emerse decomponendo i task, le ultime due dall'autorevisione del piano:
+   Chiuso anche il problema di fondo che le tre voci avevano in comune: tutte le
+   letture della sorgente passano ora da `frames.read_variable`, e
+   `tests/test_vincoli.py` cammina l'albero sintattico del pacchetto e fallisce
+   se una lettura diretta ricompare. La regola non è più affidata alla
+   disciplina di chi scrive.
+4. **Revisione umana e merge del branch dell'ingestore**, poi il primo deploy su R2.
+5. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
+6. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
+   discrete sui gradini del codice stato del mare WMO. Richiesta del 2026-08-13,
+   dettaglio e riferimento misurato nella sezione 1 della spec. Va con la SPA,
+   non prima: non tocca l'ingestore.
 
-| Punto spec | Cosa dice | Cosa va corretto e perché |
-|---|---|---|
-| §5.2, soglia di ricampionamento | 1,5 km | Va portata a circa **800 m**. Le celle sorgente distano 1 km, quindi qualunque punto interno a una cella di mare è entro 707 m dal suo centro (semidiagonale). Con 1,5 km i pixel di destinazione fino a 1,5 km nell'entroterra pescherebbero un valore di mare, producendo una frangia colorata visibile lungo tutta la costa. 800 m copre tutti i punti di mare legittimi e limita lo sbordamento a meno di una cella sorgente. |
-| §4.2, percorso dei manifest | `runs/{data}/{kind}/manifest.json` | Serve **un manifest per gruppo di file**: `runs/{data}/{kind}/{gruppo}.json`. In un giorno si lavorano 6 file sorgente diversi per tipo; con un manifest unico, se HPDwave riesce e temp fallisce non si può registrare il progresso parziale. |
-| §4.6, profili stazioni | `stations/{id}/columns/{YYYY-MM}.bin` | Vanno **giornalieri**: `{YYYY-MM-DD}.bin`. L'object storage non supporta l'append, quindi un file mensile andrebbe riscritto ogni giorno perdendo l'immutabilità. Giornaliero sono circa 5,8 KB per stazione. |
-| §6.2, tentativi ripetuti | "3 tentativi con backoff" | La spec lo prescrive ma nessun task lo implementava. Aggiunto in `source.py` con attesa crescente, e con la cancellazione del file parziale prima di ogni nuovo tentativo: senza, lo sha256 verrebbe calcolato su byte incompleti. |
-| §4.2, `static/bathymetry.bin` | elencato nel layout | Nessun task lo scriveva. La batimetria sta **solo nei file 3D**, non in quelli d'onda, quindi si pubblica quando si incontra il primo `his_temp`. Attenzione alla scala: con 0,01 il fondoscala sarebbe 327 m e tutto il bacino meridionale (fino a 1.246 m) verrebbe tosato in silenzio. Il piano usa 0,1 e solleva un errore se `clipped_count` non è zero. |
+**Cosa le correzioni hanno lasciato aperto di proposito** (dettaglio in
+`docs/superpowers/revisioni/2026-08-13-ingestore-correzioni.md`, sezione "Cosa
+non ho fatto"):
 
-Inoltre le dimensioni della griglia in §4.4 ("circa 850 x 1.000 celle") sono una stima. Il calcolo reale: il bbox in Mercator è circa 1.029 x 1.053 km, quindi a risoluzione 1.200 m Mercator (che a 43 gradi di latitudine corrisponde a circa 878 m al suolo) vengono **circa 858 x 878 celle**. Le dimensioni esatte le deve produrre `build_grid()` e finire in `grid.json`, non essere cablate.
+- ~~I 4 test di rete non sono stati eseguiti dopo le correzioni~~. **Fatto**:
+  eseguiti il 2026-08-14 contro l'archivio ARPAE reale, 4 verdi.
+- **La deduplica salta il file senza aprirlo** quando dimensione e data di
+  modifica non sono cambiate. È una scelta deliberata per non riscaricare
+  1,9 GB al secondo run giornaliero, ma restringe la portata delle guardie
+  6.1: un cambio di contratto interno al file resterebbe invisibile finché
+  l'intestazione HTTP non si muove. Perché il buco si materializzi servirebbe
+  un rename che produce un file della stessa identica lunghezza in byte con la
+  stessa data: il costo è un giorno di ritardo nell'accorgersene, non un dato
+  perso, perché il file resta nella finestra.
+- **Descrittori di griglia versionati**: la spec 4.4 promette `grid_v2.json`, il
+  codice non lo sa fare. Divergenza nota fra spec e codice.
+- **`--only` su una variabile fuori dal gruppo di riferimento non può
+  funzionare** (l'indice si costruisce solo nel ramo del gruppo di riferimento).
+  Difetto preesistente: prima rimandava in silenzio uscendo 0, adesso lo dichiara
+  e esce 1. Chi prova `--only ubar` come primo comando lo incontra.
+- **Il file di riferimento si scarica due volte per run**, circa 23 MB.
+- **Il piano non è stato aggiornato** e contiene frammenti anteriori alle
+  correzioni: rieseguirlo alla lettera reintrodurrebbe due dei tre critici.
+- **La fusione dell'anagrafica conserva le coordinate esistenti**: se ARPAE
+  spostasse davvero una boa, il sistema userebbe la posizione vecchia e nessun
+  log lo direbbe. Scelta coerente con un archivio permanente, ma il caso "boa
+  realmente spostata" oggi si risolve solo a mano.
 
 **Cosa il piano lascia fuori di proposito.** Le osservazioni misurate dalle boe (`stations/{id}/obs/{YYYY-MM}.json` in §4.2). ARPAE le conserva in `opendata/osservati/meteo/storico/` dal 2006, quindi **non sono deperibili**: si recuperano in qualunque momento. Il principio "l'ingestione è golosa" nasce dalla finestra di 8 giorni di ADRIAC e vale solo per ciò che ARPAE cancella. L'ingestore costruisce comunque l'anagrafica delle stazioni, che serve ai profili.
 
 ## 5. Comandi
 
-Nessun comando di build esiste ancora. Questi sono i comandi di ispezione usati per verificare le fonti, utili per ricontrollare senza rifare le scoperte:
+I comandi di verifica del codice stanno in fondo, nella sezione 7. Non esiste
+ancora nessun comando di build, perché la SPA non è iniziata.
+
+Questi sono invece i comandi di ispezione usati per verificare le fonti, utili per ricontrollare senza rifare le scoperte:
 
 ```bash
 # elenco dei file disponibili nella finestra ADRIAC (8 giorni)
@@ -169,12 +248,15 @@ curl -s -L "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtim
 ## 7. Stato git
 
 - Repo unico: `/Users/ale/source/personal/stato_del_mare`
-- Branch: `develop` (nessun `main` locale)
-- Working tree pulito
-- Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`
-- **`origin/develop` non esiste: il repo non è mai stato pushato.**
+- Branch corrente: `feat/ingestore`, che parte da `develop` (nessun `main` locale)
+- Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`, con `origin/develop` e `origin/feat/ingestore` presenti
+- **`feat/ingestore` è pushato e allineato** (verificato il 2026-08-13: nessun commit locale in più), **ma non è ancora unito.**
+- Sul disco resta `.superpowers/sdd/2026-08-13-ingestore/` (escluso da git): registro di esecuzione e brief dei task. I documenti che contano sono già stati copiati in `docs/superpowers/revisioni/`, quindi quella cartella si può cancellare quando il branch è unito.
 
-```
-add3603  docs: livello del mare a piena risoluzione in analisi
-0c74784  docs: design di Stato del Mare
+Comandi di verifica prima del merge:
+
+```bash
+uv run ruff check .
+uv run pytest            # suite predefinita, i test di rete restano esclusi
+uv run pytest -m rete    # coerenza contro l'archivio ARPAE, scarica circa 23 MB per test
 ```
