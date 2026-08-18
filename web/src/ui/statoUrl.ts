@@ -26,15 +26,19 @@ export function leggiStatoUrl(ricerca: string): StatoUrl {
     }
   }
 
-  // variabile: stringa come e' (nessuna validazione)
-  const variabile = params.get("var");
+  // variabile: stringa non vuota, null se assente o vuota
+  let variabile: string | null = null;
+  const varStr = params.get("var");
+  if (varStr) {
+    variabile = varStr;
+  }
 
-  // zoom: numero intero
+  // zoom: numero finito (MapLibre supporta zoom frazionari)
   let zoom: number | null = null;
   const zStr = params.get("z");
   if (zStr) {
     const parsed = Number(zStr);
-    if (!isNaN(parsed) && Number.isInteger(parsed)) {
+    if (Number.isFinite(parsed)) {
       zoom = parsed;
     }
   }

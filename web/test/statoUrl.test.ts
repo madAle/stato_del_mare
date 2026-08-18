@@ -28,4 +28,33 @@ describe("stato nell'URL", () => {
     };
     expect(leggiStatoUrl(scriviStatoUrl(stato))).toEqual(stato);
   });
+
+  it("lo zoom frazionario (naturale di MapLibre) si conserva", () => {
+    const stato = {
+      istante: Date.parse("2026-08-13T14:00:00Z"),
+      variabile: "hwave", zoom: 10.4, centro: [44.21, 12.48] as [number, number],
+    };
+    expect(leggiStatoUrl(scriviStatoUrl(stato))).toEqual(stato);
+  });
+
+  it("le coordinate negative si conservano", () => {
+    const stato = {
+      istante: Date.parse("2026-08-13T14:00:00Z"),
+      variabile: "hwave", zoom: 8, centro: [44.21, -12.48] as [number, number],
+    };
+    expect(leggiStatoUrl(scriviStatoUrl(stato))).toEqual(stato);
+  });
+
+  it("l'istante con minuti diversi da zero si conserva", () => {
+    const stato = {
+      istante: Date.parse("2026-08-13T14:23:45Z"),
+      variabile: "hwave", zoom: 8, centro: [44.21, 12.48] as [number, number],
+    };
+    expect(leggiStatoUrl(scriviStatoUrl(stato))).toEqual(stato);
+  });
+
+  it("la variabile vuota diventa null, non stringa vuota", () => {
+    const s = leggiStatoUrl("?var=");
+    expect(s.variabile).toBeNull();
+  });
 });
