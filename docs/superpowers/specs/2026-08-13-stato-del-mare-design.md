@@ -75,6 +75,62 @@ worker, con cache per fotogramma e insieme di soglie. Mai nel ciclo a 60 fps.
 stesso codice di etichettatura delle isobate della batimetria (7.5), che sono
 statiche: si scrive una volta là e la seconda funzionalità costa quasi niente.
 
+### Stima della corrente nei canali di Comacchio
+
+Richiesta dell'utente il 2026-08-18. Le Valli di Comacchio fanno da cassa di
+espansione e sfasano la marea: quando il mare e' al colmo c'e' ancora forte
+corrente nei canali di collegamento, e viceversa alla bassa. L'obiettivo e'
+stimare quella corrente nel portocanale di Porto Garibaldi e nel canale
+Logonovo.
+
+**La fisica, e perche' l'intuizione e' corretta.** La corrente nel canale non e'
+mossa dalla marea ma dal dislivello fra le due estremita'. Misurato sul flusso
+in tempo reale il 2026-08-18, su 5,7 ore in comune fra i due sensori:
+
+| | escursione |
+|---|---|
+| mare, Porto Garibaldi | 23,5 cm |
+| valle, Bellocchio | 2,0 cm |
+
+La valle si muove il **9%** del mare. Con la valle quasi ferma, il dislivello e'
+massimo proprio quando il mare e' al colmo o al minimo, e la stanca cade dove il
+mare attraversa il livello della valle. E' il modello della laguna a bocca
+ristretta: forte attenuazione implica forte sfasamento.
+
+**Cosa e' disponibile**, verificato contro la tabella DB-All.e di ARPA-SIMC:
+
+| Stazione | Codice | Grandezza | Passo |
+|---|---|---|---|
+| Porto Garibaldi | `B22037` | Tidal elevation w.r.t. national land datum, m | 10 min |
+| Porto Garibaldi Encoder | `B22037` | idem, secondo strumento indipendente | 10 min |
+| Bellocchio | `B13215` | River level, m | 10 min |
+| Logonovo, Manufatto, Punta Volano, Gorino 2 | `B22062`, `B22043`, `B13080`, `B13083`, `B13231` | salinita', temperatura, pH, ossigeno | circa oraria |
+
+I due strumenti di Porto Garibaldi concordano entro 2 cm: e' ridondanza utile per
+accorgersi di una deriva.
+
+**Il modello**, a un parametro solo: la portata segue `Q = k * sqrt(|dh|) *
+segno(dh)`, con `k` che raccoglie sezione e attrito e si calibra sui dati; la
+continuita' sulla valle chiude il conto.
+
+**Tre trappole.**
+
+1. **Gli zeri sono diversi.** `B22037` e' riferito allo zero nazionale, `B13215`
+   a uno zero idrometrico locale. Il dislivello medio misurato, +24,4 cm, e'
+   quasi tutto scarto di riferimento: preso per buono, il modello direbbe che
+   l'acqua esce sempre. Va calibrato, per esempio imponendo flusso netto nullo
+   su un mese.
+2. **Logonovo non ha idrometro.** Ha pero' la salinita', che nel campione oscilla
+   fra 16,8 e 20,5 parti per mille: quell'escursione e' lo scambio col mare, e
+   da' il verso e la fase anche senza dare la portata.
+3. **Il campione era di agosto, in quadratura.** 23 cm di escursione sono pochi
+   per calibrare: il segnale e' molto piu' leggibile in autunno.
+
+**Non c'e' fretta di ingerire.** A differenza di ADRIAC, che cancella dopo 8
+giorni, ARPAE conserva l'osservato dal 2006 in
+`opendata/osservati/meteo/storico/`. Quando si affrontera' la funzionalita' ci
+saranno anni di livelli a 10 minuti da cui calibrare, invece di poche ore.
+
 ### Il riferimento ARPAE, misurato il 2026-08-13
 
 Widget Leaflet a `apps.arpae.it/widgets/meteo-mare-mappe-previsione/`, alimentato

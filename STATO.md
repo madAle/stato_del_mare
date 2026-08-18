@@ -149,7 +149,12 @@ Niente.
    primo collaudo del sistema: fin qui l'ingestore ha scritto solo su bucket
    finti nei test e su nessun bucket vero.
 6. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
-7. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
+7. **Stima della corrente nei canali di Comacchio** dal dislivello fra Porto
+   Garibaldi e Bellocchio, entrambi a passo di 10 minuti. Richiesta del
+   2026-08-18, dettaglio e misure nella sezione 1 della spec. Richiede un
+   secondo percorso di ingestione per l'osservato, che non e' deperibile
+   (archivio ARPAE dal 2006), quindi non ha fretta.
+8. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
    discrete sui gradini del codice stato del mare WMO. Richiesta del 2026-08-13,
    dettaglio e riferimento misurato nella sezione 1 della spec. Va con la SPA,
    non prima: non tocca l'ingestore.
