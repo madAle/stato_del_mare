@@ -797,11 +797,18 @@ Il campo si disegna solo in mare, ritagliato sulla linea di costa reale e non su
 quella del modello. Servono due regole distinte, trovate misurando il 2026-08-18
 (prima erano entrambe assenti e il campo copriva fino a 2 km di terraferma).
 
-**Regola 1, il campione piu' vicino.** La miscelazione pesata dei quattro vicini
-deve dipingere solo se il campione **piu' vicino** e' valido. Usando "uno
-qualunque dei quattro" il campo si allarga di una cella intera oltre il proprio
-bordo, cioe' 1.200 m di terra colorata con un dato che li' non esiste. Misurato:
-il centro di Cervia risultava dipinto mentre la sua cella e' `nodata`.
+**Regola 1, un nucleo continuo invece dei quattro vicini.** Il valore e' la media
+pesata dei soli campioni validi entro due celle, con un nucleo che si annulla con
+derivata nulla al proprio bordo e una finestra centrata sulla cella piu' vicina.
+La finestra si centra con `round` e non con `floor`: con `floor` scivola di una
+cella nel momento in cui il frammento attraversa un confine, e i campioni ai
+margini entrano e escono di colpo. Cosi' nessuna grandezza salta passando da una
+cella all'altra.
+
+Una prima stesura mediava i quattro vicini e dipingeva se **uno qualunque** era
+valido: il campo si allargava di una cella intera oltre il proprio bordo, cioe'
+1.200 m di terra colorata con un dato che li' non esiste. Misurato: il centro di
+Cervia risultava dipinto mentre la sua cella e' `nodata`.
 
 **Regola 2, la maschera di costa come campo di distanza.** Un'immagine statica
 che per ogni punto porta la **distanza con segno dalla costa**, positiva in mare
@@ -813,15 +820,53 @@ non dice **dove** passi il confine dentro il texel, quindi interpolandola restan
 i gradini. Interpolando la distanza il confine si ricostruisce dentro il texel,
 ed e' la stessa ragione per cui un font SDF resta nitido ingrandito.
 
-Misure della prima generazione, da GSHHG a risoluzione piena (`GSHHS_f_L1`):
+**La distanza si misura dai segmenti della costa, non da una maschera
+rasterizzata.** Questa riga e' costata due generazioni dell'asset. La prima era
+la trasformata di distanza di una maschera a 240 m, e sembrava la stessa cosa:
+e' un campo di distanza, si interpola, il commento nel codice citava perfino i
+font SDF. Ma una trasformata di distanza su maschera **non conosce nessun valore
+sotto il texel**. Misurato sull'asset di prima generazione: sotto i 500 m
+esistevano quattro valori in tutto, cioe' 240, 339, 480 e 537, che sono un texel,
+la sua diagonale e i loro multipli, e **nessun valore sotto i 240 m**.
+L'informazione sub-texel era stata distrutta prima che lo shader la vedesse, e
+il livello zero era la scaletta della rasterizzazione: nessuna interpolazione la
+raddrizza. A ingrandimento 14 la riva di Unije aveva gradini lunghi 68 pixel.
+
+Con la distanza dai segmenti, sotto i 500 m i valori distinti diventano 223.821 e
+il minimo non nullo 0,12 m. Sulla stessa vista il gradino piu' lungo scende da 68
+a 7 pixel, e i gradini da 20 pixel in su, che erano l'1,1% del bordo, spariscono.
+
+**Il segno si prende dalla parita' degli attraversamenti**, non dalla giacitura
+del segmento piu' vicino. La giacitura sbaglia sui vertici concavi e su ogni
+anello orientato al contrario, e sbaglia su **pixel isolati in mezzo a pixel
+giusti**, cioe' nel modo che guardando il risultato non si nota. La parita' e'
+esatta per costruzione; il raggio deve contare anche gli attraversamenti fuori
+dal riquadro, quindi i poligoni si filtrano per latitudine e mai per riquadro.
+
+La verifica incrociata ha misurato anche il difetto della prima generazione: il
+segno nuovo coincide con quello vecchio **esattamente**, zero pixel di
+differenza, oltre i 240 m dalla costa, e discorda nel 47% dei casi sotto i 120 m.
+E' la firma di uno scarto di mezzo texel verso il mare: la vecchia maschera
+gonfiava la terraferma di 120 m lungo tutte le coste, ed era quello il bordo di
+mare non dipinto che circondava le isole.
+
+Ricetta e trappole stanno in `strumenti/costa_sdf.py`, che va eseguito una volta
+sola: la costa non cambia.
+
+Misure dell'asset in uso, da GSHHG a risoluzione piena (`GSHHS_f_L1`):
 
 | | |
 |---|---|
 | Griglia | 4290 x 4220, cioe' 5 volte il dato, 240 m |
 | Riquadro | identico a quello del dato, quindi stesse coordinate di texture |
-| Codifica | distanza limitata a 2 km e quantizzata in 8 bit, passo 15,7 m |
-| Peso | **0,41 MB** in PNG: oltre i 2 km il campo e' saturo e si comprime a niente |
+| Metodo | distanza dai segmenti infittiti a 40 m, segno per parita' |
+| Codifica | distanza limitata a 1,6 km e quantizzata in 8 bit, passo 6,3 m |
+| Peso | **0,47 MB** in PNG: oltre il fondoscala il campo e' saturo e si comprime a niente |
 | Formato in GPU | `R8` con filtraggio `LINEAR`, a differenza del dato che e' intero |
+
+Il fondoscala e' sceso da 2 km a 1,6 km apposta: il byte e' lo stesso e il passo
+di quantizzazione scende da 15,7 a 6,3 m, che e' quello che serve vicino a riva.
+Lontano da riva il valore non serve a niente.
 
 **Perche' non lisciare il bordo del dato invece di portare la costa da fuori.**
 Uno splining del contorno a 1.200 m produrrebbe una curva morbida che passa dove
@@ -829,11 +874,11 @@ passa quella a gradini: stessa posizione sbagliata, aspetto piu' convincente.
 ADRIAC ha celle da 1 km e non sa dov'e' la costa meglio di cosi'; l'informazione
 va presa da una fonte che ce l'ha.
 
-**Cosa resta visibile, ed e' giusto che resti.** Attorno alle isole piccole il
-modello non ha celle di mare entro la distanza di ricampionamento, quindi non
-c'e' dato e non si disegna niente. Il bordo di quell'assenza resta a gradini di
-1.200 m. Non va ammorbidito: e' assenza di dato, e ammorbidirla vorrebbe dire
-disegnare qualcosa che non abbiamo.
+**Cosa resta visibile, ed e' giusto che resti.** Dove il modello non ha celle di
+mare, per esempio davanti alla foce del Reno per 3,6 km, non c'e' dato e non si
+disegna niente. Quella striscia resta scoperta: e' assenza di dato, e riempirla
+vorrebbe dire disegnare qualcosa che non abbiamo. Quello che si sfuma e' il
+**bordo** dell'assenza, non l'assenza.
 
 **Il bordo del dato si sfuma, non si estende.** Il modello ha celle da 1 km e
 considera terra tutta la fascia costiera, e l'ingestore riempie solo entro 800 m
@@ -854,33 +899,50 @@ Misurata il 2026-08-18 sul frame del 16 agosto:
 **Decisione: si sfuma, non si allarga.** Il campo abbassa l'opacita' dove il dato
 si dirada. Non inventa valori: dichiara che li' il dato sta finendo.
 
-**L'opacita' misura quanto si sta estrapolando, non quanto e' affollato il
-vicinato.** Seconda correzione, 2026-08-18. Sfumare in base alla **densita'** di
-dato intorno al pixel sembra equivalente e non lo e': penalizza i filamenti
-larghi una cella, che sono dato vero al cento per cento, e li fa comparire a
-perline dove per caso superano la soglia. Erano quelle le chiazze a rombo davanti
-al delta del Po, e la misura lo ha dimostrato: il dato di tutto il dominio e' un
-**unico blocco connesso**, zero isole, quindi le perline non potevano essere dato
-isolato.
+**L'opacita' misura quanto si sta estrapolando: la distanza dal BORDO del dato.**
+Qui ci sono voluti tre tentativi, e i primi due sbagliavano per la stessa
+ragione, cioe' misuravano una cosa che dipende da dove cadono i **campioni**
+invece che da dove finisce il **dato**.
 
-La grandezza giusta e' la **distanza dal campione valido piu' vicino**: zero
-dentro il dato (anche su un filamento sottile), crescente fuori. L'opacita' e'
-piena a distanza zero e si spegne a due celle. Cosi' il campo dichiara quanto si
-sta allontanando dal dato, che e' l'informazione che il lettore deve avere.
+Il primo tentativo sfumava in base alla **densita'** di dato intorno al pixel.
+Penalizza i filamenti larghi una cella, che sono dato vero al cento per cento, e
+li fa comparire a perline dove per caso superano la soglia: erano quelle le
+chiazze a rombo davanti al delta del Po. La misura lo ha dimostrato invece di
+suggerirlo, perche' il dato del dominio e' un **unico blocco connesso**, zero
+isole, quindi le perline non potevano essere dato isolato.
 
-**La copertura va calcolata con gli stessi pesi continui del valore.** Prima
-stesura sbagliata, corretta il 2026-08-18 dopo averla vista: contando i vicini
-validi sul texel piu' vicino, l'opacita' resta **costante dentro ogni cella**, e
-il risultato sono riquadri da 1.200 m di tonalita' diversa lungo tutta la costa.
-Al largo il difetto non si vede, perche' li' comanda il valore, che e'
-interpolato; sotto costa comanda l'opacita', ed e' li' che i quadrettoni
-compaiono. La regola generale: **qualunque grandezza che finisce a schermo deve
-dipendere con continuita' dalla posizione dentro la cella**, non solo il valore.
+Il secondo tentativo usava la **distanza dal campione valido piu' vicino**, e il
+ragionamento sembrava chiuso: zero dentro il dato anche su un filamento sottile,
+crescente fuori, continua nella posizione dentro la cella. Sbagliato, e il difetto
+si vedeva su tutto il mare aperto. Dentro il dato quella distanza **e' la
+distanza dal centro del texel piu' vicino**: continua si', ma **periodica**, con
+il passo della griglia. Ogni cella diventava un punto pieno che sfumava verso i
+propri angoli, cioe' una scacchiera da un capo all'altro dell'Adriatico. Continuo
+e periodico resta visibile: la continuita' non bastava, serviva che la grandezza
+fosse **costante** dentro il dato.
 
-In pratica: nucleo a tenda di raggio 2,5 celle, i cui pesi dipendono dalla
-posizione frazionaria; la copertura e' la frazione di peso che cade su celle
-valide. Il valore invece resta mediato stretto sui soli quattro vicini, per non
-spalmare il campo su cinque celle e perdere i dettagli veri.
+La misura giusta e' la **distanza con segno dal bordo del dato**, che vale il
+massimo dappertutto dentro e cala solo uscendo. Si porta con un secondo campo di
+distanza, costruito come quello della costa ma sulla maschera del modello. Non e'
+un costo ricorrente: la maschera di terra del modello **non cambia da un frame
+all'altro**, quindi e' un file statico per gruppo di variabili, non per istante.
+
+L'opacita' e' piena fino a 600 m oltre l'ultima cella di dato e si spegne a 1,8
+km, cioe' esattamente dove finisce la portata del nucleo che calcola il valore:
+le due distanze vanno tenute uguali, se no il campo si spegne mentre ha ancora
+valore da mostrare, o peggio si taglia di netto mentre e' ancora visibile.
+
+Verifica: su una vista di mare aperto tutto valido, dipingendo un colore costante
+per separare l'opacita' dal dato, lo scarto della luminosita' e' **0,000** e il
+picco dello spettro e' **0,000**. La scacchiera non puo' tornare perche'
+nell'espressione dell'opacita' non compare piu' nessun termine legato al reticolo.
+
+**La regola generale che vale oltre questo caso.** Qualunque grandezza che
+finisce a schermo deve dipendere dalla posizione **solo attraverso il campo che
+si vuole mostrare**. Se dipende anche da dove cadono i campioni, il reticolo si
+vede: come blocchi se e' costante dentro la cella, come scacchiera se e' continua
+ma periodica. La prima forma si nota subito, la seconda no, e sopravvive alle
+revisioni proprio per questo.
 
 Le ragioni, in ordine di peso. **La sfumatura serve comunque**: allargando si
 copre meta' della frangia, e l'altra meta' e' acqua che il modello non simula

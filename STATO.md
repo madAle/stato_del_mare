@@ -341,22 +341,38 @@ parti per mille, cioè acqua dolce, dove la colonna del modello marino non
 significa niente. Logonovo e Bellocchio restano fuori per distanza e non sono
 nominati.
 
-**Non solo il valore: anche l'opacita' deve variare con continuita' dentro la
-cella.** Sfumando il bordo del dato con un conteggio dei vicini fatto sul texel
-piu' vicino, l'opacita' resta costante dentro ogni cella e lungo la costa
-compaiono riquadri da 1.200 m di tonalita' diverse. Al largo non si vedono
-perche' li' comanda il valore, che e' interpolato. Regola: qualunque grandezza
-che finisce a schermo va calcolata con pesi continui, non per cella.
+**Nessuna grandezza a schermo deve dipendere da dove cadono i campioni.** Tre
+tentativi, tre difetti diversi, la stessa causa. Contando i vicini validi sul
+texel piu' vicino, l'opacita' resta costante dentro la cella e lungo la costa
+compaiono riquadri da 1.200 m. Sfumando in base alla densita' del vicinato, i
+filamenti larghi una cella (dato vero) compaiono a perline: erano i rombi davanti
+al delta. Usando la distanza dal campione valido piu' vicino, che dentro il dato
+e' la distanza dal centro del texel, l'opacita' diventa **periodica** e disegna
+una scacchiera su tutto il mare aperto. Regola: l'opacita' si misura sulla
+distanza dal **bordo** del dato, che dentro e' costante. E il difetto continuo ma
+periodico e' il piu' pericoloso dei tre, perche' non salta all'occhio come un
+blocco e sopravvive alle revisioni.
 
 **Il campo va ritagliato sulla costa vera, non su quella del modello.** Senza
 ritaglio copriva fino a 2 km di terraferma, per due cause sommate: lo shader che
 dipingeva se **uno qualunque** dei quattro vicini era valido (1.200 m), e gli 800
 m di sbordamento che l'ingestore mette di proposito. Il ritaglio si fa con una
-maschera di **distanza con segno** dalla costa (GSHHG a risoluzione piena, 240 m,
-0,41 MB), non con una maschera binaria: interpolando la distanza il confine si
-ricostruisce dentro il texel e resta liscio a ogni zoom. Lisciare il bordo del
-dato invece non serve: sposterebbe una curva morbida dove passa quella sbagliata.
-Dettaglio nella spec 7.3.
+maschera di **distanza con segno** dalla costa, non con una maschera binaria.
+Dettaglio nella spec 7.3, ricetta in `strumenti/costa_sdf.py`.
+
+**Un campo di distanza costruito su una maschera rasterizzata non e' un campo di
+distanza.** La prima generazione dell'asset era la trasformata di distanza di una
+maschera a 240 m, e passava per buona: si interpola, e' continua, il commento nel
+codice citava perfino i font SDF. Ma sotto i 500 m conteneva **quattro valori in
+tutto** (240, 339, 480, 537) e **nessuno sotto i 240 m**: l'informazione
+sub-texel era gia' distrutta, il livello zero era la scaletta della
+rasterizzazione, e a zoom 14 la riva di Unije aveva gradini di 68 pixel.
+Misurando la distanza dai **segmenti** i valori distinti sotto i 500 m diventano
+223.821 e il gradino piu' lungo scende a 7 pixel. In piu' la vecchia maschera era
+sfalsata di mezzo texel verso il mare, cioe' gonfiava la terraferma di 120 m su
+tutte le coste: era quello il bordo di mare non dipinto attorno alle isole.
+Diagnosi in una riga: **istogramma dei valori vicino allo zero**. Se sono pochi e
+discreti, viene da una maschera.
 
 **La y di MapLibre cresce verso sud, la riga 0 del frame e' a nord.** Senza un
 ribaltamento esplicito nella coordinata di texture il campo si disegna capovolto,
