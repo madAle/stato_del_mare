@@ -81,6 +81,18 @@ describe("trovaImportReact", () => {
     expect(trovaImportReact(testo).length).toBeGreaterThan(0);
   });
 
+  it("riconosce l'import dinamico con backtick", () => {
+    // import() accetta qualunque espressione fra le parentesi: un template
+    // literal senza interpolazione e' sintassi valida ed eseguibile
+    const testo = "const m = await import(`react`);";
+    expect(trovaImportReact(testo).length).toBeGreaterThan(0);
+  });
+
+  it("riconosce require con backtick", () => {
+    const testo = "const m = require(`react`);";
+    expect(trovaImportReact(testo).length).toBeGreaterThan(0);
+  });
+
   it("riconosce un sottopercorso come react-dom/client", () => {
     const testo = 'import { createRoot } from "react-dom/client";';
     expect(trovaImportReact(testo).length).toBeGreaterThan(0);

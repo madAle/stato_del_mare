@@ -6,29 +6,43 @@
  * ognuna delle forme che un import puo' prendere.
  */
 
-const MODULO = `["'](?:react|react-dom)(?:/[^"']*)?["']`;
+// import statico e re-export: la grammatica di ES pretende una StringLiteral
+// dopo "from", quindi qui il backtick non e' un varco ma un errore di
+// sintassi. Ammettere solo apici singoli e doppi e' corretto, non un caso
+// dimenticato.
+const MODULO_STATICO = `["'](?:react|react-dom)(?:/[^"']*)?["']`;
+
+// import() e require() invece accettano qualunque espressione fra le
+// parentesi, quindi un template literal senza interpolazione, per esempio
+// import(`react`), e' sintassi valida ed eseguibile: il backtick va accettato
+// anche qui. Il gruppo catturante forza la stessa virgoletta in apertura e
+// chiusura, per non accoppiare per esempio "react` per errore.
+const MODULO_DINAMICO = `(["'\`])(?:react|react-dom)(?:/[^"'\`]*)?\\1`;
 
 const FORME: ReadonlyArray<{ nome: string; espressione: RegExp }> = [
   {
     // import statico, anche andato a capo: un formatter lo spezza su piu'
-    // righe appena gli specificatori superano la larghezza di riga
+    // righe appena gli specificatori superano la larghezza di riga.
+    // Include "import type { X } from 'react'": il vincolo e' che lo strato
+    // non CONOSCA React, e importarne solo i tipi vuol dire conoscerlo lo
+    // stesso. Non e' una svista, non va "corretto" escludendolo.
     nome: "import statico",
-    espressione: new RegExp(`import\\s[^;]*?from\\s+${MODULO}[^;]*;?`, "g"),
+    espressione: new RegExp(`import\\s[^;]*?from\\s+${MODULO_STATICO}[^;]*;?`, "g"),
   },
   {
     // re-export: "export { x } from '...'" o "export * from '...'"
     nome: "re-export",
-    espressione: new RegExp(`export\\s[^;]*?from\\s+${MODULO}[^;]*;?`, "g"),
+    espressione: new RegExp(`export\\s[^;]*?from\\s+${MODULO_STATICO}[^;]*;?`, "g"),
   },
   {
-    // import dinamico: "import('...')" o "await import('...')"
+    // import dinamico: "import('...')", "import(\`...\`)" o "await import(...)"
     nome: "import dinamico",
-    espressione: new RegExp(`import\\s*\\(\\s*${MODULO}\\s*\\)`, "g"),
+    espressione: new RegExp(`import\\s*\\(\\s*${MODULO_DINAMICO}\\s*\\)`, "g"),
   },
   {
-    // require in stile CommonJS
+    // require in stile CommonJS, apici o backtick
     nome: "require",
-    espressione: new RegExp(`require\\s*\\(\\s*${MODULO}\\s*\\)`, "g"),
+    espressione: new RegExp(`require\\s*\\(\\s*${MODULO_DINAMICO}\\s*\\)`, "g"),
   },
 ];
 
@@ -99,6 +113,17 @@ export function rimuoviCommenti(testo: string): string {
  * re-export, import dinamico, require. Ritorna una voce per occorrenza, nella
  * forma "<nome forma>: <frammento trovato>", pronta per finire in un
  * messaggio d'errore che nomina la forma oltre al file.
+ *
+ * Decisione deliberata: una stringa che nomina testualmente un import di
+ * React, per esempio `const messaggio = "non fare: import { x } from
+ * 'react'"`, risulta una violazione anche se non lo e' davvero. Rimuovere
+ * anche il contenuto delle stringhe (oltre ai commenti) richiederebbe un
+ * tokenizzatore vero, e i suoi errori sarebbero silenziosi: un import reale
+ * non visto perche' il tokenizzatore lo ha scambiato per testo. Questo falso
+ * positivo invece e' rumoroso, cioe' il test fallisce e si legge il perche'
+ * in dieci secondi guardando il messaggio. Fra un cancello che sbaglia
+ * dicendolo e uno che sbaglia tacendo, si tiene il primo: non toccare questo
+ * comportamento senza aver gia' in mano il tokenizzatore vero.
  */
 export function trovaImportReact(testoOriginale: string): string[] {
   const testo = rimuoviCommenti(testoOriginale);
