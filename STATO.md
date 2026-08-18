@@ -341,6 +341,13 @@ parti per mille, cioè acqua dolce, dove la colonna del modello marino non
 significa niente. Logonovo e Bellocchio restano fuori per distanza e non sono
 nominati.
 
+**La y di MapLibre cresce verso sud, la riga 0 del frame e' a nord.** Senza un
+ribaltamento esplicito nella coordinata di texture il campo si disegna capovolto,
+e l'errore **sembra plausibile**: resta una macchia della forma giusta su un mare.
+Verificato il 2026-08-18 con la fetta verticale, dove l'Adriatico correva da
+Belgrado a Napoli. Per questo lo smoke test di resa deve asserire la posizione di
+un pixel noto, non solo che qualcosa sia stato disegnato.
+
 **Il dataset `swanemr` è morto.** Il CKAN `dati.arpae.it` lo elenca ancora sotto `previsioni-mare`, ma la directory è ferma a settembre 2025. Non perderci tempo.
 
 **Il CKAN `dati.arpae.it` è quasi inutile per il mare.** Una sola ricerca utile su 259 dataset. I dati veri stanno su `dati-simc.arpae.it/opendata/`, che è un indice Apache senza API.

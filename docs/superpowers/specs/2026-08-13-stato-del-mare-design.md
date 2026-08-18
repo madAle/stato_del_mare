@@ -760,12 +760,19 @@ si cambia qui.
 Custom layer MapLibre: riceve contesto GL e matrice di proiezione, disegna un quad
 texturizzato.
 
-**Texture intera, interpolazione a mano.** Il frame va in GPU come `R16UI` letta con
-`usampler2D`. Le texture intere non supportano il filtraggio bilineare hardware,
+**Texture intera, interpolazione a mano.** Il frame va in GPU come `R16I` letta con
+`isampler2D`. Le texture intere non supportano il filtraggio bilineare hardware,
 quindi l'interpolazione è scritta nello shader: quattro `texelFetch` e una
 miscelazione pesata. È una decina di righe di GLSL e permette di **ignorare i vicini
 nodata** invece di mediarli; col filtraggio hardware ogni tratto di costa avrebbe un
 alone di valori sbagliati.
+
+Una prima stesura diceva `R16UI` con `usampler2D`. Corretto dopo la verifica del
+2026-08-18: il dato è int16 **con segno**, quindi con una texture senza segno
+servirebbe rimettere il segno nello shader (sottrarre 65536 sopra 32767) e il
+confronto col nodata diventerebbe un numero magico diverso da quello scritto nel
+formato. Con `R16I` il valore arriva già firmato e `NODATA == -32768` si legge
+identico da entrambe le parti del confine.
 
 **Interpolazione temporale**: due texture (ora `t` e `t+1`) fuse con un fattore
 continuo, così il campo si deforma con continuità invece di saltare di ora in ora.
@@ -783,6 +790,35 @@ stazioni. Inserito dichiarativamente prima di un id noto.
 
 **Valore sotto il mouse**: nessuna lettura dalla GPU. Si inverte la proiezione fino
 all'indice di cella e si legge dall'`Int16Array` già in memoria.
+
+### Verificato per esecuzione, 2026-08-18
+
+Una fetta verticale buttabile (una pagina, nessun React) ha caricato un frame vero
+dal bucket in una texture intera e lo ha disegnato sopra MapLibre. Esito: il
+percorso regge, con quattro fatti da portare nel piano.
+
+1. **MapLibre 5 dà un contesto WebGL2** e la texture `R16I` si carica senza errori
+   GL. Il cuore dell'architettura non ha sorprese.
+2. **La firma del custom layer è cambiata**: in MapLibre 4 `render(gl, matrice)`,
+   in MapLibre 5 `render(gl, opzioni)` con la matrice in
+   `opzioni.defaultProjectionData.mainMatrix`. Va scritto nel piano, altrimenti si
+   scopre a esecuzione iniziata.
+3. **Il quad si posiziona** convertendo `bounds_lonlat` del catalogo con
+   `MercatorCoordinate.fromLngLat`. Verificato a zoom 9 sulla costa romagnola: il
+   campo segue la battigia da Ravenna a Fano, le isole dalmate restano nodata, e a
+   quella scala si vede la scalettatura dei 1.200 m, che è la risoluzione vera.
+4. **Costo di disegno trascurabile**: 60 fotogrammi al secondo perfino con resa
+   software (SwiftShader), e 1,4 MB scaricati in circa 300 ms.
+
+**La trappola trovata, che il piano deve prevenire.** Le coordinate Mercatore di
+MapLibre hanno la **y crescente verso sud**, mentre la riga 0 del frame è quella a
+**nord**: senza un ribaltamento esplicito nella coordinata di texture il campo si
+disegna capovolto. Il punto non è l'errore, che si corregge in una riga, ma che
+**sembra plausibile**: resta una macchia colorata della forma giusta su un mare, e
+solo conoscendo la geografia si nota che l'Adriatico corre da Belgrado a Napoli
+invece che da Trieste a Otranto. Ne segue che lo smoke test di resa (8.2) non può
+limitarsi a "qualcosa è stato disegnato": deve **asserire la posizione**, per
+esempio che un pixel al largo di Rimini sia colorato e uno su Bologna no.
 
 ### 7.4 src/ui
 
