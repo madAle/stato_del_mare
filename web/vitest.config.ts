@@ -6,14 +6,18 @@ import { defineConfig } from "vitest/config";
 // Nota: "environmentMatchGlobs" e' stato rimosso in Vitest 4 (la versione
 // installata da questo progetto), sostituito da "projects". Ogni progetto
 // definisce il proprio glob e il proprio environment; quello di default deve
-// escludere src/ui esplicitamente, altrimenti un file la' dentro girerebbe
-// due volte.
+// escludere le due cartelle di componenti esplicitamente, altrimenti un file
+// la' dentro girerebbe due volte.
 //
-// I test dei componenti pero' non vivono tutti sotto src/ui: alcuni, come
-// web/test/scrubber.test.tsx, stanno in test/ insieme al resto della
-// suite. L'estensione .tsx e' il segnale giusto per smistarli su jsdom
-// (implica JSX, quindi quasi certamente un componente), mentre .ts resta un
-// test di uno strato puro e continua a girare su Node.
+// I test dei componenti non vivono tutti sotto src/ui: alcuni, come
+// web/test/ui/scrubber.test.tsx, stanno in una cartella dedicata dentro
+// test/. Lo smistamento e' per cartella, non per estensione: una versione
+// precedente smistava su jsdom solo i file test/**/*.tsx (l'estensione .tsx
+// come segnale di "e' un componente"), che lasciava un varco vero, un test
+// di componente scritto senza JSX (per esempio un test di hook, .ts) dentro
+// test/ non sarebbe finito in nessuno dei due progetti per come erano scritti
+// gli include/exclude di allora. Una cartella dedicata non lascia aperture:
+// tutto cio' che ci sta dentro e' jsdom, qualunque estensione abbia.
 export default defineConfig({
   test: {
     projects: [
@@ -22,7 +26,7 @@ export default defineConfig({
         test: {
           name: "ui",
           environment: "jsdom",
-          include: ["src/ui/**/*.{test,spec}.{ts,tsx}", "test/**/*.{test,spec}.tsx"],
+          include: ["src/ui/**/*.{test,spec}.{ts,tsx}", "test/ui/**/*.{test,spec}.{ts,tsx}"],
           setupFiles: ["./test/setup-ui.ts"],
         },
       },
@@ -35,7 +39,7 @@ export default defineConfig({
           // raccoglie con il proprio pattern predefinito e prova a eseguire
           // test() di Playwright dentro il proprio runner, che fallisce con un
           // errore che non c'entra niente con l'applicazione.
-          exclude: ["src/ui/**", "test/**/*.tsx", "node_modules/**", "e2e/**"],
+          exclude: ["src/ui/**", "test/ui/**", "node_modules/**", "e2e/**"],
         },
       },
     ],
