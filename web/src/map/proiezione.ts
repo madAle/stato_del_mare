@@ -29,9 +29,11 @@ export function cellaDi(
 
   const p = aMercatore(lon, lat);
   const nw = aMercatore(b.ovest, b.nord);
-  const colonna = Math.floor((p.x - nw.x) / griglia.risoluzioneM);
-  const riga = Math.floor((nw.y - p.y) / griglia.risoluzioneM);
-  if (colonna < 0 || riga < 0 || colonna >= griglia.larghezza || riga >= griglia.altezza) {
+  // Sul bordo esatto la divisione da' esattamente il numero di celle. Senza il
+  // riporto un punto legittimo sul confine del dominio verrebbe respinto.
+  const colonna = Math.min(Math.floor((p.x - nw.x) / griglia.risoluzioneM), griglia.larghezza - 1);
+  const riga = Math.min(Math.floor((nw.y - p.y) / griglia.risoluzioneM), griglia.altezza - 1);
+  if (colonna < 0 || riga < 0) {
     return null;
   }
   return { colonna, riga };

@@ -25,6 +25,21 @@ describe("cella", () => {
     expect(c).toEqual({ colonna: 857, riga: 843 });
   });
 
+  it("un punto sul bordo est esatto cade nell'ultima colonna", () => {
+    const c = cellaDi(GRIGLIA, GRIGLIA.boundsLonLat.est, 44)!;
+    expect(c.colonna).toBe(857);
+  });
+
+  it("un punto sul bordo sud esatto cade nell'ultima riga", () => {
+    const c = cellaDi(GRIGLIA, 13, GRIGLIA.boundsLonLat.sud)!;
+    expect(c.riga).toBe(843);
+  });
+
+  it("l'angolo di sudest esatto e' la cella 857,843", () => {
+    const c = cellaDi(GRIGLIA, GRIGLIA.boundsLonLat.est, GRIGLIA.boundsLonLat.sud)!;
+    expect(c).toEqual({ colonna: 857, riga: 843 });
+  });
+
   it("la riga cresce verso SUD, che e' il verso del frame e non quello dell'istinto", () => {
     const nord = cellaDi(GRIGLIA, 13, 46)!;
     const sud = cellaDi(GRIGLIA, 13, 41)!;
