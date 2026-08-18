@@ -341,6 +341,13 @@ parti per mille, cioè acqua dolce, dove la colonna del modello marino non
 significa niente. Logonovo e Bellocchio restano fuori per distanza e non sono
 nominati.
 
+**Non solo il valore: anche l'opacita' deve variare con continuita' dentro la
+cella.** Sfumando il bordo del dato con un conteggio dei vicini fatto sul texel
+piu' vicino, l'opacita' resta costante dentro ogni cella e lungo la costa
+compaiono riquadri da 1.200 m di tonalita' diverse. Al largo non si vedono
+perche' li' comanda il valore, che e' interpolato. Regola: qualunque grandezza
+che finisce a schermo va calcolata con pesi continui, non per cella.
+
 **Il campo va ritagliato sulla costa vera, non su quella del modello.** Senza
 ritaglio copriva fino a 2 km di terraferma, per due cause sommate: lo shader che
 dipingeva se **uno qualunque** dei quattro vicini era valido (1.200 m), e gli 800

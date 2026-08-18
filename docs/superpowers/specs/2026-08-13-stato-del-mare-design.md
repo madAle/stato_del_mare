@@ -852,8 +852,21 @@ Misurata il 2026-08-18 sul frame del 16 agosto:
 | Coperta allargando a 5 km | 62% |
 
 **Decisione: si sfuma, non si allarga.** Il campo abbassa l'opacita' dove il dato
-si dirada, contando quanti vicini di un intorno 5x5 sono validi. Non inventa
-valori: dichiara che li' il dato sta finendo.
+si dirada. Non inventa valori: dichiara che li' il dato sta finendo.
+
+**La copertura va calcolata con gli stessi pesi continui del valore.** Prima
+stesura sbagliata, corretta il 2026-08-18 dopo averla vista: contando i vicini
+validi sul texel piu' vicino, l'opacita' resta **costante dentro ogni cella**, e
+il risultato sono riquadri da 1.200 m di tonalita' diversa lungo tutta la costa.
+Al largo il difetto non si vede, perche' li' comanda il valore, che e'
+interpolato; sotto costa comanda l'opacita', ed e' li' che i quadrettoni
+compaiono. La regola generale: **qualunque grandezza che finisce a schermo deve
+dipendere con continuita' dalla posizione dentro la cella**, non solo il valore.
+
+In pratica: nucleo a tenda di raggio 2,5 celle, i cui pesi dipendono dalla
+posizione frazionaria; la copertura e' la frazione di peso che cade su celle
+valide. Il valore invece resta mediato stretto sui soli quattro vicini, per non
+spalmare il campo su cinque celle e perdere i dettagli veri.
 
 Le ragioni, in ordine di peso. **La sfumatura serve comunque**: allargando si
 copre meta' della frangia, e l'altra meta' e' acqua che il modello non simula
