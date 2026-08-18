@@ -403,8 +403,32 @@ Web Mercator e non lat/lon regolare perché la mappa è una slippy map: alle nos
 latitudini la deformazione mercatoriana sull'altezza del dominio è circa il 30%, e
 un raster equirettangolare risulterebbe schiacciato verso nord.
 
-Il descrittore è versionato. Un eventuale cambio di risoluzione produce
-`grid_v2.json`; i frame vecchi restano leggibili perché referenziano il proprio.
+**Il descrittore non è versionato, e la scelta è deliberata.** Una prima stesura
+prevedeva `grid_v2.json` con i frame che referenziano il proprio descrittore. Non
+è stato implementato, e la spec è stata allineata al codice invece del contrario,
+per questo motivo: il rischio da cui la versionatura proteggerebbe, cioè due
+griglie diverse mescolate nello stesso archivio, non può verificarsi, perché
+`GridMismatch` ferma il run **prima di scrivere qualsiasi cosa** appena
+l'impronta delle coordinate sorgente cambia. Resta uno scenario raro in cui serve
+una decisione umana, e per quello vale una procedura scritta, non della
+macchinaria costruita oggi contro un evento di forma ignota.
+
+**Procedura se un giorno `GridMismatch` scatta davvero.** Il run esce 2 e non
+scrive. A quel punto, verificato che ARPAE abbia effettivamente riconfigurato il
+dominio e non si tratti di un file corrotto:
+
+1. l'archivio esistente resta valido e leggibile con il `grid.json` attuale:
+   **non va toccato**;
+2. si sposta il prefisso corrente sotto un nome che ne dichiari l'epoca (per
+   esempio `epoca-1/`), oppure si apre un bucket nuovo;
+3. si cancella `static/regrid_index.npz`, che è la memoria della vecchia griglia,
+   così che il run successivo ricostruisca l'indice sulla griglia nuova;
+4. il client legge un'epoca alla volta: la continuità della serie attraverso un
+   cambio di griglia è un problema di visualizzazione, e va affrontato quando e
+   se accadrà, con i dati veri davanti.
+
+Il costo di questa scelta, se è sbagliata: il giorno del cambio serve un
+intervento manuale di qualche minuto invece di zero.
 
 ### 4.5 Manifest
 

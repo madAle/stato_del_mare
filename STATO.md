@@ -196,8 +196,10 @@ non ho fatto"):
   gruppi indicati, e solo quelli. **Non** disattiva le guardie: `GridMismatch`
   e `UnitMismatch` continuano a fermare il run, perché `--rilavora` dice
   "riprocessa", non "fidati".
-- **Descrittori di griglia versionati**: la spec 4.4 promette `grid_v2.json`, il
-  codice non lo sa fare. Divergenza nota fra spec e codice.
+- ~~Descrittori di griglia versionati~~. **Chiuso il 2026-08-18** allineando la
+  spec al codice invece del contrario: due griglie non possono mescolarsi, perché
+  `GridMismatch` ferma il run prima di scrivere. La spec 4.4 ora contiene la
+  procedura manuale da seguire il giorno in cui la guardia scattasse davvero.
 - **`--only` su una variabile fuori dal gruppo di riferimento non può
   funzionare** (l'indice si costruisce solo nel ramo del gruppo di riferimento).
   Difetto preesistente: prima rimandava in silenzio uscendo 0, adesso lo dichiara
@@ -293,6 +295,23 @@ un `Origin` estraneo, su `frames/hwave/an/20260817/2026-08-16T1200.bin`:
 | `Cache-Control` sul catalogo | `public, max-age=300` |
 | Celle di mare nel frame | 168.712 su 724.152 |
 | Valori decodificati | onda da 0 a 0,42 m, media 0,18 m (Adriatico di ferragosto) |
+
+### Recupero delle colonne di Cervia, 2026-08-18
+
+Alzando la soglia delle stazioni a 1 km, le due boe di Cervia Porto sono
+rientrate, ma i giorni già in archivio non le avrebbero mai avute: la deduplica
+salta i file già ingeriti senza aprirli. Recuperate con `--rilavora` sui tre
+gruppi 3D di analisi, in due lotti per non rischiare il tetto di 90 minuti.
+
+| | |
+|---|---|
+| Banda misurata | 8,16 GB (2,00 temp, 1,77 salt, 4,38 cur) |
+| Tempo reale | 8 minuti il primo lotto, 6 il secondo |
+| Recuperati | 7 giorni (11 to 17 agosto), 3 gruppi, 2 stazioni |
+| **Perso** | il 10 agosto, uscito dalla finestra quella mattina stessa |
+
+La stima iniziale era di 3 GB e il tempo temuto di 50 minuti: entrambe sbagliate
+in direzioni opposte. La banda si misura con una HEAD per file, non si stima.
 
 ## 6. Trappole già pagate, da non ripagare
 
