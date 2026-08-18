@@ -1,5 +1,6 @@
 import * as Slider from "@radix-ui/react-slider";
 import { buchi, type Ora } from "../data/indice";
+import { inquadra } from "../data/sorgente";
 
 type Props = {
   asse: Ora[];
@@ -35,8 +36,16 @@ const formattaOra = new Intl.DateTimeFormat("it-IT", {
  */
 export function TimelineScrubber({ asse, istante, cambia }: Props) {
   const ultimo = asse.length - 1;
-  const indiceTrovato = asse.findIndex((o) => o.istante === istante);
-  const indiceCorrente = indiceTrovato >= 0 ? indiceTrovato : 0;
+  // Per prossimita' (la stessa regola con cui inquadra() sceglie il
+  // fotogramma da disegnare), non per uguaglianza stretta: durante la
+  // riproduzione l'istante avanza con continuita' in millisecondi e non
+  // coincide quasi mai con una delle ore dell'asse. Un confronto stretto
+  // ricadeva sempre sull'indice 0, e lo scrubber restava visivamente fermo
+  // sulla prima ora della finestra mentre il campo disegnato avanzava per
+  // davvero: la stessa scelta con due regole diverse avrebbe potuto mostrare
+  // un'ora e disegnare il campo di un'altra.
+  const inquadratura = inquadra(asse, istante);
+  const indiceCorrente = inquadratura ? asse.indexOf(inquadratura.prima) : 0;
   const oraCorrente = asse[indiceCorrente] as Ora | undefined;
 
   // buchi() si fida che l'asse sia ordinato: qui arriva da asseDeiTempi (o da

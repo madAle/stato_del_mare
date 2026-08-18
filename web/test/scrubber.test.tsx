@@ -27,4 +27,16 @@ describe("scrubber", () => {
     render(<TimelineScrubber asse={asse} istante={asse[0].istante} cambia={vi.fn()} />);
     expect(screen.queryByTestId("confine")).toBeNull();
   });
+
+  it("durante la riproduzione l'istante non coincide con nessuna ora esatta, e l'orologio segue comunque per prossimita'", () => {
+    // Come avanza() in animazione.ts: l'istante cresce con continuita' in
+    // millisecondi, quindi quasi mai coincide con una delle ore dell'asse.
+    // Un confronto di uguaglianza stretta ricadrebbe sempre sull'indice 0
+    // (le 00:00): qui l'ora giusta e' le 02:00, terza dell'asse, apposta per
+    // distinguere il comportamento corretto dal fallback silenzioso.
+    const asse = [ora(0, "an"), ora(1, "an"), ora(2, "an"), ora(3, "an")];
+    const aMeta = asse[2].istante + 30 * 60_000; // mezz'ora dopo le 02:00
+    render(<TimelineScrubber asse={asse} istante={aMeta} cambia={vi.fn()} />);
+    expect(screen.getByTestId("orologio").textContent).toMatch(/02:00/);
+  });
 });
