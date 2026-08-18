@@ -1,3 +1,7 @@
 node_modules
 dist
 *.local
+public/costa_sdf.png
+public/costa_sdf.json
+public/maschera_dato.png
+public/maschera_dato.json
