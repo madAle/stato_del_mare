@@ -53,8 +53,16 @@ export function asseDeiTempi(analisi: Indice, previsione: Indice): Ora[] {
  * Lo scrubber deve mostrarli invece di scavalcarli: un giorno senza ingestione
  * e' storico perso per sempre, e una timeline che lo salta in silenzio fa
  * credere che il mare sia stato continuo mentre il dato non c'e'.
+ *
+ * Richiede che l'asse sia ordinato in senso crescente per istante: un asse non
+ * ordinato non e' un caso da gestire ma un difetto di chi lo ha costruito.
  */
 export function buchi(asse: Ora[]): { da: number; a: number }[] {
+  for (let i = 1; i < asse.length; i++) {
+    if (asse[i].istante < asse[i - 1].istante) {
+      throw new Error(`asse non ordinato: istante ${asse[i].istante} dopo ${asse[i - 1].istante}`);
+    }
+  }
   const trovati: { da: number; a: number }[] = [];
   for (let i = 1; i < asse.length; i++) {
     if (asse[i].istante - asse[i - 1].istante > PASSO_MS) {

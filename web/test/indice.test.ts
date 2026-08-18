@@ -68,4 +68,19 @@ describe("buchi", () => {
     ];
     expect(buchi(asse)).toEqual([]);
   });
+
+  it("un asse con un solo elemento non produce buchi", () => {
+    const asse: Ora[] = [
+      { istante: Date.parse("2026-08-09T01:00:00Z"), tipo: "an", riferimento: "x" },
+    ];
+    expect(buchi(asse)).toEqual([]);
+  });
+
+  it("un asse non ordinato solleva errore", () => {
+    const asse: Ora[] = [
+      { istante: Date.parse("2026-08-09T06:00:00Z"), tipo: "an", riferimento: "x" },
+      { istante: Date.parse("2026-08-09T02:00:00Z"), tipo: "an", riferimento: "x" },
+    ];
+    expect(() => buchi(asse)).toThrow(/asse non ordinato/);
+  });
 });
