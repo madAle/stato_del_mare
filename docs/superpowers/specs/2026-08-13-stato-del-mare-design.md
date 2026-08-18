@@ -128,10 +128,41 @@ periodo vale finche' la regolazione non cambia.
   parti per mille. Quell'escursione **e'** lo scambio col mare e ne da' verso e
   fase, ma e' oraria e non da' la portata.
 
-**Cosa sbloccherebbe la funzionalita':** un sensore di pressione nel canale. Con
-quello, il mare arriva gratis a 10 minuti e il coefficiente si calibra
-sull'archivio ARPAE, che per l'osservato parte dal 2006. E' l'unico punto in cui
-il progetto passerebbe dal leggere dati altrui al produrne.
+**La corrente nel portocanale e' un problema piu' facile del bacino.** Richiesta
+esplicita dell'utente il 2026-08-18: sapere la velocita' della corrente nel
+portocanale di Porto Garibaldi sarebbe utilissimo, e per chi entra o esce con una
+barca lo e' soprattutto in avanti nel tempo, non a posteriori.
+
+Se il livello interno e' quasi fermo, e sia la regolazione con chiaviche sia
+l'attenuazione dicono che lo e', la portata dipende dal solo livello del mare:
+
+`Q = k * segno(h - h0) * radice(|h - h0|)`
+
+Due incognite: `h0`, il livello di mare a cui la corrente si annulla, e `k`, che
+raccoglie sezione e attrito. **Non serve l'idrometro dentro le Valli**: serve una
+calibrazione, ottenibile con una campagna di mezza giornata (velocita' sul fondo
+contro velocita' sull'acqua a motore costante, oppure un galleggiante cronometrato
+fra due punti noti, ripetuto a diverse fasi di marea; sei o otto punti su un ciclo
+bastano).
+
+**La forzante e' gia' in archivio, anche in avanti.** Verificato il 2026-08-18:
+`index/sealevel/fc/2026-08.json` copre 240 istanti fino al 20 agosto, e i frame
+di livello previsto hanno un valore valido sulla cella di Porto Garibaldi (riga
+227, colonna 130 della griglia pubblicata; 7 vicini validi su 9, quindi la
+stazione non e' su un bordo fragile). Quindi il modello, una volta calibrato,
+produce una **previsione a 72 ore** della corrente in canale, non solo una
+ricostruzione.
+
+Confronto preliminare fra ADRIAC previsto e mareografo, 7 istanti orari del
+2026-08-18: correlazione +0,6, scarto medio -4,1 cm (quasi tutto differenza fra
+lo zero del modello e lo zero nazionale). **Non dimostra nulla**: sette punti, in
+quadratura d'agosto, con 15 cm di escursione e previsione a oltre un giorno. La
+forma pero' torna e il modello sembra anticipare di circa un'ora. Prima di
+fidarsi serve un confronto su settimane, possibilmente in sizigie.
+
+**Cosa resta bloccato davvero:** il modello del bacino, cioe' ricostruire il
+livello dentro le Valli. Per quello un idrometro interno servirebbe, e non
+esiste nel pubblico.
 
 ### Il riferimento ARPAE, misurato il 2026-08-13
 

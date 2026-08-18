@@ -159,11 +159,12 @@ Niente.
    1.245,9 m. Cinque stazioni scartate con il motivo scritto nel log (vedi 6).
 6. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
 7. **Stima della corrente nei canali di Comacchio.** Richiesta del 2026-08-18.
-   **Bloccata da un dato che non esiste**: misurato su tutte le reti pubbliche,
-   nessun idrometro sta dentro le Valli, e senza il livello interno il modello
-   non ha su cosa calibrarsi. Dal pubblico si prende solo la forzante lato mare
-   a Porto Garibaldi (10 min) e, a Logonovo, la salinita' oraria come indizio di
-   verso e fase. Sbloccarla vuol dire un sensore di pressione nel canale.
+   Due problemi diversi. **Il bacino e' bloccato**: nessun idrometro pubblico sta
+   dentro le Valli. **La corrente nel portocanale no**: se il livello interno e'
+   quasi fermo dipende dal solo livello del mare, che abbiamo gia' in archivio
+   anche come previsione a 72 ore, e restano due incognite da stimare con una
+   campagna di mezza giornata in barca. Una volta calibrata, la funzionalita'
+   prevede la corrente in avanti, che e' la parte utile a chi entra o esce.
    Dettaglio e misure nella sezione 1 della spec.
 8. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
    discrete sui gradini del codice stato del mare WMO. Richiesta del 2026-08-13,
