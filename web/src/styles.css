@@ -139,10 +139,18 @@ select[aria-label="variabile"] {
   border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
-/* Riproduzione: in basso a destra, sopra lo scrubber sul piano orizzontale. */
+/*
+ * Riproduzione: sopra lo scrubber, non accanto. Affiancarli sulla stessa
+ * riga (due pannelli assoluti, larghezza dell'uno ignota all'altro) aveva
+ * prodotto una sovrapposizione reale: il pannello dei comandi, piu' largo
+ * del previsto, copriva un pezzo della traccia e intercettava i click
+ * destinati al bottone "riproduci" (trovato da un test end to end).
+ * Impilarli in verticale non richiede conoscere la larghezza di nessuno dei
+ * due.
+ */
 .comandi-riproduzione {
   right: 1rem;
-  bottom: 1rem;
+  bottom: 6rem;
   padding: 0.6rem 0.75rem;
   display: flex;
   align-items: center;
@@ -183,14 +191,10 @@ select[aria-label="variabile"] {
   border-color: #1f2328;
 }
 
-/*
- * Lo scrubber occupa la fascia bassa della finestra, lasciando spazio a
- * destra ai comandi di riproduzione perche' non condividono un contenitore
- * comune nel markup.
- */
+/* Lo scrubber occupa tutta la fascia bassa della finestra, sotto i comandi di riproduzione. */
 .scrubber {
   left: 1rem;
-  right: 12rem;
+  right: 1rem;
   bottom: 1rem;
   padding: 0.6rem 0.9rem;
 }
