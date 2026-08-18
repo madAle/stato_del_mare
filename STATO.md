@@ -185,6 +185,17 @@ non ho fatto"):
   un rename che produce un file della stessa identica lunghezza in byte con la
   stessa data: il costo è un giorno di ritardo nell'accorgersene, non un dato
   perso, perché il file resta nella finestra.
+
+  Ha però una seconda conseguenza, che il 2026-08-18 è diventata concreta:
+  **quando una correzione cambia ciò che un file produce, i giorni già in
+  archivio non la recuperano da soli**, perché il sorgente non si muove e
+  nessuna intestazione HTTP lo racconta. È il caso della soglia stazioni
+  passata da 800 a 1.000 m, che ha fatto rientrare le due boe di Cervia Porto
+  senza produrne le colonne per i giorni precedenti. Da qui nasce
+  `--rilavora` (sezione 5): ignora entrambi i livelli di deduplica per i
+  gruppi indicati, e solo quelli. **Non** disattiva le guardie: `GridMismatch`
+  e `UnitMismatch` continuano a fermare il run, perché `--rilavora` dice
+  "riprocessa", non "fidati".
 - **Descrittori di griglia versionati**: la spec 4.4 promette `grid_v2.json`, il
   codice non lo sa fare. Divergenza nota fra spec e codice.
 - **`--only` su una variabile fuori dal gruppo di riferimento non può
@@ -212,6 +223,18 @@ non ho fatto"):
 
 I comandi di verifica del codice stanno in fondo, nella sezione 7. Non esiste
 ancora nessun comando di build, perché la SPA non è iniziata.
+
+**Recuperare prodotti cambiati da una correzione**, su file che il manifest
+dà già per ingeriti. L'elenco è di gruppi sorgente, non un interruttore
+globale: rilavorare tutto vuol dire riscaricare circa 15 GB. Filtra per
+gruppo di file, come `--only`. Un nome che non esiste esce 3 invece di
+rilavorare zero file dicendo "tutto bene".
+
+```bash
+# prima il piano, che deve dire "rilavorazione richiesta" e non "mai ingerito"
+uv run python -m ingest reconcile --dry-run --rilavora his_temp,his_salt,his_cur
+uv run python -m ingest reconcile --rilavora his_temp,his_salt,his_cur
+```
 
 Questi sono invece i comandi di ispezione usati per verificare le fonti, utili per ricontrollare senza rifare le scoperte:
 

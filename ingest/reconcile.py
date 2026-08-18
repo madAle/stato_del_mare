@@ -47,6 +47,12 @@ GridMismatch = grid.GridMismatch
 class PlannedWork:
     source: source.SourceFile
     reason: str
+    # Vero quando il gruppo e' stato chiesto in rilavorazione: process_file
+    # scavalca la deduplica invece di saltare il file. E' una decisione del
+    # piano e non di process_file, cosi' il motivo stampato dal dry run e il
+    # comportamento vero nascono dallo stesso confronto e non possono
+    # divergere.
+    rilavora: bool = False
 
 
 @dataclass(frozen=True)
@@ -90,16 +96,28 @@ def decompress_to_nc(gz_path: Path) -> Path:
     return destinazione
 
 
-def _gruppi_di_interesse() -> set[str]:
+def gruppi_di_interesse() -> set[str]:
+    """I gruppi sorgente che questo ingestore lavora, campi e profili."""
     gruppi = set(config.FIELD_GROUPS)
     gruppi.update(nome for nome, _ in config.PROFILE_GROUPS)
     return gruppi
 
 
-def plan(store, files, window_days: int = config.WINDOW_DAYS, only: str | None = None):
-    """Elenca il lavoro da fare, senza scaricare nulla."""
+def plan(
+    store,
+    files,
+    window_days: int = config.WINDOW_DAYS,
+    only: str | None = None,
+    rilavora: set[str] | None = None,
+):
+    """Elenca il lavoro da fare, senza scaricare nulla.
+
+    `rilavora` e' l'insieme dei gruppi sorgente da riprocessare anche se il
+    manifest dice che sono gia' stati ingeriti.
+    """
+    rilavora = rilavora or frozenset()
     limite = (datetime.now(timezone.utc) - timedelta(days=window_days)).strftime("%Y%m%d")
-    interessanti = _gruppi_di_interesse()
+    interessanti = gruppi_di_interesse()
 
     lavoro: list[PlannedWork] = []
     for f in files:
@@ -114,10 +132,17 @@ def plan(store, files, window_days: int = config.WINDOW_DAYS, only: str | None =
             continue
 
         esistente = store.get_json(manifest.manifest_key(f.date, f.kind, f.group))
-        motivo = (
-            "manifest presente, impronta da verificare" if esistente else "mai ingerito"
-        )
-        lavoro.append(PlannedWork(source=f, reason=motivo))
+        da_rilavorare = f.group in rilavora
+        # I tre motivi vanno tenuti distinti: il dry run e' il modo di
+        # guardare il piano prima di spendere banda, e dire "mai ingerito" di
+        # un file che sta in archivio da giorni sarebbe falso.
+        if not esistente:
+            motivo = "mai ingerito"
+        elif da_rilavorare:
+            motivo = "rilavorazione richiesta"
+        else:
+            motivo = "manifest presente, impronta da verificare"
+        lavoro.append(PlannedWork(source=f, reason=motivo, rilavora=da_rilavorare))
     return lavoro
 
 
@@ -246,6 +271,12 @@ def process_file(
         sorgente = (esistente or {}).get("source", {})
         if (
             esistente
+            # Il primo dei due livelli di deduplica che la rilavorazione
+            # scavalca. Non e' una scorciatoia di comodo: quando una
+            # correzione cambia cio' che il file produce, il sorgente non si
+            # muove e nessuna intestazione HTTP lo racconta, quindi senza
+            # questo scavalco il prodotto vecchio resterebbe li' per sempre.
+            and not work.rilavora
             # La versione di schema va confrontata qui e non solo dentro
             # already_ingested, che questa scorciatoia scavalca: se il formato
             # d'archivio cambia, i file vanno rilavorati anche quando alla
@@ -264,7 +295,10 @@ def process_file(
             if locale is not None
             else source.download(f.url, scaricato, session=session)
         )
-        if manifest.already_ingested(esistente, impronta):
+        # Il secondo livello: l'impronta coincide per forza, visto che il file
+        # e' lo stesso. Scavalcare solo il primo lascerebbe --rilavora a
+        # riscaricare senza mai rifare niente.
+        if not work.rilavora and manifest.already_ingested(esistente, impronta):
             log.info("gia' in archivio, salto: %s", f.name)
             return EsitoFile(manifest.RunManifest.from_dict(esistente), True)
 
@@ -394,13 +428,16 @@ def reconcile(
     window_days: int = config.WINDOW_DAYS,
     only: str | None = None,
     dry_run: bool = False,
+    rilavora: set[str] | None = None,
     session=None,
 ) -> dict:
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
 
     file = source.list_source_files(session=session)
-    lavoro = ordina_per_indice(plan(store, file, window_days=window_days, only=only))
+    lavoro = ordina_per_indice(
+        plan(store, file, window_days=window_days, only=only, rilavora=rilavora)
+    )
     esito = {
         "planned": len(lavoro),
         "processed": 0,

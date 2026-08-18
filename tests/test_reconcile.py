@@ -11,7 +11,9 @@ from netCDF4 import Dataset
 from ingest import config, encode, frames, grid, manifest, profiles, reconcile, stations
 from ingest.source import parse_filename
 from ingest.storage import ObjectStore
+from tests import conftest
 from tests.conftest import (
+    ETA,
     NS,
     NT,
     synthetic_coords,
@@ -785,3 +787,191 @@ def test_il_file_di_riferimento_si_scarica_una_volta_sola(store, tmp_path, monke
     # L'indice in cache resta di proposito: e' un'ottimizzazione dentro il run,
     # non un temporaneo. Tutto il resto deve essere sparito.
     assert sorted(p.name for p in tmp_path.iterdir()) == ["regrid_index.npz"]
+
+
+def _gia_in_archivio(store, f, testa):
+    """Registra nel manifest un file gia' ingerito, senza colonne.
+
+    E' lo stato in cui il primo run reale ha lasciato i giorni dall'11 al 17
+    agosto: i frame ci sono, le colonne delle due boe di Cervia no, perche'
+    la soglia di allora le scartava.
+    """
+    istante = datetime(2026, 8, 13, tzinfo=timezone.utc)
+    store.put_json(
+        manifest.manifest_key(f.date, f.kind, f.group),
+        manifest.RunManifest(
+            source_url=f.url,
+            source_sha256="impronta-" + f.name,
+            source_bytes=testa["bytes"],
+            source_last_modified=testa["last_modified"],
+            reference_time=istante,
+            kind=f.kind,
+            group=f.group,
+            grid_ref="grid.json",
+            ingested_at=istante,
+            frames=[],
+        ).to_dict(),
+    )
+
+
+def _sorgente_di_profilo(monkeypatch, store, elenco, testa):
+    """Rete sostituita: un file d'onda per l'indice e un his_temp per le colonne.
+
+    L'anagrafica contiene una stazione che al momento dell'ingestione non
+    c'era: e' il caso di Cervia, rientrata quando la soglia e' passata da 800
+    a 1.000 m.
+    """
+    lon, lat = synthetic_coords()
+    store.put_json(
+        "stations/stations.json",
+        {
+            "stations": [
+                {
+                    "id": "boa-cervia",
+                    "name": "Cervia Porto",
+                    "network": "boa",
+                    "lon": float(lon[1, 1]),
+                    "lat": float(lat[1, 1]),
+                    "variables": [],
+                }
+            ]
+        },
+    )
+
+    def scarica(url, dest, session=None):
+        percorso = dest.with_suffix(".nc")
+        if "HPDwave" in url:
+            write_wave_file(percorso)
+        else:
+            write_profile_file(percorso, var_names=("temp",))
+        return "impronta-" + url.rsplit("/", 1)[-1]
+
+    monkeypatch.setattr(
+        reconcile.source, "list_source_files", lambda session=None: elenco
+    )
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(reconcile.source, "head", lambda url, session=None: testa)
+    monkeypatch.setattr(reconcile.source, "download", scarica)
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+
+def test_rilavora_riprocessa_un_file_gia_ingerito(store, tmp_path, monkeypatch):
+    """Una correzione che cambia i prodotti va potuta applicare all'indietro.
+
+    La soglia stazione/cella e' passata da 800 a 1.000 m e due boe sono
+    rientrate, ma i giorni gia' in archivio non le recuperano: la deduplica
+    salta il file senza aprirlo, quindi quelle colonne non verranno mai
+    prodotte. Dopo 8 giorni il sorgente non e' piu' riscaricabile e il buco
+    e' definitivo.
+    """
+    onda = _file_sorgente()
+    temp = _file_sorgente("20260813_adriac_1km_his_temp_an.nc.gz")
+    testa = {"bytes": 42, "last_modified": "Thu, 13 Aug 2026 10:34:00 GMT"}
+    _sorgente_di_profilo(monkeypatch, store, [onda, temp], testa)
+    for f in (onda, temp):
+        _gia_in_archivio(store, f, testa)
+
+    esito = reconcile.reconcile(
+        store, tmp_path, window_days=8, rilavora={"his_temp"}
+    )
+
+    assert store.list_keys("stations/boa-cervia/columns/his_temp/")
+    assert esito["processed"] == 1
+    # L'onda non era nell'elenco: la sua deduplica deve restare in piedi,
+    # altrimenti --rilavora finirebbe per riscaricare tutto.
+    assert esito["skipped"] == 1
+
+
+def test_senza_rilavora_il_file_gia_ingerito_resta_saltato(store, tmp_path, monkeypatch):
+    """Il controllo dell'altra meta': la deduplica non deve indebolirsi.
+
+    Senza questo, un `--rilavora` che ignorasse il proprio elenco e saltasse
+    la deduplica sempre passerebbe il test precedente e riscaricherebbe
+    15 GB a ogni run.
+    """
+    onda = _file_sorgente()
+    temp = _file_sorgente("20260813_adriac_1km_his_temp_an.nc.gz")
+    testa = {"bytes": 42, "last_modified": "Thu, 13 Aug 2026 10:34:00 GMT"}
+    _sorgente_di_profilo(monkeypatch, store, [onda, temp], testa)
+    for f in (onda, temp):
+        _gia_in_archivio(store, f, testa)
+
+    esito = reconcile.reconcile(store, tmp_path, window_days=8, rilavora={"his_salt"})
+
+    assert store.list_keys("stations/boa-cervia/columns/") == []
+    assert esito["processed"] == 0
+    assert esito["skipped"] == 2
+
+
+def test_il_dry_run_con_rilavora_dice_rilavorazione_richiesta(
+    store, tmp_path, monkeypatch, caplog
+):
+    """Il piano si guarda prima di spendere banda, e non deve mentire.
+
+    Il motivo stampato e' l'unica cosa che distingue un file mai visto da uno
+    che si sta per rifare apposta: "mai ingerito" su un file gia' in archivio
+    sarebbe falso e farebbe credere che la rilavorazione non sia servita.
+    """
+    temp = _file_sorgente("20260813_adriac_1km_his_temp_an.nc.gz")
+    testa = {"bytes": 42, "last_modified": "Thu, 13 Aug 2026 10:34:00 GMT"}
+    _sorgente_di_profilo(monkeypatch, store, [temp], testa)
+    _gia_in_archivio(store, temp, testa)
+
+    def non_chiamare(*args, **kwargs):
+        raise AssertionError("il dry run non deve scaricare")
+
+    monkeypatch.setattr(reconcile.source, "download", non_chiamare)
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", non_chiamare)
+
+    caplog.set_level(logging.INFO, logger="ingest.reconcile")
+    esito = reconcile.reconcile(
+        store, tmp_path, window_days=8, dry_run=True, rilavora={"his_temp"}
+    )
+
+    assert esito["planned"] == 1
+    assert esito["processed"] == 0
+    assert store.get_json("catalog.json") is None
+    righe = [r.getMessage() for r in caplog.records]
+    assert any(temp.name in r and "rilavorazione richiesta" in r for r in righe), righe
+
+
+def test_la_guardia_sulla_griglia_scatta_anche_in_rilavorazione(
+    store, tmp_path, monkeypatch
+):
+    """`--rilavora` dice "riprocessa", non "fidati".
+
+    Un file rilavorato passa dalle stesse guardie di uno mai visto. Qui la
+    sorgente cambia forma sotto l'indice gia' costruito: senza GridMismatch
+    l'indicizzazione booleana solleverebbe IndexError, che la clausola larga
+    di reconcile conta come guasto passeggero, e il run uscirebbe 1 invece
+    di 2 mentre l'archivio si riempie di valori nel posto sbagliato.
+    """
+    onda = _file_sorgente()
+    cur = _file_sorgente("20260813_adriac_1km_his_2dcur_an.nc.gz")
+    testa = {"bytes": 42, "last_modified": "Thu, 13 Aug 2026 10:34:00 GMT"}
+
+    # Il file delle correnti ha una riga in meno del file d'onda da cui
+    # l'indice viene costruito. E' il caso "il dominio ADRIAC e' cambiato"
+    # ridotto al minimo che la fixture permette.
+    percorso_onda = write_wave_file(tmp_path / "sorgente_onda.nc")
+    monkeypatch.setattr(conftest, "ETA", conftest.ETA - 1)
+    percorso_cur = write_2dcur_file(tmp_path / "sorgente_cur.nc")
+    monkeypatch.setattr(conftest, "ETA", ETA)
+
+    def scarica(url, dest, session=None):
+        origine = percorso_onda if "HPDwave" in url else percorso_cur
+        dest.with_suffix(".nc").write_bytes(origine.read_bytes())
+        return "impronta-" + url.rsplit("/", 1)[-1]
+
+    monkeypatch.setattr(
+        reconcile.source, "list_source_files", lambda session=None: [onda, cur]
+    )
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(reconcile.source, "head", lambda url, session=None: testa)
+    monkeypatch.setattr(reconcile.source, "download", scarica)
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+    for f in (onda, cur):
+        _gia_in_archivio(store, f, testa)
+
+    with pytest.raises(reconcile.GridMismatch):
+        reconcile.reconcile(store, tmp_path, window_days=8, rilavora={"his_2dcur"})

@@ -26,7 +26,7 @@ from pathlib import Path
 
 from .config import WINDOW_DAYS
 from .frames import UnitMismatch, VariableMissing
-from .reconcile import GridMismatch, reconcile
+from .reconcile import GridMismatch, gruppi_di_interesse, reconcile
 from .stations import StationCollision
 from .storage import ObjectStore
 
@@ -45,6 +45,21 @@ def main(argv: list[str] | None = None) -> int:
             "lavora solo i file che contengono questa variabile. Attenzione: "
             "filtra per gruppo, non per variabile, quindi --only hwave pubblica "
             "anche periodo e direzione, che stanno nello stesso file"
+        ),
+    )
+    r.add_argument(
+        "--rilavora",
+        default=None,
+        metavar="GRUPPI",
+        help=(
+            "rilavora da capo questi gruppi di file anche se il manifest dice "
+            "che sono gia' stati ingeriti, per esempio "
+            "--rilavora his_temp,his_salt,his_cur. Come --only filtra per "
+            "gruppo di file, non per variabile. Serve a recuperare i prodotti "
+            "che una correzione ha cambiato su file gia' ingeriti: dopo la "
+            "finestra ARPAE di 8 giorni quei file non sono piu' riscaricabili "
+            "e il buco resta per sempre. Ignora solo la deduplica, non le "
+            "guardie: griglia e unita' continuano a fermare il run"
         ),
     )
     r.add_argument("--workdir", default=None, help="cartella di lavoro temporanea")
@@ -68,6 +83,25 @@ def main(argv: list[str] | None = None) -> int:
         logging.error("nessun tentativo eseguito, serve intervento umano")
         return 3
 
+    rilavora = frozenset(
+        g.strip() for g in (argomenti.rilavora or "").split(",") if g.strip()
+    )
+    # Un nome sbagliato non deve passare in silenzio: il run rilavorerebbe
+    # zero file e riporterebbe comunque "tutto bene", e chi lo ha lanciato se
+    # ne accorgerebbe quando il sorgente e' gia' uscito dalla finestra di 8
+    # giorni. E' configurazione, non un guasto passeggero: fallisce identico a
+    # ogni tentativo, quindi 3.
+    ignoti = sorted(rilavora - gruppi_di_interesse())
+    if ignoti:
+        logging.error(
+            "gruppi sconosciuti in --rilavora: %s", ", ".join(ignoti)
+        )
+        logging.error(
+            "i gruppi che questo ingestore lavora sono: %s",
+            ", ".join(sorted(gruppi_di_interesse())),
+        )
+        return 3
+
     with tempfile.TemporaryDirectory() as temporanea:
         workdir = Path(argomenti.workdir or temporanea)
         try:
@@ -77,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
                 window_days=argomenti.window,
                 only=argomenti.only,
                 dry_run=argomenti.dry_run,
+                rilavora=rilavora,
             )
         except GridMismatch as errore:
             logging.error("LA GRIGLIA SORGENTE E' CAMBIATA: %s", errore)

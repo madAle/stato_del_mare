@@ -206,3 +206,53 @@ def test_le_credenziali_mancanti_escono_con_tre(monkeypatch):
 
     monkeypatch.setattr(cli.ObjectStore, "from_env", classmethod(manca))
     assert cli.main(["reconcile"]) == 3
+
+
+def test_rilavora_arriva_a_reconcile_come_insieme_di_gruppi(monkeypatch):
+    """L'opzione prende un elenco, non un booleano.
+
+    Rilavorare tutto vuol dire riscaricare circa 15 GB: la scelta di quali
+    gruppi rifare deve restare in mano a chi lancia il comando.
+    """
+    _store_finto(monkeypatch)
+    visti = {}
+
+    def registra(*a, **k):
+        visti.update(k)
+        return _esito()
+
+    monkeypatch.setattr(cli, "reconcile", registra)
+    assert cli.main(["reconcile", "--rilavora", "his_temp,his_salt,his_cur"]) == 0
+    assert visti["rilavora"] == {"his_temp", "his_salt", "his_cur"}
+
+
+def test_senza_rilavora_non_si_rilavora_niente(monkeypatch):
+    """L'insieme vuoto e' il comportamento di sempre: deduplica in piedi."""
+    _store_finto(monkeypatch)
+    visti = {}
+
+    def registra(*a, **k):
+        visti.update(k)
+        return _esito()
+
+    monkeypatch.setattr(cli, "reconcile", registra)
+    assert cli.main(["reconcile"]) == 0
+    assert visti["rilavora"] == frozenset()
+
+
+def test_un_gruppo_inesistente_in_rilavora_esce_con_tre(monkeypatch):
+    """Un nome sbagliato non deve passare in silenzio.
+
+    `--rilavora his_tmp` non corrisponde a nessun gruppo: senza controllo il
+    run direbbe "tutto bene" senza aver rilavorato niente, e chi lo ha
+    lanciato lo scoprirebbe quando il file e' gia' uscito dalla finestra di 8
+    giorni. E' configurazione sbagliata, quindi 3: fallirebbe identico a ogni
+    tentativo.
+    """
+    _store_finto(monkeypatch)
+
+    def non_chiamare(*a, **k):
+        raise AssertionError("non deve nemmeno iniziare")
+
+    monkeypatch.setattr(cli, "reconcile", non_chiamare)
+    assert cli.main(["reconcile", "--rilavora", "his_tmp"]) == 3
