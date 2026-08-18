@@ -60,4 +60,17 @@ describe("scrubber", () => {
     render(<TimelineScrubber asse={asse} istante={aMeta} cambia={vi.fn()} />);
     expect(screen.getByTestId("orologio").textContent).toMatch(/02:00/);
   });
+
+  it("un istante fuori dall'asse dice 'nessun dato', come la barra di stato", () => {
+    // App.tsx calcola l'ora per la barra di stato con la stessa inquadra():
+    // fuori dall'asse restituisce null, e la barra di stato mostra "nessun
+    // dato". Prima di questa correzione l'orologio ricadeva in silenzio
+    // sull'indice 0 e mostrava un'ora vera (la prima dell'asse), mentre la
+    // barra di stato diceva gia' che non c'era dato: due parti dello schermo
+    // in contraddizione.
+    const asse = [ora(0, "an"), ora(1, "an")];
+    const primaDellAsse = asse[0].istante - 3_600_000;
+    render(<TimelineScrubber asse={asse} istante={primaDellAsse} cambia={vi.fn()} />);
+    expect(screen.getByTestId("orologio").textContent).toBe("nessun dato");
+  });
 });

@@ -45,8 +45,14 @@ export function TimelineScrubber({ asse, istante, cambia }: Props) {
   // davvero: la stessa scelta con due regole diverse avrebbe potuto mostrare
   // un'ora e disegnare il campo di un'altra.
   const inquadratura = inquadra(asse, istante);
+  // Il cursore resta comunque da qualche parte sulla traccia (indice 0) anche
+  // quando l'istante e' fuori dall'asse, ma l'orologio no: prima ricadeva su
+  // asse[0] anche in quel caso, mostrando un'ora vera mentre la barra di
+  // stato (App.tsx, stessa chiamata a inquadra) diceva gia' "nessun dato". Le
+  // due parti dello schermo si contraddicevano. Ora l'orologio segue la
+  // stessa regola della barra di stato: nessuna inquadratura, nessun'ora.
   const indiceCorrente = inquadratura ? asse.indexOf(inquadratura.prima) : 0;
-  const oraCorrente = asse[indiceCorrente] as Ora | undefined;
+  const oraCorrente = inquadratura ? (asse[indiceCorrente] as Ora | undefined) : undefined;
 
   // buchi() si fida che l'asse sia ordinato: qui arriva da asseDeiTempi (o da
   // un asse costruito allo stesso modo nei test), non da un ordinamento
