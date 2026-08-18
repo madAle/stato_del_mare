@@ -31,6 +31,11 @@ export class Animazione {
   private ultimoRapporto = 0;
   private ultimoFotogramma = 0;
   private richiesta: number | null = null;
+  private rapportoInSospeso: number | null = null;
+  // Distingue una programmazione del rapporto in coda dalla successiva: senza
+  // un token, un vecchio giro rimasto in coda (cancelAnimationFrame non lo
+  // toglie sempre, per esempio nei test) consegnerebbe un rapporto doppio.
+  private tokenRapporto = 0;
 
   constructor(private livello: LivelloCampo, private opzioni: OpzioniAnimazione) {}
 
@@ -50,7 +55,11 @@ export class Animazione {
     this.ultimoFotogramma = performance.now();
     const passo = (adesso: number) => {
       this.avanza(adesso);
-      this.richiesta = requestAnimationFrame(passo);
+      // Se avanza() ha chiamato alTempo e chi ascolta ha richiamato pausa()
+      // (o distruggi()) in modo sincrono, richiesta e' gia' stata azzerata:
+      // rischedulare comunque qui farebbe ripartire un ciclo che chi ha
+      // chiamato pausa() crede di aver fermato.
+      if (this.richiesta !== null) this.richiesta = requestAnimationFrame(passo);
     };
     this.richiesta = requestAnimationFrame(passo);
   }
@@ -68,13 +77,25 @@ export class Animazione {
 
   distruggi(): void {
     this.pausa();
+    // pausa() forza gia' un rapporto, che annulla la coda: annullarla di
+    // nuovo qui e' esplicito e non dipende da quella catena di chiamate, se
+    // in futuro pausa() cambiasse non lascerebbe un timer vivo dopo lo
+    // smontaggio.
+    this.annullaRapportoInSospeso();
   }
 
   private avanza(adesso: number): void {
     const trascorso = adesso - this.ultimoFotogramma;
     this.ultimoFotogramma = adesso;
 
-    const prossimo = this.istante + (trascorso / 1000) * this.oreAlSecondo * PASSO_MS;
+    const grezzo = this.istante + (trascorso / 1000) * this.oreAlSecondo * PASSO_MS;
+    // Il riavvolgimento va calcolato PRIMA di interrogare inquadra/pronto: se
+    // si interroga su "grezzo" quando questo e' oltre l'ultimo istante,
+    // inquadra torna null (fuori intervallo) e il controllo di prontezza va
+    // in cortocircuito senza aver mai guardato il fotogramma vero, cioe'
+    // quello iniziale su cui si sta per riavvolgere.
+    const ultimo = this.opzioni.asse.at(-1);
+    const prossimo = ultimo && grezzo > ultimo.istante ? this.opzioni.asse[0].istante : grezzo;
     const q = inquadra(this.opzioni.asse, prossimo);
 
     // Se il frame che servirebbe non c'e' ancora, il tempo NON avanza. Saltare
@@ -88,8 +109,7 @@ export class Animazione {
     }
 
     this.stato = "in riproduzione";
-    const ultimo = this.opzioni.asse.at(-1);
-    this.istante = ultimo && prossimo > ultimo.istante ? this.opzioni.asse[0].istante : prossimo;
+    this.istante = prossimo;
     this.disegna();
     this.riporta(false);
     this.chiediAvanti();
@@ -120,8 +140,42 @@ export class Animazione {
   private riporta(forza: boolean): void {
     const adesso = performance.now();
     const passo = this.opzioni.passoRapportoMs ?? 100;
-    if (!forza && adesso - this.ultimoRapporto < passo) return;
+    if (!forza && adesso - this.ultimoRapporto < passo) {
+      // Strozzato, ma non perso: senza mettersi in coda, un rapporto che cade
+      // qui e non seguito da nessun altro (per esempio l'ultimo vaiA di un
+      // trascinamento dello scrubber, a riproduzione ferma) non arriverebbe
+      // mai, perche' da fermi non gira nessun ciclo che lo recuperi. Chi
+      // ascolta resterebbe con l'ora vecchia a tempo indefinito.
+      this.programmaRapportoInSospeso(this.ultimoRapporto + passo);
+      return;
+    }
+    this.annullaRapportoInSospeso();
     this.ultimoRapporto = adesso;
     this.alTempo(this.istante, this.stato);
+  }
+
+  /** Consegna l'ultimo valore alla chiusura della finestra di throttle. */
+  private programmaRapportoInSospeso(scadenza: number): void {
+    this.annullaRapportoInSospeso(); // sostituisce un eventuale rapporto gia' in coda
+    const mioToken = this.tokenRapporto;
+    const controlla = () => {
+      // Un giro precedente rimasto in coda (annulla non lo toglie sempre,
+      // vedi il commento sul campo tokenRapporto): se il token non combacia
+      // piu', questo giro e' superato e non deve fare niente.
+      if (mioToken !== this.tokenRapporto) return;
+      if (performance.now() >= scadenza) {
+        this.rapportoInSospeso = null;
+        this.riporta(true);
+        return;
+      }
+      this.rapportoInSospeso = requestAnimationFrame(controlla);
+    };
+    this.rapportoInSospeso = requestAnimationFrame(controlla);
+  }
+
+  private annullaRapportoInSospeso(): void {
+    if (this.rapportoInSospeso !== null) cancelAnimationFrame(this.rapportoInSospeso);
+    this.rapportoInSospeso = null;
+    this.tokenRapporto++;
   }
 }
