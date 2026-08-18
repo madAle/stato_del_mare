@@ -22,6 +22,27 @@ describe("scrubber", () => {
     expect(confine.getAttribute("data-frazione")).toBe("0.6666666666666666");
   });
 
+  it("un buco di analisi riempito da una previsione non sposta il confine indietro", () => {
+    // Lo scenario per cui buchi() esiste: un'ora di analisi manca nel
+    // passato (le 02:00) ed e' coperta da una previsione piu' vecchia,
+    // mentre l'analisi vera riprende alle 03:00 e alle 04:00. Il primo "fc"
+    // dell'asse sta alle 02:00, molto prima dell'ultima analisi vera: se il
+    // confine si prendesse dal primo "fc" (asse.findIndex), cadrebbe li' e
+    // le ore 03:00/04:00, che sono analisi, verrebbero mostrate come zona
+    // di previsione.
+    const asse = [
+      ora(0, "an"), ora(1, "an"),
+      ora(2, "fc"), // buco di analisi riempito da una previsione
+      ora(3, "an"), ora(4, "an"),
+      ora(5, "fc"), ora(6, "fc"),
+    ];
+    render(<TimelineScrubber asse={asse} istante={asse[0].istante} cambia={vi.fn()} />);
+    const confine = screen.getByTestId("confine");
+    // Il confine vero e' subito dopo l'ultima analisi (indice 4 delle 04:00),
+    // cioe' all'indice 5 su 6, non all'indice 2 del primo "fc".
+    expect(confine.getAttribute("data-frazione")).toBe(String(5 / 6));
+  });
+
   it("un asse tutto di analisi non ha confine", () => {
     const asse = [ora(0, "an"), ora(1, "an")];
     render(<TimelineScrubber asse={asse} istante={asse[0].istante} cambia={vi.fn()} />);

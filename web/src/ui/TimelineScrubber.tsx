@@ -53,9 +53,24 @@ export function TimelineScrubber({ asse, istante, cambia }: Props) {
   // arbitrario del chiamante.
   const buchiTrovati = buchi(asse);
 
-  const indiceConfine = asse.findIndex((o) => o.tipo === "fc");
+  // L'ultimo indice di analisi, piu' uno: non il primo indice di previsione.
+  // buchi() esiste apposta per lo scenario in cui un'ora di analisi manca nel
+  // passato ed e' coperta da una previsione (un buco riempito): in quel caso
+  // findIndex(fc) si fermerebbe sulla previsione di riempimento, molto prima
+  // dell'ultima analisi vera, e il confine salterebbe indietro mostrando come
+  // "previsione" ore che sono analisi. Cercando l'ultima analisi (che puo'
+  // stare oltre quel buco) il confine cade dove analisi e previsione
+  // smettono davvero di alternarsi.
+  let ultimoIndiceAn = -1;
+  for (let i = 0; i < asse.length; i++) {
+    if (asse[i].tipo === "an") ultimoIndiceAn = i;
+  }
+  const indiceConfine = ultimoIndiceAn + 1;
+  // Nessun confine da disegnare se non c'e' previsione dopo l'ultima analisi
+  // (indiceConfine oltre l'ultimo indice): un asse tutto di analisi non ha
+  // niente da segnare.
   const frazioneConfine =
-    indiceConfine !== -1 && ultimo > 0 ? indiceConfine / ultimo : null;
+    ultimo > 0 && indiceConfine <= ultimo ? indiceConfine / ultimo : null;
 
   const frazione = (indice: number) => (ultimo > 0 ? indice / ultimo : 0);
 
