@@ -4,7 +4,7 @@ import type { Catalogo, Variabile } from "../data/catalogo";
 import type { Ora } from "../data/indice";
 import { Animazione, type StatoRiproduzione } from "../map/animazione";
 import { LivelloCampo } from "../map/campo";
-import { creaMappa, primoLivelloSimboli } from "../map/mappa";
+import { creaMappa, primoLivelloSimboli, type VistaIniziale } from "../map/mappa";
 import { valoreCorrente } from "../map/proiezione";
 import { creaStrozzatore } from "../map/strozzatore";
 
@@ -12,6 +12,7 @@ export type ManiglieMappa = { animazione: Animazione; livello: LivelloCampo };
 
 export function MapView({
   catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera, stile,
+  vistaIniziale,
   alTempo, alValore, alPronto, alErrore,
 }: {
   catalogo: Catalogo;
@@ -25,6 +26,9 @@ export function MapView({
   metaMaschera: { limite_m: number };
   // Solo per i test end to end, vedi main.tsx.
   stile?: StyleSpecification;
+  // Zoom e centro letti dall'URL: solo per il montaggio iniziale, un link
+  // condiviso deve aprire la vista che promette, non quella predefinita.
+  vistaIniziale?: VistaIniziale;
   alTempo: (istante: number, stato: StatoRiproduzione) => void;
   alValore: (valore: number | null) => void;
   alPronto: (m: ManiglieMappa) => void;
@@ -60,7 +64,7 @@ export function MapView({
 
     void (async () => {
       try {
-        const m = await creaMappa(contenitore.current!, catalogo.griglia, stile);
+        const m = await creaMappa(contenitore.current!, catalogo.griglia, stile, vistaIniziale);
         if (!vivo) { m.remove(); return; }
         mappa = m;
         const livello = new LivelloCampo({

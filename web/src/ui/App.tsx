@@ -119,6 +119,7 @@ export function App({
         costa={costa} maschera={maschera}
         metaCosta={metaCosta} metaMaschera={metaMaschera}
         stile={stile}
+        vistaIniziale={{ centro: iniziale.centro, zoom: iniziale.zoom }}
         alTempo={(i, s) => { setIstante(i); setStato(s);
           history.replaceState(null, "", scriviStatoUrl({
             istante: i, variabile: variabileRef.current, zoom: null, centro: null })); }}

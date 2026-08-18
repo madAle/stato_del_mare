@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { attendiCaricamento, primoLivelloSimboli, ZOOM_MASSIMO } from "../src/map/mappa";
+import { attendiCaricamento, primoLivelloSimboli, vistaEffettiva, ZOOM_MASSIMO } from "../src/map/mappa";
+import type { Griglia } from "../src/data/catalogo";
+
+const GRIGLIA: Griglia = {
+  larghezza: 858,
+  altezza: 844,
+  risoluzioneM: 1200,
+  boundsLonLat: { ovest: 10.8437, sud: 39.7559, est: 20.0928, nord: 46.3916 },
+};
 
 /**
  * Un emettitore finto con solo "once" e "off": basta a esercitare
@@ -64,6 +72,35 @@ describe("ordine dei livelli", () => {
 describe("tetto di zoom", () => {
   it("e' 15, dove una cella del modello vale 353 pixel", () => {
     expect(ZOOM_MASSIMO).toBe(15);
+  });
+});
+
+describe("vista iniziale", () => {
+  it("senza vista dall'URL, il centro geometrico della griglia e zoom 6", () => {
+    expect(vistaEffettiva(GRIGLIA)).toEqual({
+      centro: [(10.8437 + 20.0928) / 2, (39.7559 + 46.3916) / 2],
+      zoom: 6,
+    });
+  });
+
+  it("con centro e zoom dall'URL, li usa entrambi", () => {
+    // Il centro dell'URL e' [lat, lon] (statoUrl.ts), MapLibre vuole [lng,
+    // lat]: e' il punto che un link condiviso non raggiungeva mai, perche'
+    // nessuno faceva questa conversione prima di passarla a creaMappa.
+    expect(vistaEffettiva(GRIGLIA, { centro: [44.2, 12.6], zoom: 9 }))
+      .toEqual({ centro: [12.6, 44.2], zoom: 9 });
+  });
+
+  it("solo lo zoom dall'URL: il centro resta quello predefinito", () => {
+    const v = vistaEffettiva(GRIGLIA, { centro: null, zoom: 11 });
+    expect(v.zoom).toBe(11);
+    expect(v.centro).toEqual([(10.8437 + 20.0928) / 2, (39.7559 + 46.3916) / 2]);
+  });
+
+  it("solo il centro dall'URL: lo zoom resta il predefinito 6", () => {
+    const v = vistaEffettiva(GRIGLIA, { centro: [44.2247, 12.4772], zoom: null });
+    expect(v.zoom).toBe(6);
+    expect(v.centro).toEqual([12.4772, 44.2247]);
   });
 });
 

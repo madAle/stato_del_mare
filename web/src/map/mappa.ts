@@ -102,6 +102,37 @@ export function attendiCaricamento(mappa: EmettitoreCiclo): Promise<void> {
   });
 }
 
+/** Centro e zoom letti dall'URL (vedi statoUrl.ts), entrambi indipendentemente opzionali. */
+export type VistaIniziale = { centro: [number, number] | null; zoom: number | null };
+
+/**
+ * La vista con cui la mappa si apre: quella dell'URL condiviso se c'e',
+ * altrimenti il centro geometrico della griglia e uno zoom che mostra tutto
+ * l'Adriatico.
+ *
+ * Estratta a parte perche' e' l'unica scelta della vista che non ha bisogno
+ * di un contesto WebGL per essere provata: prima di questa funzione, zoom e
+ * centro dell'URL arrivavano fino a `leggiStatoUrl` e li' si fermavano, senza
+ * che niente li portasse a `creaMappa`. Un link condiviso apriva sempre la
+ * stessa vista predefinita, che e' proprio quello che lo stato nell'URL
+ * doveva evitare.
+ *
+ * Il centro nell'URL e' [lat, lon] (la convenzione di statoUrl.ts, pensata
+ * per essere leggibile in un link), mentre MapLibre vuole [lng, lat]: la
+ * conversione va fatta una volta sola, qui.
+ */
+export function vistaEffettiva(
+  griglia: Griglia,
+  vista?: VistaIniziale,
+): { centro: [number, number]; zoom: number } {
+  const b = griglia.boundsLonLat;
+  const centroPredefinito: [number, number] = [(b.ovest + b.est) / 2, (b.sud + b.nord) / 2];
+  const centro: [number, number] = vista?.centro
+    ? [vista.centro[1], vista.centro[0]]
+    : centroPredefinito;
+  return { centro, zoom: vista?.zoom ?? 6 };
+}
+
 export async function creaMappa(
   contenitore: HTMLElement,
   griglia: Griglia,
@@ -111,6 +142,8 @@ export async function creaMappa(
   // qui uno stile minimo locale invece di dipendere da un asset che potrebbe
   // non esserci.
   stile?: StyleSpecification,
+  // Opzionale: zoom e centro dell'URL, vedi vistaEffettiva sopra.
+  vista?: VistaIniziale,
 ): Promise<MappaLibre> {
   // pmtiles si registra come protocollo: da qui in poi un URL pmtiles:// e' una
   // sorgente come un'altra, e il browser legge il file a richieste di
@@ -119,11 +152,12 @@ export async function creaMappa(
   maplibregl.addProtocol("pmtiles", protocollo.tile);
 
   const b = griglia.boundsLonLat;
+  const { centro, zoom } = vistaEffettiva(griglia, vista);
   const mappa = new maplibregl.Map({
     container: contenitore,
     style: stile ?? stileBasemap(),
-    center: [(b.ovest + b.est) / 2, (b.sud + b.nord) / 2],
-    zoom: 6,
+    center: centro,
+    zoom,
     maxZoom: ZOOM_MASSIMO,
     maxBounds: [
       [b.ovest - 1, b.sud - 1],
