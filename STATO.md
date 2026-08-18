@@ -53,7 +53,7 @@ ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
   catalog.py      index/ e catalog.json
   reconcile.py    orchestratore
   __main__.py     CLI e codici di uscita
-tests/            134 test nella suite predefinita, più 4 dietro il marcatore `rete`
+tests/            147 test nella suite predefinita, più 4 dietro il marcatore `rete`
 .github/workflows/
   ci.yml          ruff e pytest su push e pull request
   ingest.yml      ingestione giornaliera, due cron
@@ -132,7 +132,7 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 134 test nella suite di default più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
+1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 147 test nella suite di default (erano 134 alla fine del piano) più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
 2. ~~Allineare la spec alle correzioni~~. **Fatto**: le correzioni emerse eseguendo il piano e quelle della revisione finale (sezioni 4.2, 4.5, 4.6, 4.7 e 6.1) sono state applicate alla spec.
 3. ~~Ri-revisione mirata delle 14 correzioni~~. **Fatto il 2026-08-14**: 13
    rilievi su 13 chiusi, ognuno verificato rimettendo il difetto e guardando la
