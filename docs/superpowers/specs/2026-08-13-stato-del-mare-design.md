@@ -785,8 +785,12 @@ per le direzioni. Generata in Python e servita col catalogo. Palette
 percettivamente uniformi: una palette arbitraria su dati geofisici introduce
 artefatti visivi che sembrano struttura fisica e non lo sono.
 
-**Ordine dei livelli**: basemap OSM, campo dati, seamark OpenSeaMap, marker
-stazioni. Inserito dichiarativamente prima di un id noto.
+**Ordine dei livelli**: basemap vettoriale, campo dati, seamark OpenSeaMap,
+marker stazioni, **etichette della basemap sopra il campo**. Il campo si inserisce
+con `beforeId` uguale all'id del primo livello di simboli della basemap, cosi' i
+nomi di luoghi e porti restano leggibili senza togliere niente al campo. La
+basemap deve essere vettoriale proprio per questo: con una raster non esiste un
+livello di etichette sotto cui infilarsi.
 
 **Valore sotto il mouse**: nessuna lettura dalla GPU. Si inverte la proiezione fino
 all'indice di cella e si legge dall'`Int16Array` già in memoria.
@@ -909,6 +913,43 @@ Uno splining del contorno a 1.200 m produrrebbe una curva morbida che passa dove
 passa quella a gradini: stessa posizione sbagliata, aspetto piu' convincente.
 ADRIAC ha celle da 1 km e non sa dov'e' la costa meglio di cosi'; l'informazione
 va presa da una fonte che ce l'ha.
+
+**Margine dalla riva: 12 pixel di schermo, con tetto a 400 m.** Anche con il
+ritaglio giusto il campo che tocca la costa copre la fascia di battigia, i moli
+e i porti, cioe' proprio il dettaglio che si guarda su una carta costiera.
+Deciso il 2026-08-18 guardando: il campo si ferma 12 pixel prima della riva.
+
+**In pixel di schermo, non in metri**, perche' un molo e una scritta occupano
+gli stessi pixel a ogni ingrandimento: e' la leggibilita' della carta sotto a
+dettare la grandezza, e la leggibilita' si misura sullo schermo. In pratica
+`dist / fwidth(dist)` e' gia' la distanza dalla riva in pixel, quindi il
+margine non costa niente da calcolare.
+
+**Il tetto in metri serve**, se no a zoom bassi 12 pixel diventano chilometri di
+mare cancellato: a zoom 10 varrebbero 1,3 km. Con il tetto a 400 m il margine
+smette di crescere sotto zoom 12.
+
+Attenzione al verso: il margine e' il **minimo** fra i pixel richiesti e il
+tetto, e in termini di bordo il minimo fra due margini e' il **massimo** fra i
+due bordi. Scritto con `min` invece che con `max`, come nella prima stesura, il
+tetto diventa un pavimento e impone 400 m a qualunque impostazione: la manopola
+sembra rotta perche' quattro rese diverse escono identiche.
+
+Costo, misurato a zoom 14: il mare dipinto scende dal 98,4% al 93,6% a Unije e
+dal 91,7% all'88,5% a Cesenatico. La sovrapposizione oltre 100 m dentro la
+terraferma disegnata va a zero su quasi tutte le viste; restano Trieste e la
+Dalmazia a zoom 10 e 11, dove il tetto limita il margine a 400 m e sotto c'e' la
+costa semplificata delle tile, che a quella scala sbaglia di piu' del margine.
+
+**Le scritte sul mare non si risolvono con il margine, e non vanno provate a
+risolvere cosi'.** I nomi di baie, porti e isole stanno sotto il campo ovunque,
+non solo vicino a riva: nessuna distanza dalla costa li recupera. Si recuperano
+mettendo il campo **sotto i livelli di etichetta**, il che richiede una basemap
+**vettoriale**: con una raster la tile e' un'immagine sola e non c'e' niente
+sotto cui infilarsi. Nella SPA il custom layer va inserito con `beforeId` uguale
+all'id del primo livello di simboli. Costo se si sbaglia: si finisce ad alzare il
+margine per rimediare a un problema che il margine non tocca, cancellando mare
+buono senza recuperare una sola scritta.
 
 **Cosa resta visibile, ed e' giusto che resti.** Dove il modello non ha celle di
 mare, per esempio davanti alla foce del Reno per 3,6 km, non c'e' dato e non si

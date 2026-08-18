@@ -360,6 +360,13 @@ m di sbordamento che l'ingestore mette di proposito. Il ritaglio si fa con una
 maschera di **distanza con segno** dalla costa, non con una maschera binaria.
 Dettaglio nella spec 7.3, ricetta in `strumenti/costa_sdf.py`.
 
+**Le scritte coperte dal campo non si risolvono allontanandolo dalla costa.**
+I nomi di baie, porti e isole stanno sotto il campo ovunque, non solo a riva. Si
+risolvono mettendo il campo sotto i livelli di etichetta, che richiede una
+basemap **vettoriale**: con una raster la tile e' un'immagine sola. Il margine
+dalla riva (12 pixel di schermo, tetto 400 m) serve per i moli e la battigia, che
+sono un problema diverso.
+
 **Il ritaglio va preso dalla stessa costa che disegna la basemap.** Non perche'
 una sorgente sia piu' esatta: perche' l'occhio confronta il campo con la costa
 che vede sotto, e qualunque scarto si legge come errore del campo. Con GSHHG il
