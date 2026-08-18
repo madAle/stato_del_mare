@@ -92,4 +92,37 @@ async function avvia(): Promise<void> {
   );
 }
 
-void avvia();
+/**
+ * Senza questo catch, un asset mancante (costa_sdf.png o maschera_dato.png
+ * non versionati, vedi strumenti/costa_sdf.py) fa rigettare la promessa di
+ * avvia() prima che render() sia mai chiamato: React non monta niente, e
+ * resta una pagina bianca con un errore visibile solo in console. Qui non si
+ * usa React (potrebbe essere proprio React, o uno dei suoi moduli, a non
+ * essere arrivato): si scrive direttamente nel DOM, con il minimo che possa
+ * fallire a sua volta.
+ */
+function mostraErroreAvvio(errore: unknown): void {
+  console.error("avvio dell'applicazione fallito", errore);
+  const radice = document.getElementById("radice");
+  if (!radice) return;
+
+  const main = document.createElement("main");
+  main.className = "errore";
+
+  const corpo = document.createElement("div");
+  const titolo = document.createElement("p");
+  titolo.textContent = "Impossibile avviare l'applicazione.";
+  const suggerimento = document.createElement("p");
+  suggerimento.textContent =
+    "Mancano probabilmente gli asset locali costa_sdf.png/.json e " +
+    "maschera_dato.png/.json (non sono versionati): si generano eseguendo " +
+    "strumenti/costa_sdf.py e strumenti/maschera_dato.py.";
+  const dettaglio = document.createElement("p");
+  dettaglio.textContent = errore instanceof Error ? errore.message : String(errore);
+
+  corpo.append(titolo, suggerimento, dettaglio);
+  main.append(corpo);
+  radice.replaceChildren(main);
+}
+
+void avvia().catch(mostraErroreAvvio);
