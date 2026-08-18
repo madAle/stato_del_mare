@@ -364,7 +364,7 @@ Dettaglio nella spec 7.3, ricetta in `strumenti/costa_sdf.py`.
 I nomi di baie, porti e isole stanno sotto il campo ovunque, non solo a riva. Si
 risolvono mettendo il campo sotto i livelli di etichetta, che richiede una
 basemap **vettoriale**: con una raster la tile e' un'immagine sola. Il margine
-dalla riva (12 pixel di schermo, tetto 400 m) serve per i moli e la battigia, che
+dalla riva (18 pixel di schermo, tetto 500 m) serve per i moli e la battigia, che
 sono un problema diverso.
 
 **Il ritaglio va preso dalla stessa costa che disegna la basemap.** Non perche'

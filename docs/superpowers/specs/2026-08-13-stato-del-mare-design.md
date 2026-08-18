@@ -914,10 +914,11 @@ passa quella a gradini: stessa posizione sbagliata, aspetto piu' convincente.
 ADRIAC ha celle da 1 km e non sa dov'e' la costa meglio di cosi'; l'informazione
 va presa da una fonte che ce l'ha.
 
-**Margine dalla riva: 12 pixel di schermo, con tetto a 400 m.** Anche con il
+**Margine dalla riva: 18 pixel di schermo, con tetto a 500 m.** Anche con il
 ritaglio giusto il campo che tocca la costa copre la fascia di battigia, i moli
 e i porti, cioe' proprio il dettaglio che si guarda su una carta costiera.
-Deciso il 2026-08-18 guardando: il campo si ferma 12 pixel prima della riva.
+Deciso il 2026-08-18 guardando, in due passaggi: prima 12 pixel, poi 18 perche'
+a 12 la carta sotto restava stretta.
 
 **In pixel di schermo, non in metri**, perche' un molo e una scritta occupano
 gli stessi pixel a ogni ingrandimento: e' la leggibilita' della carta sotto a
@@ -925,9 +926,11 @@ dettare la grandezza, e la leggibilita' si misura sullo schermo. In pratica
 `dist / fwidth(dist)` e' gia' la distanza dalla riva in pixel, quindi il
 margine non costa niente da calcolare.
 
-**Il tetto in metri serve**, se no a zoom bassi 12 pixel diventano chilometri di
-mare cancellato: a zoom 10 varrebbero 1,3 km. Con il tetto a 400 m il margine
-smette di crescere sotto zoom 12.
+**Il tetto in metri serve**, se no a zoom bassi 18 pixel diventano chilometri di
+mare cancellato: a zoom 10 varrebbero 2 km. Con il tetto a 500 m il margine
+smette di crescere sotto zoom 12,4 circa, e da li' in giu' la manopola non ha
+piu' effetto: chi la prova su una vista d'insieme la trova ferma, ed e' giusto
+che lo sia.
 
 Attenzione al verso: il margine e' il **minimo** fra i pixel richiesti e il
 tetto, e in termini di bordo il minimo fra due margini e' il **massimo** fra i
@@ -935,8 +938,8 @@ due bordi. Scritto con `min` invece che con `max`, come nella prima stesura, il
 tetto diventa un pavimento e impone 400 m a qualunque impostazione: la manopola
 sembra rotta perche' quattro rese diverse escono identiche.
 
-Costo, misurato a zoom 14: il mare dipinto scende dal 98,4% al 93,6% a Unije e
-dal 91,7% all'88,5% a Cesenatico. La sovrapposizione oltre 100 m dentro la
+Costo, misurato a zoom 14: il mare dipinto scende dal 98,4% al 91,4% a Unije e
+dal 91,7% all'86,8% a Cesenatico (a 12 pixel erano 93,8% e 88,6%). La sovrapposizione oltre 100 m dentro la
 terraferma disegnata va a zero su quasi tutte le viste; restano Trieste e la
 Dalmazia a zoom 10 e 11, dove il tetto limita il margine a 400 m e sotto c'e' la
 costa semplificata delle tile, che a quella scala sbaglia di piu' del margine.
