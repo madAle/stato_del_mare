@@ -76,6 +76,14 @@ export function MapView({
           limiteCostaM: metaCosta.limite_m, limiteDatoM: metaMaschera.limite_m,
           palette: variabile.colormap, massimo: 4, scala: variabile.scala,
         });
+        // Il segnale che lo smoke test aspetta invece di dormire un tempo a
+        // caso: nasce nel livello, al primo render() che disegna davvero con
+        // dati caricati (vedi il commento su alPrimoDisegno in campo.ts), non
+        // al montaggio della mappa. Impostato prima di addLayer perche' il
+        // primo render puo' scattare appena il livello e' aggiunto.
+        livello.alPrimoDisegno = () => {
+          (window as never as { __primoFrame: boolean }).__primoFrame = true;
+        };
         // prima del primo livello di simboli: le etichette restano sopra il campo
         m.addLayer(livello, primoLivelloSimboli(m.getStyle() as never));
 
@@ -95,9 +103,7 @@ export function MapView({
           strozzatore.invia(valore);
         });
 
-        // il segnale che lo smoke test aspetta invece di dormire un tempo a caso
         (window as never as { __mappa: unknown }).__mappa = m;
-        (window as never as { __primoFrame: boolean }).__primoFrame = true;
       } catch (errore) {
         // Senza questo catch, un rifiuto di creaMappa (o un guasto sincrono
         // durante il montaggio del livello) sparirebbe dentro la IIFE e chi

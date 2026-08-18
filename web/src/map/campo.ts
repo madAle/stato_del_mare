@@ -53,6 +53,27 @@ export class LivelloCampo implements CustomLayerInterface {
   readonly type = "custom" as const;
   readonly renderingMode = "2d" as const;
 
+  /**
+   * Chiamato una volta sola, al primo `render()` che disegna davvero con una
+   * texture di dati caricata (non al montaggio del livello, non
+   * all'arrivo del fotogramma dalla rete): e' l'aggancio che i test end to
+   * end usano per sapere che sul canvas c'e' un colore vero da leggere,
+   * invece di indovinarlo da fuori con un segnale che significa altro.
+   *
+   * Prima di questo campo, `web/src/ui/MapView.tsx` alzava `__primoFrame`
+   * appena la mappa era montata: un nome che prometteva "il primo
+   * fotogramma c'e'" e voleva dire solo "la mappa e' pronta". Nel mezzo,
+   * `vaiA()` disegna subito con quello che trova in cache (spesso niente) e
+   * chiede il resto in modo asincrono: fra il montaggio e l'arrivo del
+   * fotogramma vero, il livello disegna con una texture allocata ma mai
+   * popolata (vedi `texturaDato`, che non chiama `texImage2D` finche' non
+   * arriva un dato vero), che su un renderer software si legge come un
+   * colore casuale invece che come nodata trasparente. Un test che
+   * aspettava quel segnale non aspettava niente di preciso, e diventava
+   * intermittente sulle macchine lente.
+   */
+  alPrimoDisegno?: () => void;
+
   private programma: WebGLProgram | null = null;
   private buffer: WebGLBuffer | null = null;
   private texA: WebGLTexture | null = null;
@@ -62,6 +83,8 @@ export class LivelloCampo implements CustomLayerInterface {
   private texPalette: WebGLTexture | null = null;
   private frazione = 0;
   private haB = false;
+  private haDatoCaricato = false;
+  private primoDisegnoSegnalato = false;
   private quad = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private mappa: MappaLibre | null = null;
   // Salvato da onAdd, che e' l'unico modo pubblico di avere il contesto: MapLibre
@@ -127,6 +150,9 @@ export class LivelloCampo implements CustomLayerInterface {
     this.haB = b !== null;
     if (b) this.carica(this.gl, this.texB!, b);
     this.frazione = frazione;
+    // Da qui in poi le texture contengono un fotogramma vero: il prossimo
+    // render() e' quello che alPrimoDisegno aspetta.
+    this.haDatoCaricato = true;
     this.mappa?.triggerRepaint();
   }
 
@@ -191,6 +217,15 @@ export class LivelloCampo implements CustomLayerInterface {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Il momento vero, non al montaggio ne' all'arrivo dalla rete: qui si e'
+    // appena disegnato usando una texture che imposta() ha davvero
+    // popolato. Una volta sola, altrimenti ogni fotogramma successivo
+    // richiamerebbe l'aggancio dei test.
+    if (this.haDatoCaricato && !this.primoDisegnoSegnalato) {
+      this.primoDisegnoSegnalato = true;
+      this.alPrimoDisegno?.();
+    }
   }
 
   private texturaDato(gl: WebGL2RenderingContext): WebGLTexture {
