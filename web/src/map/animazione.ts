@@ -196,12 +196,15 @@ export class Animazione {
   private disegna(): void {
     const q = inquadra(this.opzioni.asse, this.istante);
     if (!q) return;
-    const a = this.opzioni.cache.prendi(this.opzioni.prefetcher.chiave(q.prima));
+    const chiaveA = this.opzioni.prefetcher.chiave(q.prima);
+    const a = this.opzioni.cache.prendi(chiaveA);
     if (!a) return;
-    const b = q.dopo
-      ? this.opzioni.cache.prendi(this.opzioni.prefetcher.chiave(q.dopo)) ?? null
-      : null;
-    this.livello.imposta(a, b, b ? q.frazione : 0);
+    const chiaveB = q.dopo ? this.opzioni.prefetcher.chiave(q.dopo) : null;
+    const b = chiaveB ? this.opzioni.cache.prendi(chiaveB) ?? null : null;
+    // La chiave di B viaggia solo insieme al dato vero: se b e' null (il
+    // fotogramma dopo non c'e' ancora in cache) il livello deve vedere
+    // "nessun B" e non la chiave di un fotogramma che non ha ricevuto.
+    this.livello.imposta(a, chiaveA, b, b ? chiaveB : null, b ? q.frazione : 0);
   }
 
   private riporta(forza: boolean): void {

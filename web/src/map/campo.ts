@@ -85,6 +85,16 @@ export class LivelloCampo implements CustomLayerInterface {
   private haB = false;
   private haDatoCaricato = false;
   private primoDisegnoSegnalato = false;
+  // Le chiavi (vedi Prefetcher.chiave) dei due fotogrammi gia' caricati nelle
+  // texture: imposta() le confronta prima di richiamare texImage2D, che senza
+  // questo controllo viene chiamato a ogni fotogramma di rAF (fino a 60 volte
+  // al secondo) anche quando i due frame da disegnare sono ancora gli stessi
+  // e solo la frazione di interpolazione e' cambiata. Su una griglia di
+  // 858x844 int16 sono circa 1,4 MB per texture: a 60 fps e due texture, quasi
+  // 174 MB al secondo verso la GPU per aggiornare un dato che in realta'
+  // cambia quattro volte al secondo.
+  private chiaveA: string | null = null;
+  private chiaveB: string | null = null;
   private quad = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private mappa: MappaLibre | null = null;
   // Salvato da onAdd, che e' l'unico modo pubblico di avere il contesto: MapLibre
@@ -143,12 +153,28 @@ export class LivelloCampo implements CustomLayerInterface {
     this.gl = null;
   }
 
-  /** Il campo da disegnare: l'ora t, l'ora t+1 se c'e', e quanto si e' dentro. */
-  imposta(a: Int16Array, b: Int16Array | null, frazione: number): void {
+  /**
+   * Il campo da disegnare: l'ora t (chiave chiaveA), l'ora t+1 se c'e' (chiave
+   * chiaveB), e quanto si e' dentro.
+   *
+   * Le chiavi sono quelle che Prefetcher.chiave() gia' costruisce per
+   * indicizzare la cache: chi chiama (Animazione.disegna) le ha gia' in mano,
+   * quindi passarle qui non costa una scelta di identita' in piu'. Servono
+   * solo a riconoscere "e' lo stesso fotogramma di prima": la texture non si
+   * ricarica se la chiave non e' cambiata, u_frazione resta un uniform e la
+   * fusione fra i due fotogrammi continua a funzionare a ogni chiamata.
+   */
+  imposta(a: Int16Array, chiaveA: string, b: Int16Array | null, chiaveB: string | null, frazione: number): void {
     if (!this.gl) return;
-    this.carica(this.gl, this.texA!, a);
+    if (chiaveA !== this.chiaveA) {
+      this.carica(this.gl, this.texA!, a);
+      this.chiaveA = chiaveA;
+    }
     this.haB = b !== null;
-    if (b) this.carica(this.gl, this.texB!, b);
+    if (b && chiaveB !== this.chiaveB) {
+      this.carica(this.gl, this.texB!, b);
+    }
+    this.chiaveB = b ? chiaveB : null;
     this.frazione = frazione;
     // Da qui in poi le texture contengono un fotogramma vero: il prossimo
     // render() e' quello che alPrimoDisegno aspetta.

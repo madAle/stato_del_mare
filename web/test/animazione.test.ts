@@ -15,7 +15,7 @@ function livelloFinto() {
   const chiamate: { frazione: number; haB: boolean }[] = [];
   return {
     chiamate,
-    imposta(_a: Int16Array, b: Int16Array | null, frazione: number) {
+    imposta(_a: Int16Array, _chiaveA: string, b: Int16Array | null, _chiaveB: string | null, frazione: number) {
       chiamate.push({ frazione, haB: b !== null });
     },
   };
