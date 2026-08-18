@@ -31,7 +31,11 @@ export default defineConfig({
         test: {
           name: "default",
           environment: "node",
-          exclude: ["src/ui/**", "test/**/*.tsx", "node_modules/**"],
+          // e2e/ sono spec di Playwright (task 16): senza escluderle, Vitest le
+          // raccoglie con il proprio pattern predefinito e prova a eseguire
+          // test() di Playwright dentro il proprio runner, che fallisce con un
+          // errore che non c'entra niente con l'applicazione.
+          exclude: ["src/ui/**", "test/**/*.tsx", "node_modules/**", "e2e/**"],
         },
       },
     ],

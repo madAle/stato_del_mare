@@ -1,6 +1,9 @@
 node_modules
 dist
 *.local
+test-results
+playwright-report
+blob-report
 public/costa_sdf.png
 public/costa_sdf.json
 public/maschera_dato.png

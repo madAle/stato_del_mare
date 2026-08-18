@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { StyleSpecification } from "maplibre-gl";
 import { useMemo, useRef, useState } from "react";
 import { CacheFrame } from "../data/cache";
 import { leggiCatalogo, VARIABILE_DISEGNATA } from "../data/catalogo";
@@ -21,7 +22,7 @@ const INDIETRO_MS = 48 * 3_600_000;
 const AVANTI_MS = 72 * 3_600_000;
 
 export function App({
-  costa, maschera, metaCosta, metaMaschera,
+  costa, maschera, metaCosta, metaMaschera, stile,
 }: {
   // Caricate una volta sola in main.tsx e passate come proprieta': una
   // variabile globale nasconderebbe una dipendenza vera e impedirebbe di
@@ -30,6 +31,9 @@ export function App({
   maschera: HTMLImageElement;
   metaCosta: { limite_m: number };
   metaMaschera: { limite_m: number };
+  // Solo per i test end to end: la basemap vera non e' pubblicata sul bucket
+  // (vedi main.tsx). Assente, si usa quella predefinita di creaMappa.
+  stile?: StyleSpecification;
 }) {
   const iniziale = useMemo(() => leggiStatoUrl(location.search), []);
   // Un link condiviso con ?var= su una variabile diversa da quella disegnata
@@ -114,6 +118,7 @@ export function App({
         prefetcher={prefetcher} cache={cache}
         costa={costa} maschera={maschera}
         metaCosta={metaCosta} metaMaschera={metaMaschera}
+        stile={stile}
         alTempo={(i, s) => { setIstante(i); setStato(s);
           history.replaceState(null, "", scriviStatoUrl({
             istante: i, variabile: variabileRef.current, zoom: null, centro: null })); }}

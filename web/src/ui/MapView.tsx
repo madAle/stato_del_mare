@@ -1,3 +1,4 @@
+import type { StyleSpecification } from "maplibre-gl";
 import { useEffect, useRef } from "react";
 import type { Catalogo, Variabile } from "../data/catalogo";
 import type { Ora } from "../data/indice";
@@ -10,7 +11,7 @@ import { creaStrozzatore } from "../map/strozzatore";
 export type ManiglieMappa = { animazione: Animazione; livello: LivelloCampo };
 
 export function MapView({
-  catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera,
+  catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera, stile,
   alTempo, alValore, alPronto, alErrore,
 }: {
   catalogo: Catalogo;
@@ -22,6 +23,8 @@ export function MapView({
   maschera: HTMLImageElement;
   metaCosta: { limite_m: number };
   metaMaschera: { limite_m: number };
+  // Solo per i test end to end, vedi main.tsx.
+  stile?: StyleSpecification;
   alTempo: (istante: number, stato: StatoRiproduzione) => void;
   alValore: (valore: number | null) => void;
   alPronto: (m: ManiglieMappa) => void;
@@ -57,7 +60,7 @@ export function MapView({
 
     void (async () => {
       try {
-        const m = await creaMappa(contenitore.current!, catalogo.griglia);
+        const m = await creaMappa(contenitore.current!, catalogo.griglia, stile);
         if (!vivo) { m.remove(); return; }
         mappa = m;
         const livello = new LivelloCampo({
