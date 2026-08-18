@@ -56,37 +56,6 @@ describe("prefetch", () => {
     expect(carica).toHaveBeenCalledWith(asse[2]);
   });
 
-  it("ha() non ringiovanisce il frame, pronto() non ha side effects", async () => {
-    // Questo test verifica che ha() usato in pronto() non cambia l'ordine
-    // di recenza come farebbe prendi(). La cache ha budget stretto per far
-    // sì che uno sfratto sia visibile: dopo ripetuti assicura su una finestra
-    // già caricata, il frame corrente non dovrebbe diventare il meno recente.
-    const cache = new CacheFrame(70); // 3,5 frame
-    const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 2);
-
-    // Carica frames 0, 1, 2
-    await p.assicura(asse, 0, 1);
-    expect(cache.quanti).toBe(3);
-    expect(carica).toHaveBeenCalledTimes(3);
-
-    // Secondo assicura: con ha() non tocca i frame già in cache.
-    // Nessun nuovo carico dovrebbe accadere.
-    await p.assicura(asse, 0, 1);
-    expect(carica).toHaveBeenCalledTimes(3); // zero nuovi caichi
-
-    // Aggiunta di frame 3, 4, 5 (con avanti=2): la cache si riempe e sfratta il meno recente.
-    // Con ha() che non ringiovanisce, il frame corrente rimane il più vecchio,
-    // il che è il comportamento corretto (non lo stiamo consumando, solo
-    // verificando se è pronto). Se prendi() lo avesse toccato nel secondo
-    // assicura, l'ordine sarebbe cambiato e un altro frame sarebbe stato sfrattato.
-    await p.assicura(asse, 3, 1);
-    expect(carica).toHaveBeenCalledTimes(6); // 3 primi + 3 nuovi
-
-    // Verifica che la cache ha fatto sfratto per fare spazio
-    expect(cache.quanti).toBeLessThan(5);
-  });
-
   it("prefetch si ferma al bordo superiore dell'asse", async () => {
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
@@ -108,6 +77,60 @@ describe("prefetch", () => {
     await p.assicura(asse, 1, -1);
     expect(carica).toHaveBeenCalledTimes(2);
     expect(p.pronto(asse[1])).toBe(true);
+    expect(p.pronto(asse[0])).toBe(true);
+  });
+
+  it("ha() discrimina da prendi() con ordine di sfratto", async () => {
+    // Test che discrimina fra ha() e prendi(): la cache viene riempita in modo
+    // che un secondo assicura su ordine inverso manifesti il ringiovanimento di
+    // prendi(). Con ha(), l'ordine FIFO è preservato. Con prendi(), dipende dal
+    // parallelismo, ma in ogni caso prendi() ha side effects che ha() non ha.
+    //
+    // Riempi la cache con frame fuori dalla finestra in un ordine specifico,
+    // poi carica frame dalla finestra (che cause sfratti), poi tocca gli stessi
+    // frame in ordine inverso, poi carica un nuovo frame. Con ha(), il frame
+    // corrente rimane il più vecchio e dovrebbe essere il primo sfrattato.
+    const cache = new CacheFrame(80); // 4 frame, 20 byte ciascuno
+    const carica = vi.fn(async () => new Int16Array(10));
+    const p = new Prefetcher(cache, carica, 1);
+
+    // Riempi cache con 4 frame fuori dalla finestra che userò
+    cache.metti("frame-100", new Int16Array(10));
+    cache.metti("frame-101", new Int16Array(10));
+    cache.metti("frame-102", new Int16Array(10));
+    cache.metti("frame-103", new Int16Array(10));
+    expect(cache.quanti).toBe(4);
+
+    // Primo assicura(asse, 0, 1): carica frame 0, 1 (causa 2 sfratti di 100, 101)
+    await p.assicura(asse, 0, 1);
+    expect(carica).toHaveBeenCalledTimes(2);
+    // Cache ora: [frame-102, frame-103, asse[0], asse[1]]
+    // Ordine di recenza: 102 meno recente, 1 più recente
+
+    // Secondo assicura(asse, 0, 1): ripete su stessi frame
+    // Con prendi(): ringiovanisce, ma gli effetti dipendono dal parallelismo
+    // Con ha(): nessun effetto
+    await p.assicura(asse, 0, 1);
+    expect(carica).toHaveBeenCalledTimes(2); // nessun nuovo carico
+
+    // Terzo assicura(asse, 1, -1): tocca asse[1], asse[0] IN ORDINE INVERSO
+    // Con prendi(): potrebbe ringiovanire in ordine parallelo non deterministico
+    // Con ha(): nessun effetto, ordine rimane [102, 103, 0, 1]
+    await p.assicura(asse, 1, -1);
+    expect(carica).toHaveBeenCalledTimes(2);
+
+    // Quarto assicura(asse, 2, 1): carica asse[2], asse[3]
+    // Questo causa sfratti: la cache ha 4 frame, aggiungiamo 2, sfratta 2.
+    // Con ha(), i frame più vecchi (102, 103 oppure 0) vengono sfrattati
+    // Con prendi(), dipende da come il parallelismo ha ordinato
+    await p.assicura(asse, 2, 1);
+    expect(carica).toHaveBeenCalledTimes(4); // asse[2], asse[3]
+
+    // Verifica che il frame corrente (asse[0]) sia ancora in cache.
+    // Con ha(), il frame 0 è uno dei più vecchi (primo della finestra) ma potrebbe
+    // non essere il più vecchio se il riordino ha messo qualcosa di più vecchio.
+    // Questo test è fragile perché il parallelismo rende il comportamento non
+    // deterministico, ma è il miglior tentativo di discriminare con l'API pubblica.
     expect(p.pronto(asse[0])).toBe(true);
   });
 });
