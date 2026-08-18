@@ -157,7 +157,18 @@ Niente.
    zero errori, 70 minuti. L'indice si è costruito a 858 x 844 celle, cioè la
    cifra prevista per misura il 13 agosto, e la batimetria è uscita da 2,0 a
    1.245,9 m. Cinque stazioni scartate con il motivo scritto nel log (vedi 6).
-6. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
+6. **Il piano della SPA.** E' il prossimo passo, e adesso puo' partire da cose
+   misurate invece che da ipotesi: l'ingestore gira, il percorso di lettura del
+   browser e' verificato, e una fetta verticale buttabile ha gia' fatto emergere
+   quattro difetti di resa che il piano deve prevenire (spec 7.3). Le tre
+   decisioni che lo bloccavano sono chiuse il 2026-08-18:
+   - **ritaglio sulla costa OSM**, la stessa che disegna la basemap, con margine
+     di 250 m dalla riva misurati in metri e non in pixel;
+   - **tetto di zoom 15**, dove una cella del modello vale 353 pixel e il campo
+     smette di risolvere sotto gli occhi di chi guarda;
+   - **basemap `.pmtiles` di Protomaps nello stesso bucket**, fino a zoom 13,
+     702 MB misurati, cosi' le etichette stanno sopra il campo e non serve
+     nessun servizio di terzi.
 7. **Stima della corrente nei canali di Comacchio.** Richiesta del 2026-08-18.
    Due problemi diversi. **Il bacino e' bloccato**: nessun idrometro pubblico sta
    dentro le Valli. **La corrente nel portocanale no**: se il livello interno e'
@@ -212,8 +223,13 @@ non ho fatto"):
   attraversato da tutte le uscite del giro, compreso il guasto rilanciato.
   Due test lo tengono fermo, uno sul numero di scaricamenti e uno sui
   residui nella cartella di lavoro.
-- **Il piano non è stato aggiornato** e contiene frammenti anteriori alle
-  correzioni: rieseguirlo alla lettera reintrodurrebbe due dei tre critici.
+- ~~Il piano non è stato aggiornato~~. **Chiuso il 2026-08-18** nel solo modo
+  che non mente: il piano dell'ingestore porta ora in testa un avviso che dice
+  che è **eseguito e superato**, che i suoi frammenti sono anteriori alle
+  correzioni e che rieseguirlo alla lettera reintrodurrebbe due dei tre critici.
+  Non è stato riscritto perché un piano è il ragionamento con cui una cosa è
+  nata, non un'istruzione perpetua: la verità corrente sta nel codice, nella
+  spec e qui.
 - **La fusione dell'anagrafica conserva le coordinate esistenti**: se ARPAE
   spostasse davvero una boa, il sistema userebbe la posizione vecchia e nessun
   log lo direbbe. Scelta coerente con un archivio permanente, ma il caso "boa

@@ -792,6 +792,40 @@ nomi di luoghi e porti restano leggibili senza togliere niente al campo. La
 basemap deve essere vettoriale proprio per questo: con una raster non esiste un
 livello di etichette sotto cui infilarsi.
 
+**La basemap e' un `.pmtiles` di Protomaps nello stesso bucket R2.** Deciso il
+2026-08-18. Un file solo, che il browser legge a richieste di intervallo: nessun
+server di tile, nessuna chiave, nessun limite di frequenza di terzi, e soprattutto
+**la stessa proprieta' architetturale del resto**, cioe' la SPA che legge da
+object storage e basta. Un servizio pubblico di tile (OpenFreeMap, MapTiler)
+costerebbe zero lavoro ma metterebbe una dipendenza di esecuzione su qualcosa che
+non controlliamo, dentro un progetto costruito apposta per non averne.
+
+Si estrae dal pianeta senza scaricarlo, perche' il file remoto accetta richieste
+di intervallo:
+
+    pmtiles extract https://build.protomaps.com/AAAAMMGG.pmtiles adriatico.pmtiles \
+      --bbox=10.8,39.8,20.1,46.4 --maxzoom=13
+
+Misurato il 2026-08-18 sul riquadro del dominio, 3 minuti di estrazione:
+
+| fino a zoom | peso |
+|---|---|
+| 12 | 350 MB |
+| **13** | **702 MB** |
+| 14 | 1.316 MB |
+
+**Si prende il 13.** Le tile vettoriali si sovra-ingrandiscono bene, quindi al
+tetto di zoom 15 restano due livelli di sovra-ingrandimento: la geometria e' un
+po' larga, ma le etichette le disegna il client e restano nitide. Il 14 raddoppia
+il peso per un dettaglio da livello stradale che su una mappa del mare non serve;
+il 12 lo dimezza ma a zoom 15 la citta' diventa troppo povera per orientarsi, che
+e' l'unico lavoro che la basemap deve fare qui.
+
+Costo se e' sbagliato: 700 MB nel bucket (circa un centesimo al mese di
+archiviazione, e l'uscita da R2 non si paga) e tre minuti per rifarlo a un altro
+zoom. La basemap non e' deperibile: si rigenera quando fa comodo, non ogni
+giorno.
+
 **Valore sotto il mouse**: nessuna lettura dalla GPU. Si inverte la proiezione fino
 all'indice di cella e si legge dall'`Int16Array` già in memoria.
 
@@ -1039,9 +1073,25 @@ con stati del mare diversi la frangia risulta un ostacolo alla lettura, e non
 solo un fastidio estetico. In quel caso il valore va scelto misurando, non
 scegliendo il primo numero che copre lo screenshot del giorno.
 
-**Tetto di zoom.** La maschera rende nitida la **costa**, non il dato. Il campo
-resta a 1 km, quindi oltre un certo ingrandimento la mappa promette una
-precisione che il dato non ha. Il tetto va scelto guardando, ma esiste.
+**Tetto di zoom: 15.** La maschera rende nitida la **costa**, non il dato: il
+campo resta a 1 km. Una cella del modello, alla latitudine dell'Adriatico, vale
+22 pixel di schermo a zoom 11, 88 a zoom 13, 353 a zoom 15 e 706 a zoom 16.
+
+Il tetto sta a 15 e non piu' in basso perche' la domanda vera che si fa a questa
+mappa e' "com'e' il mare **alla mia spiaggia**", e per rispondere bisogna poter
+arrivare sulla spiaggia. A zoom 15 lo schermo mostra circa due celle, quindi il
+campo **smette di risolvere sotto gli occhi di chi guarda**, e questo e' il modo
+onesto di dire "qui c'e' un numero solo": meglio di un tetto piu' basso, che
+nasconde il limite invece di mostrarlo.
+
+Regge perche' l'interpolazione e' liscia e non fabbrica struttura: ingrandendo si
+vede una sfumatura, non un dettaglio inventato. Se invece si passasse a un
+disegno a classi discrete (le isolinee della sezione 1), il tetto va riesaminato,
+perche' una classe con un bordo netto **sembra** una misura precisa anche quando
+copre un chilometro.
+
+Costo se il numero e' sbagliato: chi vuole collocare esattamente il proprio
+tratto di spiaggia non ci arriva. Si cambia in una riga e non tocca il dato.
 
 ### Verificato per esecuzione, 2026-08-18
 

@@ -1,5 +1,22 @@
 # Ingestore ARPAE Implementation Plan
 
+> **PIANO ESEGUITO E SUPERATO. Non rieseguirlo alla lettera.**
+>
+> L'ingestore e' stato costruito con questo piano fra il 13 e il 14 agosto 2026,
+> ed e' in produzione dal 17. Da allora la revisione, la ri-revisione e il primo
+> run reale hanno cambiato diverse decisioni, e **i frammenti di codice qui sotto
+> sono anteriori a quelle correzioni**: rieseguirli come sono reintrodurrebbe due
+> dei tre difetti critici gia' chiusi, fra cui il rename di variabile che usciva
+> 1 invece di 2 e faceva ritentare il cron per sempre mentre la finestra di 8
+> giorni scorreva via.
+>
+> Il documento resta perche' e' il ragionamento con cui l'ingestore e' nato, non
+> perche' sia una istruzione valida. **La verita' corrente sta nel codice in
+> `ingest/`, nella spec e in `STATO.md`**; le 33 decisioni prese eseguendolo
+> stanno in `docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md`.
+>
+> **For agentic workers:** this plan is done. Read the spec, not this.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Un programma Python che ogni giorno scarica i dati ARPAE ADRIAC, li normalizza e li deposita su object storage in un formato auto-descrittivo, idempotente e riprendibile dopo un guasto.
