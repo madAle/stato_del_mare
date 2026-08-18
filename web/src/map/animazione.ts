@@ -7,9 +7,29 @@ import type { LivelloCampo } from "./campo";
 
 export type StatoRiproduzione = "ferma" | "in riproduzione" | "in attesa di dati";
 
+/**
+ * Una cella leggibile che tiene sempre il valore corrente.
+ *
+ * E' la stessa forma di un RefObject di React ({ current: T }), scelta apposta:
+ * cosi' MapView.tsx puo' passare qui dentro i propri useRef senza che questo
+ * modulo importi mai "react" (vietato in src/map, vedi vincoli.test.ts). Un
+ * test puo' passare un oggetto letterale identico, senza React.
+ */
+export type Leggibile<T> = { readonly current: T };
+
 export type OpzioniAnimazione = {
-  asse: Ora[];
-  prefetcher: Prefetcher;
+  /**
+   * Letti da un ref aggiornato a ogni render di App, non un valore fisso preso
+   * al montaggio: App ricrea l'asse e il prefetcher quando i dati cambiano
+   * (per esempio un refetch di React Query dopo che la scheda torna in
+   * primo piano), ma Animazione vive per tutta la vita della mappa, creata
+   * una volta sola. Senza questa indirezione, l'animazione avrebbe continuato
+   * a lavorare per sempre sull'asse e il prefetcher del primo montaggio,
+   * mentre lo scrubber (che rilegge le prop a ogni render di React) sarebbe
+   * passato in silenzio a quelli nuovi: due assi diversi, mai riconciliati.
+   */
+  asse: Leggibile<Ora[]>;
+  prefetcher: Leggibile<Prefetcher>;
   cache: CacheFrame;
   /** Ogni quanto, al massimo, si riporta il tempo a chi ascolta. */
   passoRapportoMs?: number;
@@ -78,9 +98,11 @@ export class Animazione {
    * quando la promessa si risolve.
    */
   private assicuraFinestra(): void {
-    const q = inquadra(this.opzioni.asse, this.istante);
+    const asse = this.opzioni.asse.current;
+    const prefetcher = this.opzioni.prefetcher.current;
+    const q = inquadra(asse, this.istante);
     if (!q) return;
-    const i = this.opzioni.asse.indexOf(q.prima);
+    const i = asse.indexOf(q.prima);
 
     // Non richiedere una finestra nuova per la stessa ora: il prefetcher
     // deduplica gia' i singoli fotogrammi, ma senza questo controllo ogni
@@ -96,7 +118,7 @@ export class Animazione {
     // riproduzione continua farebbe sembrare un salto dello scrubber molto
     // piu' lento di quanto serva davvero.
     const contoImmediato = q.dopo ? 1 : 0;
-    void this.opzioni.prefetcher.assicura(this.opzioni.asse, i, 1, contoImmediato).then(() => {
+    void prefetcher.assicura(asse, i, 1, contoImmediato).then(() => {
       // Un salto piu' recente ha gia' superato questo: applicarlo ora
       // disegnerebbe un fotogramma vecchio sopra uno piu' nuovo.
       if (mioToken !== this.tokenFinestra) return;
@@ -108,8 +130,8 @@ export class Animazione {
     // ampia in entrambe le direzioni, cosi' uno scrubbing successivo vicino
     // a questo punto trova gia' pronto anche quello, non solo il fotogramma
     // appena richiesto.
-    void this.opzioni.prefetcher.assicura(this.opzioni.asse, i, 1);
-    if (i > 0) void this.opzioni.prefetcher.assicura(this.opzioni.asse, i, -1);
+    void prefetcher.assicura(asse, i, 1);
+    if (i > 0) void prefetcher.assicura(asse, i, -1);
   }
 
   riproduci(): void {
@@ -152,6 +174,7 @@ export class Animazione {
   }
 
   private avanza(adesso: number): void {
+    const asse = this.opzioni.asse.current;
     const trascorso = adesso - this.ultimoFotogramma;
     this.ultimoFotogramma = adesso;
 
@@ -161,14 +184,14 @@ export class Animazione {
     // inquadra torna null (fuori intervallo) e il controllo di prontezza va
     // in cortocircuito senza aver mai guardato il fotogramma vero, cioe'
     // quello iniziale su cui si sta per riavvolgere.
-    const ultimo = this.opzioni.asse.at(-1);
-    const prossimo = ultimo && grezzo > ultimo.istante ? this.opzioni.asse[0].istante : grezzo;
-    const q = inquadra(this.opzioni.asse, prossimo);
+    const ultimo = asse.at(-1);
+    const prossimo = ultimo && grezzo > ultimo.istante ? asse[0].istante : grezzo;
+    const q = inquadra(asse, prossimo);
 
     // Se il frame che servirebbe non c'e' ancora, il tempo NON avanza. Saltare
     // fotogrammi su un'animazione meteorologica falsa la percezione del
     // fenomeno, mentre una pausa breve si legge per quello che e'.
-    if (q && !this.opzioni.prefetcher.pronto(q.prima)) {
+    if (q && !this.opzioni.prefetcher.current.pronto(q.prima)) {
       this.stato = "in attesa di dati";
       this.riporta(false);
       this.chiediAvanti();
@@ -184,22 +207,24 @@ export class Animazione {
 
   private chiediAvanti(): void {
     const i = this.indiceCorrente();
-    if (i >= 0) void this.opzioni.prefetcher.assicura(this.opzioni.asse, i, 1);
+    if (i >= 0) void this.opzioni.prefetcher.current.assicura(this.opzioni.asse.current, i, 1);
   }
 
   private indiceCorrente(): number {
-    const q = inquadra(this.opzioni.asse, this.istante);
+    const asse = this.opzioni.asse.current;
+    const q = inquadra(asse, this.istante);
     if (!q) return -1;
-    return this.opzioni.asse.indexOf(q.prima);
+    return asse.indexOf(q.prima);
   }
 
   private disegna(): void {
-    const q = inquadra(this.opzioni.asse, this.istante);
+    const prefetcher = this.opzioni.prefetcher.current;
+    const q = inquadra(this.opzioni.asse.current, this.istante);
     if (!q) return;
-    const chiaveA = this.opzioni.prefetcher.chiave(q.prima);
+    const chiaveA = prefetcher.chiave(q.prima);
     const a = this.opzioni.cache.prendi(chiaveA);
     if (!a) return;
-    const chiaveB = q.dopo ? this.opzioni.prefetcher.chiave(q.dopo) : null;
+    const chiaveB = q.dopo ? prefetcher.chiave(q.dopo) : null;
     const b = chiaveB ? this.opzioni.cache.prendi(chiaveB) ?? null : null;
     // La chiave di B viaggia solo insieme al dato vero: se b e' null (il
     // fotogramma dopo non c'e' ancora in cache) il livello deve vedere

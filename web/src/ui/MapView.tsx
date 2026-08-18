@@ -1,7 +1,9 @@
 import type { StyleSpecification } from "maplibre-gl";
 import { useEffect, useRef } from "react";
+import type { CacheFrame } from "../data/cache";
 import type { Catalogo, Variabile } from "../data/catalogo";
 import type { Ora } from "../data/indice";
+import type { Prefetcher } from "../data/prefetch";
 import { Animazione, type StatoRiproduzione } from "../map/animazione";
 import { LivelloCampo } from "../map/campo";
 import { creaMappa, primoLivelloSimboli, type VistaIniziale } from "../map/mappa";
@@ -21,8 +23,8 @@ export function MapView({
   catalogo: Catalogo;
   variabile: Variabile;
   asse: Ora[];
-  prefetcher: import("../data/prefetch").Prefetcher;
-  cache: import("../data/cache").CacheFrame;
+  prefetcher: Prefetcher;
+  cache: CacheFrame;
   costa: HTMLImageElement;
   maschera: HTMLImageElement;
   metaCosta: { limite_m: number };
@@ -60,8 +62,35 @@ export function MapView({
   // ricreerebbe il gestore di mousemove a ogni rapporto.
   const ultimoIstante = useRef(asse[0]?.istante ?? 0);
 
+  // asse, prefetcher e variabile aggiornati a ogni render, non solo al
+  // montaggio: App li ricrea quando i dati cambiano (per esempio un refetch
+  // di React Query), ma l'effetto sotto costruisce la mappa una volta sola.
+  // Senza questi ref, l'animazione e il gestore di mousemove avrebbero
+  // continuato a lavorare per sempre sui valori del primo montaggio, mentre
+  // lo scrubber (che rilegge le prop di App a ogni render) sarebbe passato
+  // in silenzio a quelli nuovi: due assi diversi, mai riconciliati.
+  const asseRef = useRef(asse);
+  asseRef.current = asse;
+  const prefetcherRef = useRef(prefetcher);
+  prefetcherRef.current = prefetcher;
+  const variabileRef = useRef(variabile);
+  variabileRef.current = variabile;
+  // Il livello vive dentro l'effetto qui sotto (dipendenze vuote): questo ref
+  // e' l'unico modo di raggiungerlo da un effetto separato quando cambia
+  // variabile, senza ricostruire la mappa.
+  const livelloRef = useRef<LivelloCampo | null>(null);
+
+  // La tavolozza segue la variabile corrente anche dopo il montaggio, con lo
+  // stesso setter che LivelloCampo espone gia' per questo (impostaPalette):
+  // senza, cambiare variabile (o un refetch del catalogo che ne cambia
+  // l'identita' senza cambiarne i valori) lascerebbe la mappa colorata con
+  // la tavolozza con cui si era aperta.
+  useEffect(() => {
+    livelloRef.current?.impostaPalette(variabile.colormap);
+  }, [variabile.colormap]);
+
   // Dipendenze vuote di proposito: la mappa si costruisce una volta sola. Se si
-  // ricostruisse a ogni cambio di stato, ogni ora di riproduzione ricreerebbe
+  // ricostruisce a ogni cambio di stato, ogni ora di riproduzione ricreerebbe
   // il contesto WebGL e ricaricherebbe 702 MB di basemap.
   useEffect(() => {
     let vivo = true;
@@ -107,10 +136,15 @@ export function MapView({
         livello.alPrimoDisegno = () => {
           (window as never as { __primoFrame: boolean }).__primoFrame = true;
         };
+        livelloRef.current = livello;
         // prima del primo livello di simboli: le etichette restano sopra il campo
         m.addLayer(livello, primoLivelloSimboli(m.getStyle() as never));
 
-        animazione = new Animazione(livello, { asse, prefetcher, cache });
+        // asseRef e prefetcherRef, non asse e prefetcher: l'animazione vive
+        // per tutta la vita della mappa, ma i due ref restano aggiornati a
+        // ogni render di MapView (vedi sopra), quindi legge sempre i valori
+        // correnti invece di quelli del primo montaggio.
+        animazione = new Animazione(livello, { asse: asseRef, prefetcher: prefetcherRef, cache });
         animazione.alTempo = (istante, stato) => {
           ultimoIstante.current = istante;
           alTempo(istante, stato);
@@ -119,9 +153,9 @@ export function MapView({
 
         m.on("mousemove", (e) => {
           const valore = valoreCorrente(
-            catalogo.griglia, asse, ultimoIstante.current,
-            (ora) => cache.prendi(prefetcher.chiave(ora)),
-            e.lngLat.lng, e.lngLat.lat, variabile.scala, variabile.offset,
+            catalogo.griglia, asseRef.current, ultimoIstante.current,
+            (ora) => cache.prendi(prefetcherRef.current.chiave(ora)),
+            e.lngLat.lng, e.lngLat.lat, variabileRef.current.scala, variabileRef.current.offset,
           );
           strozzatore.invia(valore);
         });
@@ -140,6 +174,7 @@ export function MapView({
       animazione?.distruggi();
       mappa?.remove();
       strozzatore.distruggi();
+      livelloRef.current = null;
     };
   }, []);
 

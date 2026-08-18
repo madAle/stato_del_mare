@@ -82,7 +82,23 @@ async function avvia(): Promise<void> {
     caricaJson<MetaDistanza>("/maschera_dato.json"),
   ]);
 
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        // Il bucket si aggiorna a lotti una volta al giorno (vedi CLAUDE.md),
+        // non ogni volta che la scheda torna in primo piano: senza
+        // staleTime, React Query lo considera scaduto appena letto e lo
+        // ricarica al primo refetchOnWindowFocus, ricreando catalogo e asse
+        // con una nuova identita' di oggetto. MapView costruisce l'animazione
+        // una volta sola al montaggio (per non ricreare il contesto WebGL a
+        // ogni cambio di scheda): un catalogo che cambia identita' sotto di
+        // lei, senza che i suoi valori cambino davvero, la farebbe lavorare
+        // in silenzio su un asse diverso da quello che lo scrubber mostra.
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
+      },
+    },
+  });
 
   createRoot(document.getElementById("radice")!).render(
     <QueryClientProvider client={queryClient}>

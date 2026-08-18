@@ -54,7 +54,7 @@ describe("animazione", () => {
     const livello = livelloFinto();
     const riportati: number[] = [];
 
-    const a = new Animazione(livello as never, { asse, prefetcher: p, cache });
+    const a = new Animazione(livello as never, { asse: { current: asse }, prefetcher: { current: p }, cache });
     a.alTempo = (istante) => riportati.push(istante);
     a.vaiA(asse[0].istante);
     a.impostaVelocita(1);
@@ -79,7 +79,7 @@ describe("animazione", () => {
     const livello = livelloFinto();
     const stati: string[] = [];
 
-    const a = new Animazione(livello as never, { asse, prefetcher: p, cache });
+    const a = new Animazione(livello as never, { asse: { current: asse }, prefetcher: { current: p }, cache });
     a.alTempo = (_i, stato) => stati.push(stato);
     a.vaiA(asse[0].istante);
     a.impostaVelocita(4);
@@ -99,7 +99,7 @@ describe("animazione", () => {
     await p.assicura(bucato, 0, 1);
     const livello = livelloFinto();
 
-    const a = new Animazione(livello as never, { asse: bucato, prefetcher: p, cache });
+    const a = new Animazione(livello as never, { asse: { current: bucato }, prefetcher: { current: p }, cache });
     a.vaiA(bucato[1].istante + 1_800_000); // mezz'ora dentro il buco
     expect(livello.chiamate.at(-1)).toEqual({ frazione: 0, haB: false });
   });
@@ -111,7 +111,7 @@ describe("animazione", () => {
     const livello = livelloFinto();
     const riportati: number[] = [];
 
-    const a = new Animazione(livello as never, { asse, prefetcher: p, cache });
+    const a = new Animazione(livello as never, { asse: { current: asse }, prefetcher: { current: p }, cache });
     a.alTempo = (istante) => riportati.push(istante);
     a.vaiA(asse[0].istante);
     a.vaiA(asse[1].istante); // seconda chiamata nella stessa finestra di 100 ms
@@ -136,7 +136,7 @@ describe("animazione", () => {
     // misura solo se il ciclo rAF si ferma davvero, senza l'interferenza
     // della coda dei rapporti strozzati.
     const a = new Animazione(livello as never, {
-      asse, prefetcher: p, cache, passoRapportoMs: 0,
+      asse: { current: asse }, prefetcher: { current: p }, cache, passoRapportoMs: 0,
     });
     // pausa() forza a sua volta un rapporto: senza il controllo sullo stato
     // qui, quel rapporto rientrerebbe in questa stessa funzione all'infinito.
@@ -171,7 +171,7 @@ describe("animazione", () => {
     const p = new Prefetcher(cache, carica, 5);
     const livello = livelloFinto();
 
-    const a = new Animazione(livello as never, { asse, prefetcher: p, cache });
+    const a = new Animazione(livello as never, { asse: { current: asse }, prefetcher: { current: p }, cache });
     a.vaiA(asse[3].istante);
 
     // Sincrono: il dato non c'e' ancora, vaiA non puo' aspettare assicura().
@@ -195,7 +195,7 @@ describe("animazione", () => {
     const assicura = vi.spyOn(p, "assicura");
     const livello = livelloFinto();
 
-    const a = new Animazione(livello as never, { asse, prefetcher: p, cache });
+    const a = new Animazione(livello as never, { asse: { current: asse }, prefetcher: { current: p }, cache });
     a.vaiA(asse[3].istante);
     await vi.waitFor(() => expect(livello.chiamate.length).toBeGreaterThan(0));
     const chiamateDopoPrimoVaiA = assicura.mock.calls.length;
@@ -203,6 +203,35 @@ describe("animazione", () => {
     a.vaiA(asse[3].istante); // stessa ora, per esempio un rapporto ridondante
     a.vaiA(asse[3].istante);
     expect(assicura.mock.calls.length).toBe(chiamateDopoPrimoVaiA);
+  });
+
+  it("segue un asse nuovo scritto nello stesso ref, senza bisogno di una nuova istanza", async () => {
+    // Come MapView.tsx: App ricrea l'asse quando i dati cambiano (per
+    // esempio un refetch di React Query), ma Animazione vive per tutta la
+    // vita della mappa. Se leggesse un valore fisso preso alla costruzione
+    // invece del ref, continuerebbe a lavorare per sempre sull'asse
+    // originale mentre lo scrubber (che rilegge le prop a ogni render)
+    // passerebbe in silenzio a quello nuovo.
+    const cache = new CacheFrame();
+    const carica = vi.fn(async () => new Int16Array(10));
+    const p = new Prefetcher(cache, carica, 5);
+    const livello = livelloFinto();
+
+    const asseRef = { current: asse.slice(0, 2) }; // solo le prime due ore
+    const a = new Animazione(livello as never, {
+      asse: asseRef, prefetcher: { current: p }, cache,
+    });
+
+    // Un istante fuori dall'asse iniziale (di due sole ore): inquadra torna
+    // null, quindi vaiA non disegna niente.
+    a.vaiA(asse[5].istante);
+    expect(livello.chiamate).toEqual([]);
+
+    // Lo stesso ref, riscritto con l'asse esteso: nessuna nuova Animazione.
+    asseRef.current = asse;
+    a.vaiA(asse[5].istante);
+    await vi.waitFor(() => expect(livello.chiamate.length).toBeGreaterThan(0));
+    expect(p.pronto(asse[5])).toBe(true);
   });
 
   it("il riavvolgimento controlla la prontezza del fotogramma 0 prima di dichiararsi in riproduzione", async () => {
@@ -217,7 +246,7 @@ describe("animazione", () => {
     const stati: string[] = [];
 
     const a = new Animazione(livello as never, {
-      asse: corto, prefetcher: p, cache, passoRapportoMs: 0,
+      asse: { current: corto }, prefetcher: { current: p }, cache, passoRapportoMs: 0,
     });
     a.alTempo = (_i, stato) => stati.push(stato);
     a.vaiA(corto[1].istante);
