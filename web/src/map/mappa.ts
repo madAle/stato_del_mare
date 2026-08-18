@@ -1,5 +1,9 @@
 import { layers, namedFlavor } from "@protomaps/basemaps";
-import maplibregl, { type Map as MappaLibre, type StyleSpecification } from "maplibre-gl";
+import maplibregl, {
+  type ErrorEvent,
+  type Map as MappaLibre,
+  type StyleSpecification,
+} from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import { ORIGINE } from "../data/urls";
 import type { Griglia } from "../data/catalogo";
@@ -51,6 +55,53 @@ function stileBasemap(): StyleSpecification {
   };
 }
 
+/**
+ * Il poco che serve dalla mappa per aspettarne il caricamento: solo "once" e
+ * "off", cosi' la funzione si puo' esercitare con un oggetto finto nei test,
+ * senza dover creare un WebGLRenderingContext vero.
+ */
+type EmettitoreCiclo = {
+  once(tipo: "load" | "error", ascoltatore: (evento?: ErrorEvent) => void): unknown;
+  off(tipo: "load" | "error", ascoltatore: (evento?: ErrorEvent) => void): unknown;
+};
+
+/**
+ * Aspetta che la mappa finisca di caricare lo stile, e rifiuta se fallisce.
+ *
+ * Senza un ascoltatore su "error" che rifiuta la promessa, un caricamento
+ * fallito (stile, sprite, glifi o archivio pmtiles irraggiungibili) non
+ * diventa un errore: MapLibre, quando "error" non ha ascoltatori propri, si
+ * limita a un console.error interno e non lancia niente, quindi la promessa
+ * resterebbe sospesa per sempre, e chi apre l'app vede un caricamento che non
+ * finisce mai senza niente da leggere sul perche'. E' il caso di oggi: la
+ * basemap non e' ancora pubblicata sul bucket, quindi questo ramo si
+ * esercita per davvero finche' qualcuno non esegue strumenti/asset.sh.
+ *
+ * I due ascoltatori si tolgono a vicenda appena uno dei due vince, cosi' non
+ * restano appesi sulla mappa dopo che la promessa si e' gia' decisa.
+ */
+export function attendiCaricamento(mappa: EmettitoreCiclo): Promise<void> {
+  return new Promise<void>((risolvi, rifiuta) => {
+    const suCaricato = () => {
+      mappa.off("error", suErrore);
+      risolvi();
+    };
+    const suErrore = (evento?: ErrorEvent) => {
+      mappa.off("load", suCaricato);
+      const causa = evento?.error ? `: ${evento.error.message}` : "";
+      rifiuta(
+        new Error(
+          "la mappa non ha completato il caricamento dello stile. Causa piu' probabile: " +
+            "la basemap non e' ancora pubblicata sul bucket (vedi strumenti/asset.sh)" +
+            causa,
+        ),
+      );
+    };
+    mappa.once("load", suCaricato);
+    mappa.once("error", suErrore);
+  });
+}
+
 export async function creaMappa(
   contenitore: HTMLElement,
   griglia: Griglia,
@@ -80,6 +131,6 @@ export async function creaMappa(
     ],
   });
 
-  await new Promise<void>((risolvi) => mappa.on("load", () => risolvi()));
+  await attendiCaricamento(mappa);
   return mappa;
 }
