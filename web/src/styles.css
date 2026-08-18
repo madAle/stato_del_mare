@@ -1,0 +1,283 @@
+/*
+ * Foglio di stile unico dell'applicazione.
+ *
+ * Sobrio e funzionale, non un'identita' grafica: nessun colore di marca,
+ * nessuna animazione. Serve solo a tre cose: che la mappa riempia la
+ * finestra, che i comandi stiano dove devono senza accavallarsi, e che i
+ * segni dello scrubber (buchi, confine analisi/previsione) cadano sulla
+ * traccia invece che sulla finestra del browser.
+ *
+ * Palette neutra, in scala di grigi: nessuna scelta di colore qui e'
+ * definitiva, e' la piu' semplice che si potesse fare senza inventare
+ * un'identita' non richiesta.
+ */
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#radice {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #1f2328;
+}
+
+/*
+ * L'elemento <main> di App.tsx e' il contenitore di tutta l'interfaccia,
+ * mappa compresa. Deve riempire la finestra ed essere l'ancora di
+ * posizionamento (position: relative) per i pannelli sovrapposti, che sono
+ * fratelli dello stesso <main> nel markup, non figli di un contenitore
+ * dedicato.
+ */
+main {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/*
+ * Senza altezza, MapLibre non ha una dimensione da leggere e ripiega sul
+ * proprio default (400x300). position: absolute con i quattro lati a zero
+ * la fa combaciare esattamente con <main>, cioe' con la finestra.
+ */
+.mappa {
+  position: absolute;
+  inset: 0;
+}
+
+/* Stato di errore: testo leggibile al centro, non un rettangolo vuoto. */
+main.errore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+  background: #f2f2f2;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* Stato di caricamento (nessuna classe propria, e' testo semplice in <main>). */
+main:not(.errore) > :only-child:not(.mappa) {
+  display: block;
+  padding: 1rem;
+}
+
+/*
+ * Pannelli sovrapposti alla mappa: stesso trattamento visivo per tutti
+ * (sfondo quasi opaco, bordo leggero, angoli arrotondati), cosi' restano
+ * leggibili sopra un campo colorato qualunque sia il colore sotto.
+ */
+.legenda,
+.barra-stato,
+.scrubber,
+.comandi-riproduzione,
+select[aria-label="variabile"] {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  font-size: 0.85rem;
+}
+
+select[aria-label="variabile"] {
+  top: 1rem;
+  left: 1rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.barra-stato {
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  white-space: nowrap;
+}
+
+.barra-stato .valore {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.barra-stato .attesa {
+  padding: 0.1rem 0.5rem;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.1);
+  font-size: 0.75rem;
+}
+
+.legenda {
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.legenda .scala {
+  width: 160px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+/* Riproduzione: in basso a destra, sopra lo scrubber sul piano orizzontale. */
+.comandi-riproduzione {
+  right: 1rem;
+  bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.comandi-riproduzione-play {
+  padding: 0.35rem 0.9rem;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.comandi-riproduzione-play[data-state="on"] {
+  background: #1f2328;
+  color: #fff;
+  border-color: #1f2328;
+}
+
+.comandi-riproduzione-velocita {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.comandi-riproduzione-velocita button {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.comandi-riproduzione-velocita button.attiva {
+  background: #1f2328;
+  color: #fff;
+  border-color: #1f2328;
+}
+
+/*
+ * Lo scrubber occupa la fascia bassa della finestra, lasciando spazio a
+ * destra ai comandi di riproduzione perche' non condividono un contenitore
+ * comune nel markup.
+ */
+.scrubber {
+  left: 1rem;
+  right: 12rem;
+  bottom: 1rem;
+  padding: 0.6rem 0.9rem;
+}
+
+.scrubber-orologio {
+  margin-bottom: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Il punto critico: i segni dei buchi, la zona di previsione e il confine
+ * sono position: absolute nel markup (TimelineScrubber.tsx), quindi si
+ * posizionano rispetto al primo antenato posizionato. Senza questa riga
+ * quell'antenato e' la finestra del browser (nessun antenato fra questo e
+ * <body> aveva position diverso da static), e i segni cadevano nel posto
+ * sbagliato dello schermo invece che sulla traccia. Con position: relative
+ * qui, l'antenato e' questo elemento, e le percentuali (left, width) dei
+ * segni tornano a essere frazioni della traccia vera.
+ */
+.scrubber-traccia {
+  position: relative;
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.scrubber-zona-previsione {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/*
+ * Tratteggio invece di un colore pieno: un buco e' un'assenza di dato, non
+ * un valore, e un tratteggio neutro lo dice senza inventare un colore di
+ * allarme che il resto dell'interfaccia non usa.
+ */
+.scrubber-buco {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.35),
+    rgba(0, 0, 0, 0.35) 3px,
+    transparent 3px,
+    transparent 7px
+  );
+}
+
+.scrubber-confine {
+  width: 2px;
+  background: #1f2328;
+}
+
+.scrubber-slider {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 20px;
+  touch-action: none;
+}
+
+.scrubber-slider-traccia {
+  position: relative;
+  flex-grow: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.scrubber-slider-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: #1f2328;
+}
+
+.scrubber-slider-cursore {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #1f2328;
+  box-shadow: 0 0 0 2px #fff;
+  cursor: pointer;
+}
+
+.scrubber-slider-cursore:focus-visible {
+  outline: 2px solid #1f2328;
+  outline-offset: 2px;
+}

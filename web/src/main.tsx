@@ -1,8 +1,12 @@
 /// <reference types="vite/client" />
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { StyleSpecification } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { createRoot } from "react-dom/client";
 import { App } from "./ui/App";
+// Il nostro, dopo quello di MapLibre: qui non si sovrascrive niente della
+// mappa, ma se un domani servisse l'ordine e' quello giusto.
+import "./styles.css";
 
 /**
  * Stile minimo per i test end to end: nessuna sorgente esterna, un solo
