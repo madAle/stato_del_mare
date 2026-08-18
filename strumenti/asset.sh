@@ -18,9 +18,19 @@ for stack in "Noto Sans Regular" "Noto Sans Medium" "Noto Sans Italic"; do
   codificato=$(printf %s "$stack" | jq -sRr @uri)
   for inizio in $(seq 0 256 65280); do
     intervallo="${inizio}-$((inizio + 255))"
-    if curl -sfo glifo.pbf "$ASSETS/fonts/${codificato}/${intervallo}.pbf"; then
-      $S3 cp glifo.pbf "s3://$R2_BUCKET/basemap/fonts/${stack}/${intervallo}.pbf"
+    # Il 404 e' normale: un font non copre necessariamente ogni intervallo di
+    # glifi. Qualunque altro esito (timeout, DNS, disconnessione, 5xx) deve
+    # fermare lo script: senza questa distinzione un incidente di rete a meta'
+    # ciclo carica un font incompleto sul bucket senza che niente lo segnali.
+    if ! codice=$(curl -s -o glifo.pbf -w "%{http_code}" "$ASSETS/fonts/${codificato}/${intervallo}.pbf"); then
+      echo "asset.sh: errore di rete su ${stack} ${intervallo}" >&2
+      exit 1
     fi
+    case "$codice" in
+      200) $S3 cp glifo.pbf "s3://$R2_BUCKET/basemap/fonts/${stack}/${intervallo}.pbf" ;;
+      404) ;;
+      *) echo "asset.sh: ${stack} ${intervallo}: HTTP ${codice}" >&2; exit 1 ;;
+    esac
   done
 done
 

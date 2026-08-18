@@ -45,10 +45,25 @@ def main() -> None:
     meta = json.loads(a.costa.read_text())
     risoluzione = meta["resolution_m"]
     fattore = int(round(RISOLUZIONE_DATO_M / risoluzione))
-    larghezza = int(round(meta["width"] / fattore))
-    altezza = int(round(meta["height"] / fattore))
+    # Divisione esatta o niente: un resto assorbito in silenzio nasconderebbe
+    # uno scarto di griglia esattamente nel punto in cui il controllo sui byte,
+    # qui sotto, dovrebbe farlo saltare all'occhio.
+    if meta["width"] % fattore or meta["height"] % fattore:
+        raise SystemExit(
+            f"griglia della costa {meta['width']}x{meta['height']} non e' multiplo "
+            f"esatto del fattore {fattore} (risoluzione dato {RISOLUZIONE_DATO_M} m "
+            f"su risoluzione costa {risoluzione} m)"
+        )
+    larghezza = meta["width"] // fattore
+    altezza = meta["height"] // fattore
 
-    grezzo = requests.get(a.frame, timeout=120).content
+    # Senza raise_for_status(), un errore del bucket si travestirebbe da griglia
+    # sbagliata: il corpo sarebbe una pagina d'errore, la lunghezza non
+    # tornerebbe, e il messaggio del controllo sotto manderebbe a cercare il
+    # problema nella griglia invece che nella rete.
+    risposta = requests.get(a.frame, timeout=120)
+    risposta.raise_for_status()
+    grezzo = risposta.content
     atteso = larghezza * altezza * 2
     if len(grezzo) != atteso:
         raise SystemExit(
