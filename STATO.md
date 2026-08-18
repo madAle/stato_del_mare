@@ -1,15 +1,31 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-18 · **Branch:** `develop` · **Fase:** ingestore in produzione, archivio popolato, SPA da iniziare
+**Aggiornato:** 2026-08-18 · **Branch:** `feat/spa` (da unire su `develop`) · **Fase:** ingestore in produzione, SPA costruita e da guardare
 
 **L'ingestore gira.** Primo run reale il 2026-08-17: 72 file su 72, zero errori,
 70 minuti, l'intera finestra ARPAE di otto giorni in archivio. Il cron delle 18
 è passato da solo la sera stessa. Il bucket è leggibile da browser, verificato
 per misura (vedi la tabella in 5).
 
-**Il punto esatto in cui riprendere:** il **piano della SPA** (4c). Adesso si può
-scrivere guardando dati veri invece che una specifica, che era la condizione
-posta fin dall'inizio per non progettare il client contro un formato immaginato.
+**La SPA esiste.** Piano scritto e eseguito il 2026-08-18: 16 task, un subagente
+per task e una revisione dopo ognuno, 51 commit su `feat/spa`. 121 test unitari e
+3 end to end verdi, typecheck pulito. Le 42 decisioni prese eseguendo stanno in
+`docs/superpowers/revisioni/2026-08-18-spa-decisioni.md`, e **la maggior parte
+corregge il piano, non l'esecuzione**: quel documento va letto prima di riusare
+il piano come riferimento.
+
+**Il punto esatto in cui riprendere:** aprire l'applicazione e **guardarla**
+(sezione 5 per il comando). Due cose la aspettano, ed entrambe vogliono occhi
+umani: il foglio di stile è nato in emergenza nell'ultima onda di correzioni e la
+sua palette è provvisoria, e sotto i 615 px di larghezza la barra di stato si
+sovrappone alla legenda, che su un telefono è il caso d'uso principale.
+
+**Cosa manca perché sia pubblicabile**, in ordine: caricare la basemap sul bucket
+(`strumenti/asset.sh`, 700 MB, mai eseguito), sostituire l'origine `r2.dev` con un
+dominio vero, e aggiungere un workflow di deploy per `web/`. Finché la basemap non
+è pubblicata, la build di produzione mostra "Impossibile aprire la mappa": è il
+percorso che nessun test copre, perché i test end to end montano uno stile minimo
+locale apposta per non dipendere da un asset che non esiste ancora.
 
 Questo file va letto per primo. Poi:
 
@@ -35,7 +51,7 @@ Mappa interattiva dello stato del mare in Adriatico dai dati pubblici ARPAE, con
 
 ## 2. Dove sta il codice e cosa fa ogni pezzo
 
-**L'ingestore esiste ed è completo.** La SPA non è ancora iniziata.
+**L'ingestore esiste ed è completo. La SPA anche**, ed è su `feat/spa`.
 
 ```
 ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
@@ -57,10 +73,37 @@ tests/            147 test nella suite predefinita, più 4 dietro il marcatore `
 .github/workflows/
   ci.yml          ruff e pytest su push e pull request
   ingest.yml      ingestione giornaliera, due cron
-web/              ancora da scrivere
-  src/data/       TS puro: fetch da R2, cache LRU, prefetch, scelta an/fc
-  src/map/        TS puro: MapLibre, custom layer WebGL, ciclo rAF, shader
-  src/ui/         React: scrubber, play/pausa, legenda, status bar
+web/              la SPA: Vite, React 19, MapLibre 5, TypeScript
+  src/data/       TS puro, non conosce React
+    urls.ts       l'unico modulo che sa come è fatto un URL del bucket
+    catalogo.ts   tipi e lettura di catalog.json, si ferma su uno schema ignoto
+    indice.ts     indici mensili, asse dei tempi, buchi (solleva se non ordinato)
+    sorgente.ts   inquadratura temporale e provenienza (analisi o previsione +Nh)
+    frame.ts      lettura di un frame, si ferma se la lunghezza non torna
+    cache.ts      LRU misurata in byte; `ha()` interroga senza ringiovanire
+    prefetch.ts   finestra davanti al cursore, riprova i frame caduti
+  src/map/        TS puro, non conosce React
+    proiezione.ts lon/lat verso cella, e valore sotto il mouse senza leggere la GPU
+    colormap.ts   palette cmocean, GENERATO da strumenti/colormap.py
+    shader.ts     GLSL: ribaltamento, nucleo continuo, ritaglio, dissolvenza
+    campo.ts      custom layer WebGL2, texture R16I, alPrimoDisegno
+    mappa.ts      MapLibre, basemap pmtiles, campo sotto le etichette, zoom max 15
+    animazione.ts ciclo rAF, interpolazione temporale, rapporto a 10 Hz
+    strozzatore.ts strozza in entrata e in uscita: l'ultimo valore arriva sempre
+  src/ui/         React, e solo qui
+    App.tsx       composizione, stato, URL con replaceState al massimo 1 volta/s
+    MapView.tsx   confine imperativo verso src/map, ref per non congelare i dati
+    TimelineScrubber.tsx  asse a indici, buchi visibili, confine analisi/previsione
+    PlaybackControls.tsx  play e pausa, tre velocità
+    Legend.tsx, StatusBar.tsx, LayerSwitcher.tsx, statoUrl.ts
+  test/           121 test; test/vincoli.test.ts è il cancello dei tre strati
+  e2e/            3 test Playwright: resa (asserisce la posizione) e coerenza
+  public/         asset generati, NON versionati (vedi 5)
+strumenti/        si eseguono a mano, una volta sola
+  costa_sdf.py    campo di distanza dalla costa OSM (75 s, serve GSHHG o OSM)
+  maschera_dato.py campo di distanza dal bordo del dato
+  colormap.py     scrive src/map/colormap.ts da cmocean
+  asset.sh        estrae la basemap e carica font e sprite sul bucket
 ```
 
 **Codici di uscita della CLI**, su cui il cron decide: `0` tutto bene, `1`
@@ -157,11 +200,11 @@ Niente.
    zero errori, 70 minuti. L'indice si è costruito a 858 x 844 celle, cioè la
    cifra prevista per misura il 13 agosto, e la batimetria è uscita da 2,0 a
    1.245,9 m. Cinque stazioni scartate con il motivo scritto nel log (vedi 6).
-6. **Il piano della SPA.** E' il prossimo passo, e adesso puo' partire da cose
-   misurate invece che da ipotesi: l'ingestore gira, il percorso di lettura del
-   browser e' verificato, e una fetta verticale buttabile ha gia' fatto emergere
-   quattro difetti di resa che il piano deve prevenire (spec 7.3). Le tre
-   decisioni che lo bloccavano sono chiuse il 2026-08-18:
+6. ~~Il piano della SPA~~. **Scritto e eseguito il 2026-08-18**: 16 task, un
+   subagente per task e una revisione dopo ognuno, 51 commit su `feat/spa`, 121
+   test unitari e 3 end to end verdi. Le 42 decisioni prese eseguendo stanno in
+   `docs/superpowers/revisioni/2026-08-18-spa-decisioni.md`. Le tre decisioni che
+   lo bloccavano erano state chiuse prima:
    - **ritaglio sulla costa OSM**, la stessa che disegna la basemap, con margine
      di 250 m dalla riva misurati in metri e non in pixel;
    - **tetto di zoom 15**, dove una cella del modello vale 353 pixel e il campo
@@ -169,7 +212,21 @@ Niente.
    - **basemap `.pmtiles` di Protomaps nello stesso bucket**, fino a zoom 13,
      702 MB misurati, cosi' le etichette stanno sopra il campo e non serve
      nessun servizio di terzi.
-7. **Stima della corrente nei canali di Comacchio.** Richiesta del 2026-08-18.
+7. **Da guardare sulla SPA, e vuole occhi umani.** Il foglio di stile e' nato
+   nell'ultima onda di correzioni, non era nel piano, e la sua palette e'
+   dichiaratamente provvisoria. Sotto i 615 px di larghezza la barra di stato si
+   sovrappone alla legenda, e sotto i 400 anche il selettore: su un telefono, che
+   e' il caso d'uso principale di questa mappa, si vede. Tutti i comandi restano
+   cliccabili fino a 320 px, quindi e' leggibilita' e non usabilita'.
+
+8. **Perche' la SPA sia pubblicabile**, in ordine: caricare la basemap con
+   `strumenti/asset.sh` (700 MB, mai eseguito, e finche' non c'e' la build di
+   produzione mostra "Impossibile aprire la mappa"); sostituire l'origine
+   `pub-*.r2.dev`, che Cloudflare documenta come endpoint di sviluppo con limiti
+   di banda, con un dominio vero (si cambia in `web/src/data/urls.ts` e basta);
+   aggiungere un workflow di deploy per `web/`.
+
+9. **Stima della corrente nei canali di Comacchio.** Richiesta del 2026-08-18.
    Due problemi diversi. **Il bacino e' bloccato**: nessun idrometro pubblico sta
    dentro le Valli. **La corrente nel portocanale no**: se il livello interno e'
    quasi fermo dipende dal solo livello del mare, che abbiamo gia' in archivio
@@ -177,7 +234,7 @@ Niente.
    campagna di mezza giornata in barca. Una volta calibrata, la funzionalita'
    prevede la corrente in avanti, che e' la parte utile a chi entra o esce.
    Dettaglio e misure nella sezione 1 della spec.
-8. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
+10. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
    discrete sui gradini del codice stato del mare WMO. Richiesta del 2026-08-13,
    dettaglio e riferimento misurato nella sezione 1 della spec. Va con la SPA,
    non prima: non tocca l'ingestore.
@@ -239,8 +296,32 @@ non ho fatto"):
 
 ## 5. Comandi
 
-I comandi di verifica del codice stanno in fondo, nella sezione 7. Non esiste
-ancora nessun comando di build, perché la SPA non è iniziata.
+I comandi di verifica del codice stanno in fondo, nella sezione 7.
+
+**La SPA.** Si lavora dentro `web/`. Gli asset di `web/public/` **non sono
+versionati** e vanno prodotti una volta sola, se no tre test falliscono con un
+messaggio che lo dice:
+
+```bash
+# gli asset, una volta sola (la costa scarica 920 MB di linee OSM, 75 s di calcolo)
+curl -O https://osmdata.openstreetmap.de/download/coastlines-split-4326.zip && unzip -q coastlines-split-4326.zip
+uv run strumenti/costa_sdf.py --coste coastlines-split-4326 --uscita web/public
+uv run strumenti/maschera_dato.py --uscita web/public \
+  --frame https://pub-58d91a839da640f8ab33e576c44b89c8.r2.dev/frames/hwave/an/20260817/2026-08-16T1200.bin
+
+npm --prefix web install
+npm --prefix web run dev          # apre in locale, legge da R2
+npm --prefix web test             # 121 test unitari
+npm --prefix web run typecheck    # NON usare `npm --prefix web exec tsc`: exec non cambia cartella
+cd web && npx playwright test     # 3 test end to end, servono un browser e la rete
+```
+
+**Perché la basemap manca.** `strumenti/asset.sh AAAAMMGG` estrae il `.pmtiles`
+dell'Adriatico e carica font e sprite sul bucket, ma non è mai stato eseguito:
+sono 700 MB su una risorsa condivisa e la decisione è dell'utente. Serve
+`pmtiles`, `jq`, `aws` e le stesse quattro variabili d'ambiente dell'ingestore.
+Finché non gira, `npm run dev` e la build mostrano "Impossibile aprire la mappa";
+i test end to end no, perché montano uno stile minimo locale apposta.
 
 **Recuperare prodotti cambiati da una correzione**, su file che il manifest
 dà già per ingeriti. L'elenco è di gruppi sorgente, non un interruttore
@@ -330,6 +411,46 @@ La stima iniziale era di 3 GB e il tempo temuto di 50 minuti: entrambe sbagliate
 in direzioni opposte. La banda si misura con una HEAD per file, non si stima.
 
 ## 6. Trappole già pagate, da non ripagare
+
+**Il difetto ricorrente di questo progetto ha un nome: codice che afferma più di
+quello che sa.** Eseguendo il piano della SPA ne sono emersi undici casi, e sono
+tutti dello stesso tipo, non undici errori diversi. I quattro che sono costati di
+più, e che vale la pena riconoscere al volo:
+
+- un **cast** che dichiarava una conversione mai fatta (`v.kinds as Variabile["tipi"]`,
+  dove il JSON ha `months` e il tipo dice `mesi`). Il compilatore è stato zittito
+  su una cosa falsa, l'applicazione esplodeva al primo dato vero, e **105 test
+  unitari non l'hanno visto** perché controllavano le chiavi e non il contenuto;
+- un **segnale di test** chiamato `__primoFrame` che significava "mappa montata".
+  I test lo aspettavano e non aspettavano niente;
+- un **controllo di esistenza** (`cache.prendi`) che modificava l'ordine di
+  recenza: interrogare non è consumare, e confonderli faceva sfrattare proprio il
+  frame che stava per andare a schermo;
+- un **commento** che giurava "questo è l'unico modulo che conosce gli URL del
+  bucket" mentre un altro modulo ne componeva quattro.
+
+La domanda che li trova tutti, e che vale la pena farsi in revisione: **questa
+riga sa davvero quello che dice di sapere?**
+
+**Un test che passa può passare per il motivo sbagliato.** Il test di resa
+verificava "il campo non copre la terraferma" leggendo un pixel che cadeva fuori
+dal canvas di destinazione (creato senza `width` e `height`, quindi 300x150 per
+specifica). Tornava nero, l'asserzione passava, e non stava verificando niente:
+proprio il difetto per cui quel test esiste. Prima di fidarsi di un'asserzione
+verde, **rimettere il difetto e guardarla diventare rossa**.
+
+**Un contesto WebGL non conserva il buffer di disegno dopo la composizione.**
+Rileggere il canvas con `drawImage` o `getImageData` dà nero, anche quando a
+schermo si vede tutto. Non è una stranezza dell'ambiente di test: serve
+`preserveDrawingBuffer: true` alla creazione della mappa, e va acceso solo nei
+test perché costa prestazioni.
+
+**Strozzare solo in entrata perde l'ultimo valore.** Vale per il tempo e per il
+mouse: se una chiamata cade dentro la finestra e non ne seguono altre, quel
+valore non arriva mai e chi guarda resta con un'informazione vecchia a tempo
+indefinito. Serve consegnare l'ultimo valore alla chiusura della finestra. Il
+difetto è stato commesso due volte in due moduli diversi prima di capirlo.
+
 
 **Il file di analisi datato `D` contiene i dati di `D-1`.** Verificato: `20260813_..._his_HPDwave_an.nc` copre dalle 01:00 del 12 alle 00:00 del 13. Datare i frame su `ocean_time`, mai sul nome del file, altrimenti tutto l'archivio slitta di 24 ore.
 
