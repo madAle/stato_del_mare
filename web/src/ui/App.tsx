@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { CacheFrame } from "../data/cache";
-import { leggiCatalogo } from "../data/catalogo";
+import { leggiCatalogo, VARIABILE_DISEGNATA } from "../data/catalogo";
 import { leggiFrame } from "../data/frame";
 import { asseDeiTempi, leggiIndice, type Ora } from "../data/indice";
 import { Prefetcher } from "../data/prefetch";
@@ -32,7 +32,13 @@ export function App({
   metaMaschera: { limite_m: number };
 }) {
   const iniziale = useMemo(() => leggiStatoUrl(location.search), []);
-  const [variabile, setVariabile] = useState(iniziale.variabile ?? "hwave");
+  // Un link condiviso con ?var= su una variabile diversa da quella disegnata
+  // avrebbe montato la mappa gia' incoerente con la legenda fin dal primo
+  // render: stessa incoerenza del LayerSwitcher, stesso rimedio, cioe' non
+  // accettarla.
+  const [variabile, setVariabile] = useState(
+    iniziale.variabile === VARIABILE_DISEGNATA ? iniziale.variabile : VARIABILE_DISEGNATA,
+  );
   const [istante, setIstante] = useState(iniziale.istante ?? Date.now());
   const [stato, setStato] = useState<StatoRiproduzione>("ferma");
   const [inRiproduzione, setInRiproduzione] = useState(false);

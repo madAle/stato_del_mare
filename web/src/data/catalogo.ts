@@ -26,6 +26,20 @@ export type Catalogo = {
 /** Lo schema che questo client sa leggere. */
 export const SCHEMA_ATTESO = 2;
 
+/**
+ * L'unica variabile che questa versione della SPA disegna davvero.
+ *
+ * Il catalogo ne pubblica altre (l'ingestore le scrive gia'), ma la mappa
+ * conosce solo la scala e il colormap di questa. Il LayerSwitcher le elenca
+ * comunque, lette dal catalogo e non cablate, ma disabilita le altre: senza
+ * quel limite, selezionarne una diversa lascerebbe la legenda su un'unita' e
+ * la mappa a disegnare un'altra, con un numero sotto il mouse calcolato con
+ * la scala sbagliata. Un comando che cambia meta' schermo e lascia l'altra
+ * meta' al valore vecchio dice una cosa falsa, che e' peggio di un comando
+ * che non fa niente.
+ */
+export const VARIABILE_DISEGNATA = "hwave";
+
 export async function leggiCatalogo(recupera: typeof fetch = fetch): Promise<Catalogo> {
   const risposta = await recupera(urlCatalogo());
   if (!risposta.ok) throw new Error(`catalogo non leggibile: HTTP ${risposta.status}`);

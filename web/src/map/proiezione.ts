@@ -1,5 +1,7 @@
 import type { Griglia } from "../data/catalogo";
 import { NODATA } from "../data/frame";
+import type { Ora } from "../data/indice";
+import { inquadra } from "../data/sorgente";
 
 const R = 6378137.0;
 
@@ -61,4 +63,35 @@ export function valoreA(
   // perfettamente stampabile e completamente falso.
   if (grezzo === NODATA) return null;
   return grezzo * scala + offset;
+}
+
+/**
+ * Il valore sotto un punto per il fotogramma davvero a schermo a un istante,
+ * non per un fotogramma qualunque dell'asse.
+ *
+ * Presa una funzione `prendiFrame` invece di una CacheFrame concreta apposta:
+ * questa funzione resta pura (nessuna rete, nessuna cache, nessun oggetto
+ * mutabile) e si prova con un dizionario finto, senza dover costruire una
+ * cache vera solo per il test.
+ *
+ * Estratta da MapView dopo un difetto: leggere sempre `asse[0]` invece del
+ * fotogramma all'istante corrente avrebbe mostrato il valore di un'ora che il
+ * mouse non sta guardando, per esempio quella di 48 ore prima con la finestra
+ * iniziale predefinita.
+ */
+export function valoreCorrente(
+  griglia: Griglia,
+  asse: Ora[],
+  istante: number,
+  prendiFrame: (ora: Ora) => Int16Array | undefined,
+  lon: number,
+  lat: number,
+  scala: number,
+  offset: number,
+): number | null {
+  const q = inquadra(asse, istante);
+  if (!q) return null;
+  const dato = prendiFrame(q.prima);
+  if (!dato) return null;
+  return valoreA(griglia, dato, lon, lat, scala, offset);
 }

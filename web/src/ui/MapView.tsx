@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react";
 import type { Catalogo, Variabile } from "../data/catalogo";
 import type { Ora } from "../data/indice";
-import { inquadra } from "../data/sorgente";
 import { Animazione, type StatoRiproduzione } from "../map/animazione";
 import { LivelloCampo } from "../map/campo";
 import { creaMappa, primoLivelloSimboli } from "../map/mappa";
-import { valoreA } from "../map/proiezione";
+import { valoreCorrente } from "../map/proiezione";
+import { creaStrozzatore } from "../map/strozzatore";
 
 export type ManiglieMappa = { animazione: Animazione; livello: LivelloCampo };
 
@@ -48,6 +48,12 @@ export function MapView({
     let vivo = true;
     let animazione: Animazione | null = null;
     let mappa: import("maplibre-gl").Map | null = null;
+    // Al massimo dieci consegne al secondo a React, come il rapporto del
+    // tempo: mousemove non e' aggregato dal browser e puo' arrivare a 60 e
+    // piu' eventi al secondo, e ognuno che arrivasse a setValore
+    // ridisegnerebbe App, cioe' esattamente il vincolo che questa
+    // architettura esiste per rispettare.
+    const strozzatore = creaStrozzatore<number | null>(alValore, 100);
 
     void (async () => {
       try {
@@ -70,12 +76,12 @@ export function MapView({
         alPronto({ animazione, livello });
 
         m.on("mousemove", (e) => {
-          const q = inquadra(asse, ultimoIstante.current);
-          const dato = q ? cache.prendi(prefetcher.chiave(q.prima)) : undefined;
-          alValore(dato
-            ? valoreA(catalogo.griglia, dato, e.lngLat.lng, e.lngLat.lat,
-                      variabile.scala, variabile.offset)
-            : null);
+          const valore = valoreCorrente(
+            catalogo.griglia, asse, ultimoIstante.current,
+            (ora) => cache.prendi(prefetcher.chiave(ora)),
+            e.lngLat.lng, e.lngLat.lat, variabile.scala, variabile.offset,
+          );
+          strozzatore.invia(valore);
         });
 
         // il segnale che lo smoke test aspetta invece di dormire un tempo a caso
@@ -93,6 +99,7 @@ export function MapView({
       vivo = false;
       animazione?.distruggi();
       mappa?.remove();
+      strozzatore.distruggi();
     };
   }, []);
 
