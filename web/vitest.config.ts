@@ -8,6 +8,12 @@ import { defineConfig } from "vitest/config";
 // definisce il proprio glob e il proprio environment; quello di default deve
 // escludere src/ui esplicitamente, altrimenti un file la' dentro girerebbe
 // due volte.
+//
+// I test dei componenti pero' non vivono tutti sotto src/ui: alcuni, come
+// web/test/scrubber.test.tsx, stanno in test/ insieme al resto della
+// suite. L'estensione .tsx e' il segnale giusto per smistarli su jsdom
+// (implica JSX, quindi quasi certamente un componente), mentre .ts resta un
+// test di uno strato puro e continua a girare su Node.
 export default defineConfig({
   test: {
     projects: [
@@ -16,7 +22,8 @@ export default defineConfig({
         test: {
           name: "ui",
           environment: "jsdom",
-          include: ["src/ui/**/*.{test,spec}.{ts,tsx}"],
+          include: ["src/ui/**/*.{test,spec}.{ts,tsx}", "test/**/*.{test,spec}.tsx"],
+          setupFiles: ["./test/setup-ui.ts"],
         },
       },
       {
@@ -24,7 +31,7 @@ export default defineConfig({
         test: {
           name: "default",
           environment: "node",
-          exclude: ["src/ui/**", "node_modules/**"],
+          exclude: ["src/ui/**", "test/**/*.tsx", "node_modules/**"],
         },
       },
     ],
