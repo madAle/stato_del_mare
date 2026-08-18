@@ -40,6 +40,24 @@ export const SCHEMA_ATTESO = 2;
  */
 export const VARIABILE_DISEGNATA = "hwave";
 
+/**
+ * Converte davvero `kinds` (il campo del JSON grezzo, in inglese) in `tipi`
+ * (il campo del tipo `Variabile`, in italiano), invece di limitarsi ad
+ * affermarne la forma con un cast.
+ *
+ * Un cast come `v.kinds as Variabile["tipi"]` dice al compilatore di fidarsi
+ * di una forma che a runtime non c'e' mai: il bucket scrive
+ * `{"an": {"months": [...]}}`, non `{"an": {"mesi": [...]}}`. Il risultato e'
+ * `mesi` sempre `undefined`, e chi lo legge (`App.tsx`) crasha al primo
+ * render con dati veri. Qui il campo si rinomina davvero, non si finge.
+ */
+function convertiTipi(kinds: Record<Tipo, { months: string[] }>): Variabile["tipi"] {
+  const voci = Object.entries(kinds) as [Tipo, { months: string[] }][];
+  return Object.fromEntries(
+    voci.map(([tipo, { months }]) => [tipo, { mesi: months }]),
+  ) as Variabile["tipi"];
+}
+
 export async function leggiCatalogo(recupera: typeof fetch = fetch): Promise<Catalogo> {
   const risposta = await recupera(urlCatalogo());
   if (!risposta.ok) throw new Error(`catalogo non leggibile: HTTP ${risposta.status}`);
@@ -75,7 +93,7 @@ export async function leggiCatalogo(recupera: typeof fetch = fetch): Promise<Cat
       scala: v.scale as number,
       offset: v.offset as number,
       colormap: v.colormap as string,
-      tipi: v.kinds as Variabile["tipi"],
+      tipi: convertiTipi(v.kinds as Record<Tipo, { months: string[] }>),
     })),
   };
 }

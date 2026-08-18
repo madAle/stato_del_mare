@@ -24,6 +24,12 @@ describe("catalogo", () => {
     expect(onda.scala).toBe(0.001);
     expect(onda.colormap).toBe("amp");
     expect(Object.keys(onda.tipi).sort()).toEqual(["an", "fc"]);
+    // La riga che mancava: il bucket scrive "months" (il JSON grezzo, vedi la
+    // fixture), il tipo Variabile dichiara "mesi". Un cast che afferma la
+    // conversione senza farla lascia questo campo undefined, e solo
+    // leggendolo davvero il difetto si vede.
+    expect(onda.tipi.an.mesi).toEqual(["2026-08"]);
+    expect(onda.tipi.fc.mesi).toEqual(["2026-08"]);
   });
 
   it("rifiuta uno schema che non conosce invece di indovinare", async () => {
