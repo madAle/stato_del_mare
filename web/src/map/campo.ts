@@ -64,6 +64,13 @@ export class LivelloCampo implements CustomLayerInterface {
   private haB = false;
   private quad = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private mappa: MappaLibre | null = null;
+  // Salvato da onAdd, che e' l'unico modo pubblico di avere il contesto: MapLibre
+  // lo passa gia' come parametro. Frugare dentro campi interni non documentati
+  // (per esempio painter.context.gl) degrada in silenzio se una versione futura
+  // li rinomina o li sposta: il livello smetterebbe di aggiornare le texture
+  // senza sollevare niente, e il difetto sembrerebbe stare nel ciclo di
+  // animazione invece che qui.
+  private gl: WebGL2RenderingContext | null = null;
 
   constructor(private opzioni: OpzioniCampo) {}
 
@@ -75,6 +82,7 @@ export class LivelloCampo implements CustomLayerInterface {
           "Con WebGL1 non esiste isampler2D e il nodata non si potrebbe distinguere.",
       );
     }
+    this.gl = gl;
 
     this.programma = gl.createProgram()!;
     gl.attachShader(this.programma, compila(gl, gl.VERTEX_SHADER, VERTICE));
@@ -109,15 +117,15 @@ export class LivelloCampo implements CustomLayerInterface {
     }
     if (this.buffer) gl.deleteBuffer(this.buffer);
     if (this.programma) gl.deleteProgram(this.programma);
+    this.gl = null;
   }
 
   /** Il campo da disegnare: l'ora t, l'ora t+1 se c'e', e quanto si e' dentro. */
   imposta(a: Int16Array, b: Int16Array | null, frazione: number): void {
-    const gl = this.contesto();
-    if (!gl) return;
-    this.carica(gl, this.texA!, a);
+    if (!this.gl) return;
+    this.carica(this.gl, this.texA!, a);
     this.haB = b !== null;
-    if (b) this.carica(gl, this.texB!, b);
+    if (b) this.carica(this.gl, this.texB!, b);
     this.frazione = frazione;
     this.mappa?.triggerRepaint();
   }
@@ -128,9 +136,8 @@ export class LivelloCampo implements CustomLayerInterface {
   }
 
   impostaPalette(nome: string): void {
-    const gl = this.contesto();
-    if (gl && this.texPalette) gl.deleteTexture(this.texPalette);
-    if (gl) this.texPalette = this.texturaPalette(gl, nome);
+    if (this.gl && this.texPalette) this.gl.deleteTexture(this.texPalette);
+    if (this.gl) this.texPalette = this.texturaPalette(this.gl, nome);
     this.opzioni = { ...this.opzioni, palette: nome };
     this.mappa?.triggerRepaint();
   }
@@ -184,12 +191,6 @@ export class LivelloCampo implements CustomLayerInterface {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  }
-
-  private contesto(): WebGL2RenderingContext | null {
-    const gl = (this.mappa as unknown as { painter?: { context?: { gl?: unknown } } })
-      ?.painter?.context?.gl;
-    return gl instanceof WebGL2RenderingContext ? gl : null;
   }
 
   private texturaDato(gl: WebGL2RenderingContext): WebGLTexture {
