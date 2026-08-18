@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { StyleSpecification } from "maplibre-gl";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CacheFrame } from "../data/cache";
 import { leggiCatalogo, VARIABILE_DISEGNATA } from "../data/catalogo";
 import { leggiFrame } from "../data/frame";
@@ -9,9 +9,10 @@ import { Prefetcher } from "../data/prefetch";
 import { inquadra } from "../data/sorgente";
 import { urlFrame } from "../data/urls";
 import type { StatoRiproduzione } from "../map/animazione";
+import { creaStrozzatore } from "../map/strozzatore";
 import { Legend } from "./Legend";
 import { LayerSwitcher } from "./LayerSwitcher";
-import { MapView, type ManiglieMappa } from "./MapView";
+import { MapView, type ManiglieMappa, type Vista } from "./MapView";
 import { PlaybackControls } from "./PlaybackControls";
 import { StatusBar } from "./StatusBar";
 import { TimelineScrubber } from "./TimelineScrubber";
@@ -62,6 +63,32 @@ export function App({
   // dover ricreare l'animazione (e il contesto WebGL) a ogni cambio.
   const variabileRef = useRef(variabile);
   variabileRef.current = variabile;
+  const istanteRef = useRef(istante);
+  istanteRef.current = istante;
+  // Zoom e centro veri, riportati da MapView a ogni "moveend" (vedi
+  // MapView.tsx): prima di questo ref l'URL non li conosceva mai e
+  // scriveva sempre null, cancellando la vista di un link condiviso.
+  const vistaRef = useRef<Vista | null>(null);
+
+  // Scrive l'URL al massimo una volta al secondo invece che a ogni rapporto
+  // del tempo (che arriva gia' a 10 Hz da Animazione): dieci replaceState al
+  // secondo superano il limite di Safari (100 in 30 secondi), e l'eccezione
+  // che ne segue fermerebbe il ciclo di riproduzione senza dirlo a nessuno.
+  // Lo strozzatore consegna comunque l'ultimo stato quando i cambi si
+  // fermano (vedi map/strozzatore.ts), quindi l'URL resta corretto anche
+  // dopo l'ultimo movimento o l'ultimo avanzamento del tempo.
+  const strozzatoreUrl = useMemo(
+    () => creaStrozzatore<void>(() => {
+      history.replaceState(null, "", scriviStatoUrl({
+        istante: istanteRef.current,
+        variabile: variabileRef.current,
+        zoom: vistaRef.current?.zoom ?? null,
+        centro: vistaRef.current?.centro ?? null,
+      }));
+    }, 1000),
+    [],
+  );
+  useEffect(() => () => strozzatoreUrl.distruggi(), [strozzatoreUrl]);
 
   const catalogo = useQuery({ queryKey: ["catalogo"], queryFn: () => leggiCatalogo() });
   const variabili = catalogo.data?.variabili ?? [];
@@ -123,11 +150,14 @@ export function App({
         stile={stile}
         preserveDrawingBuffer={preserveDrawingBuffer}
         vistaIniziale={{ centro: iniziale.centro, zoom: iniziale.zoom }}
-        alTempo={(i, s) => { setIstante(i); setStato(s);
-          history.replaceState(null, "", scriviStatoUrl({
-            istante: i, variabile: variabileRef.current, zoom: null, centro: null })); }}
+        alTempo={(i, s) => {
+          setIstante(i); setStato(s);
+          istanteRef.current = i;
+          strozzatoreUrl.invia();
+        }}
         alValore={setValore}
         alPronto={(m) => { maniglie.current = m; m.animazione.vaiA(istante); }}
+        alVista={(v) => { vistaRef.current = v; strozzatoreUrl.invia(); }}
         alErrore={(e) => setErroreMappa(e.message)}
       />
       <LayerSwitcher variabili={variabili} scelta={variabile} cambia={setVariabile} />

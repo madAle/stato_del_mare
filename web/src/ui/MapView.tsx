@@ -8,12 +8,15 @@ import { creaMappa, primoLivelloSimboli, type VistaIniziale } from "../map/mappa
 import { valoreCorrente } from "../map/proiezione";
 import { creaStrozzatore } from "../map/strozzatore";
 
+/** Centro [lat, lon] e zoom letti dalla mappa vera, non dalla vista con cui e' stata aperta. */
+export type Vista = { centro: [number, number]; zoom: number };
+
 export type ManiglieMappa = { animazione: Animazione; livello: LivelloCampo };
 
 export function MapView({
   catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera, stile,
   preserveDrawingBuffer, vistaIniziale,
-  alTempo, alValore, alPronto, alErrore,
+  alTempo, alValore, alPronto, alVista, alErrore,
 }: {
   catalogo: Catalogo;
   variabile: Variabile;
@@ -34,6 +37,13 @@ export function MapView({
   alTempo: (istante: number, stato: StatoRiproduzione) => void;
   alValore: (valore: number | null) => void;
   alPronto: (m: ManiglieMappa) => void;
+  /**
+   * Zoom e centro correnti, letti dalla mappa vera (m.getZoom()/getCenter())
+   * al montaggio e a ogni "moveend": senza, chi scrive l'URL non ha altra
+   * scelta che scriverci sempre null, e un link condiviso perderebbe vista e
+   * zoom appena il tempo si aggiorna.
+   */
+  alVista: (vista: Vista) => void;
   /**
    * creaMappa puo' rifiutare (per esempio la basemap non ancora pubblicata sul
    * bucket): senza un modo di dirlo a chi monta questo componente, l'errore
@@ -71,6 +81,19 @@ export function MapView({
         );
         if (!vivo) { m.remove(); return; }
         mappa = m;
+
+        // Il primo rapporto, subito: cosi' chi scrive l'URL (App.tsx) ha
+        // gia' zoom e centro veri prima che l'utente muova qualcosa, invece
+        // di scriverci null finche' non arriva il primo "moveend". A ogni
+        // "moveend" successivo lo stesso rapporto tiene l'URL allineato a
+        // dove la mappa e' davvero, non a dove si e' aperta.
+        const riportaVista = () => {
+          const c = m.getCenter();
+          alVista({ zoom: m.getZoom(), centro: [c.lat, c.lng] });
+        };
+        riportaVista();
+        m.on("moveend", riportaVista);
+
         const livello = new LivelloCampo({
           griglia: catalogo.griglia, costa, maschera,
           limiteCostaM: metaCosta.limite_m, limiteDatoM: metaMaschera.limite_m,
