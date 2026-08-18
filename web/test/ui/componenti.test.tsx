@@ -1,10 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { Variabile } from "../src/data/catalogo";
-import type { Ora } from "../src/data/indice";
-import { Legend } from "../src/ui/Legend";
-import { LayerSwitcher } from "../src/ui/LayerSwitcher";
-import { StatusBar } from "../src/ui/StatusBar";
+import type { Variabile } from "../../src/data/catalogo";
+import type { Ora } from "../../src/data/indice";
+import { Legend } from "../../src/ui/Legend";
+import { LayerSwitcher } from "../../src/ui/LayerSwitcher";
+import { StatusBar } from "../../src/ui/StatusBar";
 
 const an: Ora = { istante: Date.parse("2026-08-15T11:00:00Z"), tipo: "an", riferimento: "20260815" };
 const fc: Ora = { istante: Date.parse("2026-08-15T18:00:00Z"), tipo: "fc", riferimento: "20260815" };

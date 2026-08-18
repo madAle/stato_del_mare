@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { Ora } from "../src/data/indice";
-import { TimelineScrubber } from "../src/ui/TimelineScrubber";
+import type { Ora } from "../../src/data/indice";
+import { TimelineScrubber } from "../../src/ui/TimelineScrubber";
 
 const ora = (h: number, tipo: "an" | "fc"): Ora => ({
   istante: Date.UTC(2026, 7, 15, h), tipo, riferimento: "20260815",

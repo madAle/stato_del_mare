@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { PlaybackControls } from "../src/ui/PlaybackControls";
+import { PlaybackControls } from "../../src/ui/PlaybackControls";
 
 /**
  * Fissa il contratto di accessibilita' che il test di resa del task 16 da'
