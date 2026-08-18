@@ -158,11 +158,13 @@ Niente.
    cifra prevista per misura il 13 agosto, e la batimetria è uscita da 2,0 a
    1.245,9 m. Cinque stazioni scartate con il motivo scritto nel log (vedi 6).
 6. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
-7. **Stima della corrente nei canali di Comacchio** dal dislivello fra Porto
-   Garibaldi e Bellocchio, entrambi a passo di 10 minuti. Richiesta del
-   2026-08-18, dettaglio e misure nella sezione 1 della spec. Richiede un
-   secondo percorso di ingestione per l'osservato, che non e' deperibile
-   (archivio ARPAE dal 2006), quindi non ha fretta.
+7. **Stima della corrente nei canali di Comacchio.** Richiesta del 2026-08-18.
+   **Bloccata da un dato che non esiste**: misurato su tutte le reti pubbliche,
+   nessun idrometro sta dentro le Valli, e senza il livello interno il modello
+   non ha su cosa calibrarsi. Dal pubblico si prende solo la forzante lato mare
+   a Porto Garibaldi (10 min) e, a Logonovo, la salinita' oraria come indizio di
+   verso e fase. Sbloccarla vuol dire un sensore di pressione nel canale.
+   Dettaglio e misure nella sezione 1 della spec.
 8. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
    discrete sui gradini del codice stato del mare WMO. Richiesta del 2026-08-13,
    dettaglio e riferimento misurato nella sezione 1 della spec. Va con la SPA,

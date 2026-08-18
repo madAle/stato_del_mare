@@ -83,53 +83,55 @@ corrente nei canali di collegamento, e viceversa alla bassa. L'obiettivo e'
 stimare quella corrente nel portocanale di Porto Garibaldi e nel canale
 Logonovo.
 
-**La fisica, e perche' l'intuizione e' corretta.** La corrente nel canale non e'
-mossa dalla marea ma dal dislivello fra le due estremita'. Misurato sul flusso
-in tempo reale il 2026-08-18, su 5,7 ore in comune fra i due sensori:
+**La fisica.** La corrente nel canale non e' mossa dalla marea ma dal dislivello
+fra le due estremita'. Se il bacino interno e' molto attenuato rispetto al mare,
+il dislivello e' massimo proprio quando il mare e' al colmo o al minimo, e la
+stanca cade dove il mare attraversa il livello interno. Forte attenuazione
+implica forte sfasamento: e' il modello della laguna a bocca ristretta, e serve
+il livello **dentro** il bacino per essere qualcosa di piu' di una descrizione.
 
-| | escursione |
-|---|---|
-| mare, Porto Garibaldi | 23,5 cm |
-| valle, Bellocchio | 2,0 cm |
+**Il dato interno non esiste nel pubblico.** Misurato il 2026-08-18 su tutte le
+undici reti del flusso `realtime.jsonl`, entro 45 km da Porto Garibaldi: nessuna
+stazione riporta un livello **dentro** le Valli di Comacchio.
 
-La valle si muove il **9%** del mare. Con la valle quasi ferma, il dislivello e'
-massimo proprio quando il mare e' al colmo o al minimo, e la stanca cade dove il
-mare attraversa il livello della valle. E' il modello della laguna a bocca
-ristretta: forte attenuazione implica forte sfasamento.
+| Distanza | Rete | Stazione | Codice | Cos'e' |
+|---|---|---|---|---|
+| 0 km | marefe | Porto Garibaldi (due strumenti) | `B22037` | mare, marea, 10 min |
+| 6,4 km | marefe | Bellocchio | `B13215` | foce del Reno, **non** le Valli |
+| 17,2 km | marefe | Faro | `B22037` | mare, a Volano |
+| 20,4 km | simnbo | Codigoro | `B13215` | sistema Po di Volano |
+| 26,5 km | simnbo | Fiscaglia Monte e Valle | `B13215` | sistema Po di Volano |
 
-**Cosa e' disponibile**, verificato contro la tabella DB-All.e di ARPA-SIMC:
+Tutto il resto entro quel raggio sono idrometri fluviali dei bacini Reno, Idice,
+Lamone e Savio.
 
-| Stazione | Codice | Grandezza | Passo |
-|---|---|---|---|
-| Porto Garibaldi | `B22037` | Tidal elevation w.r.t. national land datum, m | 10 min |
-| Porto Garibaldi Encoder | `B22037` | idem, secondo strumento indipendente | 10 min |
-| Bellocchio | `B13215` | River level, m | 10 min |
-| Logonovo, Manufatto, Punta Volano, Gorino 2 | `B22062`, `B22043`, `B13080`, `B13083`, `B13231` | salinita', temperatura, pH, ossigeno | circa oraria |
+**Errore da non ripetere.** In una prima stesura questa sezione accoppiava Porto
+Garibaldi con Bellocchio e ne ricavava un'attenuazione del 9%, presentandola come
+la misura della cassa di espansione. E' sbagliato: Bellocchio sta alla foce del
+Reno, nella sacca, ed e' praticamente isolato dal mare, quindi quel numero non
+descrive le Valli. Il dato stesso lo diceva e non l'ho letto: il codice di
+Bellocchio e' `B13215`, che la tabella DB-All.e traduce "River level", mentre le
+stazioni di mare usano `B22037`, "Tidal elevation". Lo strumento era dichiarato
+come idrometro di fiume.
 
-I due strumenti di Porto Garibaldi concordano entro 2 cm: e' ridondanza utile per
-accorgersi di una deriva.
+**Non e' solo un problema di strumento.** Il livello delle Valli non e' idraulico
+ma amministrato: chiaviche e idrovore lo tengono dentro una fascia decisa. Lo
+sfasamento nasce in parte dalla regolazione, quindi un coefficiente tarato su un
+periodo vale finche' la regolazione non cambia.
 
-**Il modello**, a un parametro solo: la portata segue `Q = k * sqrt(|dh|) *
-segno(dh)`, con `k` che raccoglie sezione e attrito e si calibra sui dati; la
-continuita' sulla valle chiude il conto.
+**Cosa resta prendibile dal pubblico:**
 
-**Tre trappole.**
+- la forzante lato mare a Porto Garibaldi, `B22037`, passo 10 minuti, con due
+  strumenti indipendenti che concordano entro 2 cm e quindi si controllano a
+  vicenda;
+- a Logonovo la salinita' `B22062`, che il 2026-08-18 oscillava fra 16,8 e 20,5
+  parti per mille. Quell'escursione **e'** lo scambio col mare e ne da' verso e
+  fase, ma e' oraria e non da' la portata.
 
-1. **Gli zeri sono diversi.** `B22037` e' riferito allo zero nazionale, `B13215`
-   a uno zero idrometrico locale. Il dislivello medio misurato, +24,4 cm, e'
-   quasi tutto scarto di riferimento: preso per buono, il modello direbbe che
-   l'acqua esce sempre. Va calibrato, per esempio imponendo flusso netto nullo
-   su un mese.
-2. **Logonovo non ha idrometro.** Ha pero' la salinita', che nel campione oscilla
-   fra 16,8 e 20,5 parti per mille: quell'escursione e' lo scambio col mare, e
-   da' il verso e la fase anche senza dare la portata.
-3. **Il campione era di agosto, in quadratura.** 23 cm di escursione sono pochi
-   per calibrare: il segnale e' molto piu' leggibile in autunno.
-
-**Non c'e' fretta di ingerire.** A differenza di ADRIAC, che cancella dopo 8
-giorni, ARPAE conserva l'osservato dal 2006 in
-`opendata/osservati/meteo/storico/`. Quando si affrontera' la funzionalita' ci
-saranno anni di livelli a 10 minuti da cui calibrare, invece di poche ore.
+**Cosa sbloccherebbe la funzionalita':** un sensore di pressione nel canale. Con
+quello, il mare arriva gratis a 10 minuti e il coefficiente si calibra
+sull'archivio ARPAE, che per l'osservato parte dal 2006. E' l'unico punto in cui
+il progetto passerebbe dal leggere dati altrui al produrne.
 
 ### Il riferimento ARPAE, misurato il 2026-08-13
 
