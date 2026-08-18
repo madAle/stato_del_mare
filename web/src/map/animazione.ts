@@ -36,17 +36,80 @@ export class Animazione {
   // un token, un vecchio giro rimasto in coda (cancelAnimationFrame non lo
   // toglie sempre, per esempio nei test) consegnerebbe un rapporto doppio.
   private tokenRapporto = 0;
+  // L'indice per cui l'ultima assicuraFinestra() e' stata avviata: senza,
+  // ogni chiamata di vaiA con la stessa ora (per esempio un rapporto
+  // ridondante, o piu' eventi di trascinamento fermi sullo stesso punto)
+  // ricalcolerebbe e richiederebbe di nuovo la finestra da capo.
+  private ultimoIndiceAssicurato: number | null = null;
+  // Stesso ruolo di tokenRapporto ma per la finestra: se arriva un vaiA piu'
+  // recente prima che la richiesta precedente sia arrivata, il ridisegno di
+  // quella vecchia va scartato, altrimenti un salto rapido dello scrubber
+  // potrebbe disegnare per ultimo un fotogramma superato.
+  private tokenFinestra = 0;
 
   constructor(private livello: LivelloCampo, private opzioni: OpzioniAnimazione) {}
 
   vaiA(istante: number): void {
     this.istante = istante;
+    // Disegna subito con quello che c'e' gia' in cache (puo' non esserci
+    // niente): senza aspettare la finestra sotto, un salto su un'ora gia'
+    // vicina ad altre visitate resta reattivo.
     this.disegna();
     // Non forzato: vaiA viene chiamato a ripetizione mentre si trascina lo
     // scrubber, e forzare qui scavalcherebbe il limite dei dieci rapporti al
     // secondo esattamente nel punto (il trascinamento) dove servirebbe di
     // piu', riportando React alla frequenza del puntatore invece che a 10 Hz.
     this.riporta(false);
+    this.assicuraFinestra();
+  }
+
+  /**
+   * Chiede da sola il fotogramma dell'istante corrente (e il successivo, se
+   * serve per l'interpolazione), e ridisegna appena arriva.
+   *
+   * Prima di questa funzione, l'unico punto che chiedeva dati alla rete era
+   * chiediAvanti(), chiamato solo dentro il ciclo di riproci(): aprire
+   * l'applicazione, o trascinare lo scrubber, senza mai premere "riproduci",
+   * non caricava mai niente. disegna() si fermava in silenzio (il fotogramma
+   * non e' in cache) e la mappa restava senza campo per sempre: chi apriva
+   * un link pensava che non ci fosse dato, non che nessuno l'avesse chiesto.
+   *
+   * assicura() e' asincrona, vaiA no: il ridisegno per forza arriva dopo,
+   * quando la promessa si risolve.
+   */
+  private assicuraFinestra(): void {
+    const q = inquadra(this.opzioni.asse, this.istante);
+    if (!q) return;
+    const i = this.opzioni.asse.indexOf(q.prima);
+
+    // Non richiedere una finestra nuova per la stessa ora: il prefetcher
+    // deduplica gia' i singoli fotogrammi, ma senza questo controllo ogni
+    // chiamata ridondante di vaiA (un rapporto strozzato, piu' eventi di
+    // trascinamento fermi sullo stesso punto) ripeterebbe comunque il giro.
+    if (i === this.ultimoIndiceAssicurato) return;
+    this.ultimoIndiceAssicurato = i;
+
+    const mioToken = ++this.tokenFinestra;
+    // Solo il fotogramma che serve per disegnare SUBITO l'istante corrente
+    // (quello prima, e quello dopo se c'e' per interpolare) decide quando
+    // ridisegnare: aspettare l'intera finestra di dieci ore pensata per la
+    // riproduzione continua farebbe sembrare un salto dello scrubber molto
+    // piu' lento di quanto serva davvero.
+    const contoImmediato = q.dopo ? 1 : 0;
+    void this.opzioni.prefetcher.assicura(this.opzioni.asse, i, 1, contoImmediato).then(() => {
+      // Un salto piu' recente ha gia' superato questo: applicarlo ora
+      // disegnerebbe un fotogramma vecchio sopra uno piu' nuovo.
+      if (mioToken !== this.tokenFinestra) return;
+      this.disegna();
+      this.riporta(false);
+    });
+
+    // In parallelo, senza bloccare il ridisegno sopra: la finestra piu'
+    // ampia in entrambe le direzioni, cosi' uno scrubbing successivo vicino
+    // a questo punto trova gia' pronto anche quello, non solo il fotogramma
+    // appena richiesto.
+    void this.opzioni.prefetcher.assicura(this.opzioni.asse, i, 1);
+    if (i > 0) void this.opzioni.prefetcher.assicura(this.opzioni.asse, i, -1);
   }
 
   riproduci(): void {
@@ -82,6 +145,10 @@ export class Animazione {
     // in futuro pausa() cambiasse non lascerebbe un timer vivo dopo lo
     // smontaggio.
     this.annullaRapportoInSospeso();
+    // Invalida una assicuraFinestra() eventualmente in volo: senza, il suo
+    // .then() potrebbe ridisegnare (o riportare il tempo a chi ascolta)
+    // dopo che questa istanza e' gia' stata smontata.
+    this.tokenFinestra++;
   }
 
   private avanza(adesso: number): void {

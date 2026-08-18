@@ -80,6 +80,29 @@ describe("prefetch", () => {
     expect(p.pronto(asse[0])).toBe(true);
   });
 
+  it("un conteggio esplicito scavalca la finestra predefinita, per un bisogno immediato", async () => {
+    // Serve a chi vuole solo il fotogramma corrente (e magari il prossimo,
+    // per l'interpolazione) subito, senza aspettare la finestra intera di
+    // dieci ore pensata per la riproduzione continua: vedi vaiA in
+    // animazione.ts, che aspetta questo prima di ridisegnare.
+    const cache = new CacheFrame();
+    const carica = vi.fn(async () => new Int16Array(10));
+    const p = new Prefetcher(cache, carica, 8);
+    await p.assicura(asse, 5, 1, 1);
+    expect(carica).toHaveBeenCalledTimes(2); // solo 5 e 6, non fino a 13
+    expect(p.pronto(asse[5])).toBe(true);
+    expect(p.pronto(asse[6])).toBe(true);
+    expect(p.pronto(asse[7])).toBe(false);
+  });
+
+  it("senza conteggio esplicito, il comportamento predefinito non cambia", async () => {
+    const cache = new CacheFrame();
+    const carica = vi.fn(async () => new Int16Array(10));
+    const p = new Prefetcher(cache, carica, 3);
+    await p.assicura(asse, 5, 1);
+    expect(carica).toHaveBeenCalledTimes(4); // 5, 6, 7, 8
+  });
+
   it("prendi() sfratta il frame corrente, ha() sfratta il lontano", async () => {
     // Test che discrimina fra ha() e prendi() verificando quale frame viene
     // sfrattato quando la cache si riempie. La chiave è che il controllo di

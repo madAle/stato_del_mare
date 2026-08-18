@@ -31,9 +31,16 @@ export class Prefetcher {
     return this.inCorso.size;
   }
 
-  async assicura(asse: Ora[], indice: number, direzione: 1 | -1): Promise<void> {
+  /**
+   * `conteggio` e' opzionale e di default vale la finestra costruita nel
+   * costruttore (pensata per la riproduzione continua). Chi ha bisogno solo
+   * del fotogramma corrente subito, per esempio un salto dello scrubber che
+   * deve ridisegnare appena arriva il dato e non aspettare dieci ore di
+   * lookahead, puo' chiederne uno piu' piccolo qui.
+   */
+  async assicura(asse: Ora[], indice: number, direzione: 1 | -1, conteggio = this.avanti): Promise<void> {
     const richieste: Promise<void>[] = [];
-    for (let k = 0; k <= this.avanti; k++) {
+    for (let k = 0; k <= conteggio; k++) {
       const i = indice + k * direzione;
       if (i < 0 || i >= asse.length) break;
       richieste.push(this.uno(asse[i]));

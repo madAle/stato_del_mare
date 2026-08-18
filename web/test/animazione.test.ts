@@ -159,6 +159,52 @@ describe("animazione", () => {
     expect(chiamate).toBeLessThanOrEqual(6);
   });
 
+  it("vaiA assicura da solo il fotogramma, e ridisegna quando arriva", async () => {
+    // A differenza di tutti i test sopra, qui non c'e' nessun
+    // p.assicura(...) manuale prima di vaiA: e' esattamente il caso reale
+    // dell'apertura dell'app o di un salto dello scrubber, dove prima di
+    // questa correzione la cache restava vuota per sempre (disegna() si
+    // fermava in silenzio, e la mappa restava senza campo finche' non si
+    // premeva "riproduci").
+    const cache = new CacheFrame();
+    const carica = vi.fn(async () => new Int16Array(10));
+    const p = new Prefetcher(cache, carica, 5);
+    const livello = livelloFinto();
+
+    const a = new Animazione(livello as never, { asse, prefetcher: p, cache });
+    a.vaiA(asse[3].istante);
+
+    // Sincrono: il dato non c'e' ancora, vaiA non puo' aspettare assicura().
+    expect(livello.chiamate).toEqual([]);
+
+    // assicura() e' asincrona: aspetta che si risolva, poi il ridisegno deve
+    // essere arrivato da solo.
+    await vi.waitFor(() => expect(livello.chiamate.length).toBeGreaterThan(0));
+    expect(p.pronto(asse[3])).toBe(true);
+  });
+
+  it("vaiA sullo stesso indice non rilancia una nuova richiesta", async () => {
+    // La finestra dedica gia' la propria deduplica ai singoli fotogrammi
+    // (cache e richieste in volo), ma qui si controlla che vaiA stesso non
+    // richiami assicura() a ogni chiamata quando l'ora scelta non e'
+    // cambiata: altrimenti ogni evento di trascinamento sullo stesso punto
+    // (o un rapporto ridondante) ricalcolerebbe la finestra da capo.
+    const cache = new CacheFrame();
+    const carica = vi.fn(async () => new Int16Array(10));
+    const p = new Prefetcher(cache, carica, 5);
+    const assicura = vi.spyOn(p, "assicura");
+    const livello = livelloFinto();
+
+    const a = new Animazione(livello as never, { asse, prefetcher: p, cache });
+    a.vaiA(asse[3].istante);
+    await vi.waitFor(() => expect(livello.chiamate.length).toBeGreaterThan(0));
+    const chiamateDopoPrimoVaiA = assicura.mock.calls.length;
+
+    a.vaiA(asse[3].istante); // stessa ora, per esempio un rapporto ridondante
+    a.vaiA(asse[3].istante);
+    expect(assicura.mock.calls.length).toBe(chiamateDopoPrimoVaiA);
+  });
+
   it("il riavvolgimento controlla la prontezza del fotogramma 0 prima di dichiararsi in riproduzione", async () => {
     const corto: Ora[] = [asse[0], asse[1]];
     const cache = new CacheFrame();
