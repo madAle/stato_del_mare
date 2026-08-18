@@ -835,6 +835,44 @@ c'e' dato e non si disegna niente. Il bordo di quell'assenza resta a gradini di
 1.200 m. Non va ammorbidito: e' assenza di dato, e ammorbidirla vorrebbe dire
 disegnare qualcosa che non abbiamo.
 
+**Il bordo del dato si sfuma, non si estende.** Il modello ha celle da 1 km e
+considera terra tutta la fascia costiera, e l'ingestore riempie solo entro 800 m
+da una cella di mare: fra il bordo del dato e la costa vera resta una frangia
+scoperta. Finche' il campo veniva dipinto anche a terra la frangia era nascosta
+dallo sbordamento; ritagliando sulla costa vera e' venuta fuori.
+
+Misurata il 2026-08-18 sul frame del 16 agosto:
+
+| | |
+|---|---|
+| Frangia scoperta entro 2 km dalla costa | 828 celle, circa 1.192 km2 |
+| Distanza mediana dal dato piu' vicino | 2,7 km |
+| Coperta allargando il riempimento a 2,4 km | 48% |
+| Coperta allargando a 3,6 km | 57% |
+| Coperta allargando a 5 km | 62% |
+
+**Decisione: si sfuma, non si allarga.** Il campo abbassa l'opacita' dove il dato
+si dirada, contando quanti vicini di un intorno 5x5 sono validi. Non inventa
+valori: dichiara che li' il dato sta finendo.
+
+Le ragioni, in ordine di peso. **La sfumatura serve comunque**: allargando si
+copre meta' della frangia, e l'altra meta' e' acqua che il modello non simula
+affatto (lagune, canali riparati, insenature), dove non c'e' niente da estendere.
+**Gli 800 m hanno un argomento**, la semidiagonale di 707 m che copre ogni punto
+interno a una cella di mare; sostituirlo perche' in uno screenshot si vede una
+striscia scoperta scambierebbe un ragionamento con una convenienza. **Il raggio
+e' inciso nell'indice**, quindi cambiarlo obbliga a rilavorare l'archivio, e
+siccome si puo' rilavorare solo dentro la finestra di 8 giorni ogni cambio lascia
+una cucitura permanente fra il prima e il dopo.
+
+Costo se la decisione e' sbagliata: una striscia di mare scoperta a ridosso della
+costa, larga in mediana 2,7 km, che sfuma invece di terminare a gradini.
+
+**Condizione che la fa riaprire**: se guardando la mappa in uso per piu' giorni e
+con stati del mare diversi la frangia risulta un ostacolo alla lettura, e non
+solo un fastidio estetico. In quel caso il valore va scelto misurando, non
+scegliendo il primo numero che copre lo screenshot del giorno.
+
 **Tetto di zoom.** La maschera rende nitida la **costa**, non il dato. Il campo
 resta a 1 km, quindi oltre un certo ingrandimento la mappa promette una
 precisione che il dato non ha. Il tetto va scelto guardando, ma esiste.
