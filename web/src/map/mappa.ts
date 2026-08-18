@@ -144,6 +144,16 @@ export async function creaMappa(
   stile?: StyleSpecification,
   // Opzionale: zoom e centro dell'URL, vedi vistaEffettiva sopra.
   vista?: VistaIniziale,
+  // Opzionale, di default false: un contesto WebGL non e' tenuto a
+  // conservare il proprio buffer di disegno dopo aver composto il
+  // fotogramma, a meno che non lo si chieda qui. Serve solo a chi rilegge il
+  // canvas con drawImage/getImageData (il test di resa, che controlla il
+  // colore del campo pixel per pixel): senza, quella lettura restituisce
+  // sempre nero anche quando a schermo si vede tutto. Costa prestazioni
+  // (il browser non puo' piu' scartare il buffer appena usato), quindi
+  // resta false di default e si accende solo dal chiamante di test (vedi
+  // main.tsx, dietro VITE_E2E).
+  preserveDrawingBuffer = false,
 ): Promise<MappaLibre> {
   // pmtiles si registra come protocollo: da qui in poi un URL pmtiles:// e' una
   // sorgente come un'altra, e il browser legge il file a richieste di
@@ -158,6 +168,9 @@ export async function creaMappa(
     style: stile ?? stileBasemap(),
     center: centro,
     zoom,
+    // In questa versione di MapLibre l'attributo del contesto WebGL non e'
+    // un'opzione di primo livello: sta dentro canvasContextAttributes.
+    canvasContextAttributes: { preserveDrawingBuffer },
     maxZoom: ZOOM_MASSIMO,
     maxBounds: [
       [b.ovest - 1, b.sud - 1],

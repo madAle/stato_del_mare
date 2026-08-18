@@ -28,8 +28,27 @@ function stileMinimoPerITest(): StyleSpecification {
   };
 }
 
-const stileTest =
-  import.meta.env.DEV && import.meta.env.VITE_E2E === "1" ? stileMinimoPerITest() : undefined;
+// La stessa condizione decide sia lo stile minimo sopra sia
+// preserveDrawingBuffer sotto: sono i due interruttori che questa build ha
+// bisogno di accendere solo quando Playwright avvia il server apposta per i
+// test end to end, mai in produzione.
+const modalitaTest = import.meta.env.DEV && import.meta.env.VITE_E2E === "1";
+
+const stileTest = modalitaTest ? stileMinimoPerITest() : undefined;
+
+/**
+ * Un contesto WebGL, dopo aver composto il fotogramma, non e' tenuto a
+ * conservare il proprio buffer di disegno: il browser puo' svuotarlo appena
+ * dopo averlo mostrato, a meno che non lo si chieda esplicitamente qui.
+ * Senza, rileggere il canvas con `drawImage`/`getImageData` (come fa
+ * `web/e2e/resa.spec.ts`, per controllare che il campo sia dipinto nel posto
+ * giusto) restituisce sempre nero anche quando a schermo si vede tutto,
+ * verificato isolando il problema in una pagina WebGL minima senza MapLibre.
+ * Costa prestazioni (il browser non puo' piu' scartare il buffer appena
+ * usato), quindi resta spento in produzione: nessuno oltre a un test ha
+ * bisogno di rileggere il canvas.
+ */
+const preserveDrawingBufferTest = modalitaTest;
 
 /**
  * Carica un'immagine e aspetta che sia decodificata prima di usarla come
@@ -64,7 +83,7 @@ async function avvia(): Promise<void> {
   createRoot(document.getElementById("radice")!).render(
     <QueryClientProvider client={queryClient}>
       <App costa={costa} maschera={maschera} metaCosta={metaCosta} metaMaschera={metaMaschera}
-           stile={stileTest} />
+           stile={stileTest} preserveDrawingBuffer={preserveDrawingBufferTest} />
     </QueryClientProvider>,
   );
 }

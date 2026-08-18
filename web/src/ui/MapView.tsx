@@ -12,7 +12,7 @@ export type ManiglieMappa = { animazione: Animazione; livello: LivelloCampo };
 
 export function MapView({
   catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera, stile,
-  vistaIniziale,
+  preserveDrawingBuffer, vistaIniziale,
   alTempo, alValore, alPronto, alErrore,
 }: {
   catalogo: Catalogo;
@@ -26,6 +26,8 @@ export function MapView({
   metaMaschera: { limite_m: number };
   // Solo per i test end to end, vedi main.tsx.
   stile?: StyleSpecification;
+  // Solo per i test end to end, vedi main.tsx: costa prestazioni, mai in produzione.
+  preserveDrawingBuffer?: boolean;
   // Zoom e centro letti dall'URL: solo per il montaggio iniziale, un link
   // condiviso deve aprire la vista che promette, non quella predefinita.
   vistaIniziale?: VistaIniziale;
@@ -64,7 +66,9 @@ export function MapView({
 
     void (async () => {
       try {
-        const m = await creaMappa(contenitore.current!, catalogo.griglia, stile, vistaIniziale);
+        const m = await creaMappa(
+          contenitore.current!, catalogo.griglia, stile, vistaIniziale, preserveDrawingBuffer,
+        );
         if (!vivo) { m.remove(); return; }
         mappa = m;
         const livello = new LivelloCampo({
