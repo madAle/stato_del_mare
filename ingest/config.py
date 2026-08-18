@@ -35,6 +35,32 @@ GRID_RESOLUTION_M = 1200.0
 # e limita lo sbordamento sulla terraferma a meno di una cella.
 MAX_NEIGHBOUR_DISTANCE_M = 800.0
 
+# Distanza massima fra una stazione e la cella di mare che la rappresenta.
+# Sono due numeri e non uno perche' rispondono a due domande diverse.
+# MAX_NEIGHBOUR_DISTANCE_M chiede "questo pixel puo' prendere il valore di
+# quella cella?", e li' un pixel a 900 m da una cella sorgente e' quasi sempre
+# terraferma, quindi va lasciato vuoto. Qui la domanda e' "quale cella
+# rappresenta questa boa?", e una boa a 900 m dalla prima cella di mare e'
+# comunque rappresentata da quella cella: non ce n'e' un'altra in gara.
+# Al primo run reale gli 800 m del ricampionamento scartavano le due boe di
+# Cervia Porto, a 922 e 923 m, che stanno in mare vero.
+MAX_STATION_DISTANCE_M = 1000.0
+
+# Stazioni che stanno in acque non marine e che la sola distanza non separa.
+# Manufatto e' a 977 m, Cervia Porto a 923: fra i due ci sono 55 metri, quindi
+# nessuna soglia numerica puo' distinguerli e sceglierne una fra quei due
+# valori vorrebbe dire tarare sul caso che si ha davanti. L'esclusione va per
+# nome, e ogni voce porta con se' il motivo: senza, verra' rimessa in
+# discussione o tolta senza sapere cosa si sta scambiando.
+# Le altre due lagunari del delta (marefe-logonovo a 2.788 m e
+# marefe-bellocchio a 3.003 m) restano fuori per distanza e non vanno nominate.
+EXCLUDED_STATIONS: dict[str, str] = {
+    "marefe-manufatto": (
+        "salinita' misurata 0,02 parti per mille il 2026-08-18, cioe' acqua "
+        "dolce: la colonna del modello marino non significa niente"
+    ),
+}
+
 # ADRIAC conserva 8 giorni. Oltre questa finestra non c'e' nulla da riconciliare.
 WINDOW_DAYS = 8
 

@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from netCDF4 import Dataset
 
-from ingest import encode, frames, profiles
+from ingest import config, encode, frames, grid, profiles
 from ingest.stations import Station
 from tests.conftest import NS, NT, synthetic_coords, synthetic_sea_mask
 
@@ -132,3 +132,66 @@ def test_la_colonna_viene_presa_dalla_cella_giusta(profile_file):
     # Con righe e colonne scambiate la seconda leggerebbe (1,2), indice 6,
     # cioe' 0,06: la differenza attesa cambierebbe da -0,04 a -0,01.
     assert np.allclose(valori_a[0, 0] - valori_b[0, 0], -0.04, atol=0.005)
+
+
+def _lon_a_distanza(metri: float, lon0: float = 12.0, lat0: float = 44.0) -> float:
+    """Longitudine che dista `metri` al suolo da (lon0, lat0), stessa latitudine.
+
+    Inverte esattamente il conto che fa nearest_sea_cells (distanza in metri
+    Mercator riportata al suolo moltiplicando per il coseno della latitudine),
+    cosi' la soglia sotto esame e' quella vera e non una stima geodetica.
+    """
+    x0, _ = grid.lonlat_to_mercator(np.array(lon0), np.array(lat0))
+    x1 = float(x0) + metri / np.cos(np.radians(lat0))
+    lon1, _ = grid.mercator_to_lonlat(np.array(x1), np.array(0.0))
+    return float(lon1)
+
+
+def _mare_di_una_cella():
+    """Una sola cella di mare a (12,0 E, 44,0 N): la distanza e' controllata."""
+    return np.array([[12.0]]), np.array([[44.0]]), np.array([[True]])
+
+
+def test_una_stazione_a_novecento_metri_viene_accettata():
+    """Fra 800 e 1000 m la boa e' comunque rappresentata da quella cella.
+
+    Cervia Porto sta a 922 m ed e' una boa in mare vero: la soglia del
+    ricampionamento, che serve a impedire che il colore sbordi sulla
+    terraferma, la scartava per un motivo che qui non vale.
+    """
+    lon, lat, mare = _mare_di_una_cella()
+    s = _stazione(_lon_a_distanza(900.0), 44.0, "boa-a-900")
+    celle = profiles.nearest_sea_cells([s], lon, lat, mare)
+    assert celle["boa-a-900"] == (0, 0)
+
+
+def test_una_stazione_oltre_il_chilometro_viene_scartata(caplog):
+    lon, lat, mare = _mare_di_una_cella()
+    s = _stazione(_lon_a_distanza(1200.0), 44.0, "marefe-lontana")
+    with caplog.at_level("WARNING"):
+        celle = profiles.nearest_sea_cells([s], lon, lat, mare)
+    assert "marefe-lontana" not in celle
+    assert "distanza" in caplog.text
+
+
+def test_una_stazione_nell_elenco_di_esclusione_viene_scartata(caplog):
+    """La distanza da sola non separa Cervia (923 m) da Manufatto (977 m).
+
+    Fra i due ci sono 55 metri: nessuna soglia numerica puo' distinguerli
+    senza essere tarata sul caso che si ha davanti. L'esclusione per nome e'
+    l'unica separazione onesta, e il log deve dire che e' quella.
+    """
+    lon, lat, mare = _mare_di_una_cella()
+    s = _stazione(_lon_a_distanza(200.0), 44.0, "marefe-manufatto")
+    with caplog.at_level("WARNING"):
+        celle = profiles.nearest_sea_cells([s], lon, lat, mare)
+    assert "marefe-manufatto" not in celle
+    assert "esclusa" in caplog.text
+    assert "distanza" not in caplog.text
+
+
+def test_l_elenco_di_esclusione_porta_con_se_il_motivo():
+    """Senza il motivo la voce verra' rimessa in discussione, o tolta."""
+    assert "marefe-manufatto" in config.EXCLUDED_STATIONS
+    for identificativo, motivo in config.EXCLUDED_STATIONS.items():
+        assert motivo.strip(), identificativo

@@ -16,7 +16,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import encode, grid
-from .config import MAX_NEIGHBOUR_DISTANCE_M
+from .config import EXCLUDED_STATIONS, MAX_STATION_DISTANCE_M
 from .frames import read_variable
 
 log = logging.getLogger(__name__)
@@ -26,13 +26,24 @@ PROFILE_SCALE = 0.01
 
 
 def nearest_sea_cells(
-    stations, lon_rho, lat_rho, sea_mask, max_distance_m: float = MAX_NEIGHBOUR_DISTANCE_M
+    stations,
+    lon_rho,
+    lat_rho,
+    sea_mask,
+    max_distance_m: float = MAX_STATION_DISTANCE_M,
+    excluded: dict[str, str] = EXCLUDED_STATIONS,
 ) -> dict[str, tuple[int, int]]:
     """Cella di mare ADRIAC piu' vicina a ogni stazione.
 
-    Restituisce solo le stazioni che ne hanno una entro la soglia: le
-    stazioni lagunari del delta possono non averla, e vanno saltate con un
-    log invece che approssimate.
+    La soglia predefinita e' MAX_STATION_DISTANCE_M, non quella del
+    ricampionamento: sono due domande diverse, il motivo sta scritto accanto
+    alle due costanti in config.py.
+
+    Restituisce solo le stazioni che sopravvivono a due filtri distinti, che
+    il log tiene separati perche' si correggono in modi diversi. Per
+    distanza: nessuna cella di mare entro la soglia, come le lagunari del
+    delta. Per elenco: la stazione sta in acqua non marina ma abbastanza
+    vicino al mare da passare qualunque soglia sensata, quindi si nomina.
     """
     lon_rho = np.asarray(lon_rho, dtype=np.float64)
     lat_rho = np.asarray(lat_rho, dtype=np.float64)
@@ -44,6 +55,13 @@ def nearest_sea_cells(
 
     fuori: dict[str, tuple[int, int]] = {}
     for stazione in stations:
+        if stazione.id in excluded:
+            # Prima della ricerca, non dopo: la distanza qui non c'entra, e
+            # riportarla farebbe credere che sia stata lei a decidere.
+            log.warning(
+                "stazione %s esclusa per elenco: %s", stazione.id, excluded[stazione.id]
+            )
+            continue
         px, py = grid.lonlat_to_mercator(
             np.array(stazione.lon), np.array(stazione.lat)
         )
@@ -53,8 +71,8 @@ def nearest_sea_cells(
             # Il log non e' decorativo: senza, una stazione lagunare sparisce
             # dall'archivio in silenzio e nessuno se ne accorge per mesi.
             log.warning(
-                "stazione %s saltata: la cella di mare piu' vicina dista %.0f m, "
-                "oltre la soglia di %.0f m",
+                "stazione %s scartata per distanza: la cella di mare piu' vicina "
+                "dista %.0f m, oltre la soglia di %.0f m",
                 stazione.id,
                 al_suolo,
                 max_distance_m,

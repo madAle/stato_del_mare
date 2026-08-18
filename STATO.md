@@ -276,16 +276,21 @@ un `Origin` estraneo, su `frames/hwave/an/20260817/2026-08-16T1200.bin`:
 
 **ADRIAC tiene solo 8 giorni.** Verificato: il 13 agosto il file più vecchio era del 6. Non esiste archivio storico a monte. Ogni giorno senza ingestione è perso e non recuperabile in nessun modo.
 
-**La soglia di 800 m serve a due domande diverse.** Nata per il
+**Le due soglie erano una sola, e sono state separate.** Gli 800 m nati per il
 ricampionamento ("questo pixel può prendere il valore di quella cella", dove
-impedisce che il colore sbordi sulla terraferma), è usata anche per associare una
-stazione alla sua cella ("quale cella rappresenta questa boa"). Al primo run
-reale ha scartato cinque stazioni: le tre lagunari del delta a 977, 2.788 e
+impediscono che il colore sbordi sulla terraferma) servivano anche ad associare
+una stazione alla sua cella ("quale cella rappresenta questa boa"). Al primo run
+reale hanno scartato cinque stazioni: le tre lagunari del delta a 977, 2.788 e
 3.003 m, giustamente, ma anche le due di Cervia Porto a 922 e 923 m, che sono
-boe in mare vero a meno di una cella di distanza. Separare le due soglie e
-portare quella delle stazioni verso 1,5 km recupererebbe Cervia lasciando fuori
-le lagune. Non è un difetto e non è stato cambiato: è una decisione su cosa
-mostrare, da prendere quando si affronteranno le stazioni.
+boe in mare vero a meno di una cella di distanza. Dal 2026-08-18 sono due
+costanti: `MAX_NEIGHBOUR_DISTANCE_M` resta 800 e resta al ricampionamento,
+`MAX_STATION_DISTANCE_M` vale 1.000 e vale solo per le stazioni. Fra Cervia a
+923 m e Manufatto a 977 m ci sono 55 metri, quindi **nessuna soglia numerica
+può distinguerli**: Manufatto esce per nome, tramite
+`config.EXCLUDED_STATIONS`, perché la salinità misurata il 2026-08-18 è 0,02
+parti per mille, cioè acqua dolce, dove la colonna del modello marino non
+significa niente. Logonovo e Bellocchio restano fuori per distanza e non sono
+nominati.
 
 **Il dataset `swanemr` è morto.** Il CKAN `dati.arpae.it` lo elenca ancora sotto `previsioni-mare`, ma la directory è ferma a settembre 2025. Non perderci tempo.
 

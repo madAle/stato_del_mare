@@ -207,3 +207,37 @@ def test_l_indice_si_salva_e_si_rilegge(tmp_path):
     assert np.array_equal(riletto.sea_mask, idx.sea_mask)
     assert riletto.fingerprint == idx.fingerprint
     assert riletto.grid == idx.grid
+
+
+def test_il_ricampionamento_resta_legato_alla_sua_soglia():
+    """Il confine dei pixel riempiti e' esattamente MAX_NEIGHBOUR_DISTANCE_M.
+
+    La soglia delle stazioni e' piu' larga di proposito, perche' risponde a
+    un'altra domanda: qui invece 800 m e' cio' che impedisce al colore di
+    sbordare sulla terraferma per piu' di una cella sorgente. Se qualcuno
+    riunisse le due costanti, i pixel fra 800 e 1000 m si riempirebbero e
+    questo test lo direbbe.
+    """
+    # Una sola cella di mare al centro, le altre otto di terra a 900 m.
+    passo = 900.0
+    x0, y0 = grid.lonlat_to_mercator(np.array(12.0), np.array(44.0))
+    fattore = np.cos(np.radians(44.0))
+    scarti = np.array([-passo, 0.0, passo]) / fattore
+    xs = float(x0) + scarti
+    ys = float(y0) + scarti
+    gx, gy = np.meshgrid(xs, ys, indexing="xy")
+    lon, lat = grid.mercator_to_lonlat(gx, gy)
+    mare = np.zeros((3, 3), dtype=bool)
+    mare[1, 1] = True
+
+    g = grid.build_grid(lon, lat, resolution=100.0)
+    idx = grid.build_regrid_index(lon, lat, mare, g)
+
+    cx, cy = grid.grid_centres(g)
+    _, lat_dest = grid.mercator_to_lonlat(cx, cy)
+    al_suolo = np.hypot(cx - float(x0), cy - float(y0)) * np.cos(np.radians(lat_dest))
+
+    riempito = idx.indices >= 0
+    assert np.array_equal(riempito, al_suolo <= MAX_NEIGHBOUR_DISTANCE_M)
+    # Senza queste due, un indice tutto vuoto o tutto pieno passerebbe.
+    assert riempito.any() and not riempito.all()
