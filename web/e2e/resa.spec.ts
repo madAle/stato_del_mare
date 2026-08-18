@@ -4,7 +4,16 @@ import { expect, test } from "@playwright/test";
 async function dipinto(pagina: import("@playwright/test").Page, x: number, y: number) {
   const px = await pagina.evaluate(([px, py]) => {
     const tela = document.querySelector("canvas") as HTMLCanvasElement;
-    const g = document.createElement("canvas").getContext("2d")!;
+    const copia = document.createElement("canvas");
+    // Un canvas senza width/height esplicite resta 300x150 per specifica:
+    // qualunque lettura fuori da quei bordi (qui il campo vive spesso oltre
+    // x=300, a seconda dello zoom) restituisce nero per specifica, non
+    // perche' la mappa non abbia disegnato niente li'. Senza dimensionare la
+    // copia come la sorgente, dipinto() misura sempre nero e sembra
+    // funzionare finche' nessuno controlla se il colore letto e' vero.
+    copia.width = tela.width;
+    copia.height = tela.height;
+    const g = copia.getContext("2d")!;
     g.drawImage(tela, 0, 0);
     const d = g.getImageData(px, py, 1, 1).data;
     return [d[0], d[1], d[2]];
