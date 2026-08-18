@@ -37,6 +37,30 @@ describe("catalogo", () => {
     const recupera = (async () => new Response(futuro, { status: 200 })) as unknown as typeof fetch;
     await expect(leggiCatalogo(recupera)).rejects.toThrow(/schema 99/);
   });
+
+  /** Un catalogo modificato per avere una variabile con "kinds" malformato. */
+  function catalogoConKindsRotto(kinds: unknown): typeof fetch {
+    const g = JSON.parse(CATALOGO);
+    g.variables[0].kinds = kinds;
+    const corpo = JSON.stringify(g);
+    return (async () => new Response(corpo, { status: 200 })) as unknown as typeof fetch;
+  }
+
+  it("un catalogo senza il campo kinds solleva un errore in italiano, non un TypeError grezzo", async () => {
+    await expect(leggiCatalogo(catalogoConKindsRotto(undefined)))
+      .rejects.toThrow(/catalogo malformato.*hwave.*kinds/);
+  });
+
+  it("un catalogo con kinds.an senza months solleva un errore che nomina il campo mancante", async () => {
+    await expect(leggiCatalogo(catalogoConKindsRotto({ an: {}, fc: { months: ["2026-08"] } })))
+      .rejects.toThrow(/catalogo malformato.*hwave.*kinds\.an\.months/);
+  });
+
+  it("un catalogo con kinds.fc.months non un elenco solleva un errore leggibile", async () => {
+    await expect(leggiCatalogo(
+      catalogoConKindsRotto({ an: { months: ["2026-08"] }, fc: { months: "2026-08" } }),
+    )).rejects.toThrow(/catalogo malformato.*hwave.*kinds\.fc\.months/);
+  });
 });
 
 describe("url", () => {

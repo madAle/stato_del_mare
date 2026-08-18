@@ -50,12 +50,33 @@ export const VARIABILE_DISEGNATA = "hwave";
  * `{"an": {"months": [...]}}`, non `{"an": {"mesi": [...]}}`. Il risultato e'
  * `mesi` sempre `undefined`, e chi lo legge (`App.tsx`) crasha al primo
  * render con dati veri. Qui il campo si rinomina davvero, non si finge.
+ *
+ * `kinds` arriva come `unknown` (non tipizzato dal chiamante): un catalogo
+ * con una forma inattesa (campo assente, "an"/"fc" mancanti, "months" non un
+ * elenco) faceva sollevare a `Object.entries` o alla destrutturazione un
+ * `TypeError` grezzo ("Cannot convert undefined or null to object", o
+ * simili), che non dice ne' quale variabile ne' cosa non torna. Qui si
+ * controlla la forma prima di usarla, e si solleva un errore in italiano che
+ * nomina la variabile e il campo mancante.
  */
-function convertiTipi(kinds: Record<Tipo, { months: string[] }>): Variabile["tipi"] {
-  const voci = Object.entries(kinds) as [Tipo, { months: string[] }][];
-  return Object.fromEntries(
-    voci.map(([tipo, { months }]) => [tipo, { mesi: months }]),
-  ) as Variabile["tipi"];
+function convertiTipi(idVariabile: string, kinds: unknown): Variabile["tipi"] {
+  if (typeof kinds !== "object" || kinds === null) {
+    throw new Error(
+      `catalogo malformato: la variabile "${idVariabile}" non ha un campo "kinds" leggibile`,
+    );
+  }
+  const risultato = {} as Variabile["tipi"];
+  for (const tipo of ["an", "fc"] as const) {
+    const voce = (kinds as Record<string, unknown>)[tipo];
+    const mesi = voce && typeof voce === "object" ? (voce as { months?: unknown }).months : undefined;
+    if (!Array.isArray(mesi)) {
+      throw new Error(
+        `catalogo malformato: la variabile "${idVariabile}" non ha "kinds.${tipo}.months" come elenco`,
+      );
+    }
+    risultato[tipo] = { mesi: mesi as string[] };
+  }
+  return risultato;
 }
 
 export async function leggiCatalogo(recupera: typeof fetch = fetch): Promise<Catalogo> {
@@ -93,7 +114,7 @@ export async function leggiCatalogo(recupera: typeof fetch = fetch): Promise<Cat
       scala: v.scale as number,
       offset: v.offset as number,
       colormap: v.colormap as string,
-      tipi: convertiTipi(v.kinds as Record<Tipo, { months: string[] }>),
+      tipi: convertiTipi(v.id as string, v.kinds),
     })),
   };
 }
