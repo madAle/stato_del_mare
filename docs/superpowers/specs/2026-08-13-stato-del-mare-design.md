@@ -779,11 +779,23 @@ continuo, così il campo si deforma con continuità invece di saltare di ora in 
 Costa una texture unit. Le direzioni si interpolano correttamente perché
 memorizzate come seno e coseno (vedi 4.3).
 
-**Colormap**: texture 1D di 256 colori RGBA da **cmocean**, cioè `amp` per l'altezza
-d'onda, `thermal` per la temperatura, `haline` per la salinità, `phase` (ciclica)
-per le direzioni. Generata in Python e servita col catalogo. Palette
-percettivamente uniformi: una palette arbitraria su dati geofisici introduce
-artefatti visivi che sembrano struttura fisica e non lo sono.
+**Colormap**: texture 1D di 256 colori RGBA da **cmocean**. Il catalogo pubblica
+solo il **nome** della palette per variabile (`amp` per l'altezza d'onda, `tempo`
+per il periodo, `phase` per le direzioni, `speed` per le correnti, `balance` per
+il livello), e i colori stanno nella SPA. Palette percettivamente uniformi: una
+palette arbitraria su dati geofisici introduce artefatti visivi che sembrano
+struttura fisica e non lo sono.
+
+Una prima stesura diceva che la tavolozza sarebbe stata generata in Python e
+servita col catalogo. **Non e' andata cosi' e la decisione si allinea al fatto**:
+verificato il 2026-08-18, il bucket non contiene nessun asset di colormap, mentre
+il catalogo il nome ce l'ha gia'. I colori sono una scelta di presentazione, non
+un dato: metterli nel pacchetto d'archivio significherebbe versionare l'estetica
+insieme alla misura. Restano generati da cmocean, ma da uno **script che scrive un
+modulo TypeScript** (`strumenti/colormap.py`), cosi' i valori sono provatamente
+cmocean e non scelti a occhio, e il client non paga una richiesta in piu' ne' un
+modo di fallire in piu'. Costo se e' sbagliato: aggiungere una palette richiede un
+rilascio della SPA invece di un run dell'ingestore.
 
 **Ordine dei livelli**: basemap vettoriale, campo dati, seamark OpenSeaMap,
 marker stazioni, **etichette della basemap sopra il campo**. Il campo si inserisce
@@ -1144,18 +1156,34 @@ controllo per allargare a tutto l'archivio.
 
 ### 7.5 Mappa
 
-MapLibre GL JS. Basemap raster OSM standard (`tile.openstreetmap.org`), con
-attribuzione OSMF. Overlay nautico OpenSeaMap (`tiles.openseamap.org/seamark/`),
-attivabile: sono tile PNG RGBA da circa 1 KB, trasparenti al 99,6%, quindi un
-overlay e non una basemap.
+MapLibre GL JS 5.x. Basemap **vettoriale** Protomaps servita da un `.pmtiles`
+sullo stesso bucket (vedi 7.3), con attribuzione OSMF. Overlay nautico OpenSeaMap
+(`tiles.openseamap.org/seamark/`), attivabile: sono tile PNG RGBA da circa 1 KB,
+trasparenti al 99,6%, quindi un overlay e non una basemap.
+
+Una prima stesura metteva una basemap **raster** OSM, con questa motivazione:
+zero setup e sostituibile in un pomeriggio. Superata il 2026-08-18 per una
+ragione che il raster non puo' soddisfare: le etichette devono stare **sopra** il
+campo, e in una tile raster non esiste un livello di etichette sotto cui
+infilarsi. Il pomeriggio e' stato quello.
+
+Con la basemap vettoriale vanno ospitati anche **font e sprite**, se no le
+etichette non si disegnano: si copiano nel bucket da `protomaps/basemaps-assets`
+(76 KB per intervallo di glifi, 20 KB di sprite). Lasciarli sul dominio di terzi
+farebbe finta di non avere dipendenze di esecuzione avendole.
 
 L'overlay seamark è raster e non stilizzabile, con etichette pensate per fondo
 chiaro: vincola la basemap a restare chiara. È il motivo per cui non adottiamo una
 basemap scura in v1.
 
-La basemap è l'unico componente completamente intercambiabile dell'architettura:
-sostituirla con Protomaps/PMTiles sullo stesso bucket non tocca né il modello dati,
-né il pacchetto, né il custom layer.
+La basemap resta il componente piu' intercambiabile dell'architettura: cambiarla
+non tocca né il modello dati, né il pacchetto, né il custom layer.
+
+**Versione di MapLibre: 5.x, non 6.** La 6 esiste dal 2026, ma la firma del custom
+layer e' gia' cambiata fra la 4 e la 5 (vedi 7.3) ed e' esattamente il genere di
+rottura che non si annuncia. La 5 e' verificata per esecuzione su questo dato. Il
+passaggio alla 6 si fa quando qualcuno rifa' la stessa fetta verticale su quella
+versione, non prima.
 
 **Batimetria**: le isobate si generano dal campo `h` di ADRIAC, completo e uniforme
 su tutto il dominio, non dai dati crowd-sourced di OpenSeaMap che sono sparsi. È un
@@ -1246,4 +1274,6 @@ storico perso per sempre, quindi questa tappa ha priorità sulla presentazione.
 | Profili 3D solo da analisi | I profili da previsione costerebbero circa 2,8 GB al giorno |
 | Livello del mare a 10 min in analisi, orario in previsione | L'analisi è documento permanente, la previsione è effimera (vedi 4.7) |
 | React con confine imperativo verso WebGL | Ecosistema di librerie senza conflitto col ciclo di render |
-| Basemap OSM standard in v1 | Zero setup, coerente con l'overlay seamark, sostituibile in un pomeriggio |
+| Basemap vettoriale Protomaps `.pmtiles` sullo stesso bucket | Le etichette devono stare sopra il campo, e sotto una tile raster non c'e' niente sotto cui infilarsi. Nessuna chiave, nessun servizio di terzi |
+| MapLibre 5.x e non 6.x | La firma del custom layer e' gia' cambiata fra la 4 e la 5. La 5 e' verificata per esecuzione su questo dato |
+| Colori delle palette nella SPA, non nel pacchetto | I colori sono presentazione, non misura: nel pacchetto si versionerebbe l'estetica insieme al dato |
