@@ -836,33 +836,69 @@ Con la distanza dai segmenti, sotto i 500 m i valori distinti diventano 223.821 
 il minimo non nullo 0,12 m. Sulla stessa vista il gradino piu' lungo scende da 68
 a 7 pixel, e i gradini da 20 pixel in su, che erano l'1,1% del bordo, spariscono.
 
-**Il segno si prende dalla parita' degli attraversamenti**, non dalla giacitura
-del segmento piu' vicino. La giacitura sbaglia sui vertici concavi e su ogni
-anello orientato al contrario, e sbaglia su **pixel isolati in mezzo a pixel
-giusti**, cioe' nel modo che guardando il risultato non si nota. La parita' e'
-esatta per costruzione; il raggio deve contare anche gli attraversamenti fuori
-dal riquadro, quindi i poligoni si filtrano per latitudine e mai per riquadro.
+**La costa e' quella di OpenStreetMap, non GSHHG.** Terza generazione
+dell'asset, e la ragione non e' che una sorgente sia piu' esatta dell'altra:
+e' che **l'occhio confronta il campo con la costa che vede disegnata sotto**.
+Qualunque scarto fra il ritaglio e la basemap si legge come un errore del
+campo, chiunque abbia ragione sulla posizione vera della riva. Quindi il
+ritaglio deve venire dalla stessa sorgente delle tile.
 
-La verifica incrociata ha misurato anche il difetto della prima generazione: il
-segno nuovo coincide con quello vecchio **esattamente**, zero pixel di
-differenza, oltre i 240 m dalla costa, e discorda nel 47% dei casi sotto i 120 m.
-E' la firma di uno scarto di mezzo texel verso il mare: la vecchia maschera
-gonfiava la terraferma di 120 m lungo tutte le coste, ed era quello il bordo di
-mare non dipinto che circondava le isole.
+Misurato sulle stesse otto viste, contando i pixel dipinti che cadono oltre 100 m
+dentro la terraferma disegnata:
+
+| vista | GSHHG | OSM |
+|---|---|---|
+| Unije, zoom 13 | 3.260 px, fino a 370 m | **0 px**, fino a 91 m |
+| Venezia, zoom 11 | 19.709 px, fino a 1.138 m | 102 px, fino a 161 m |
+| delta del Po, zoom 11 | 5.298 px, fino a 847 m | 42 px, fino a 121 m |
+| Ancona, zoom 12 | 622 px, fino a 294 m | 3 px, fino a 114 m |
+| Dalmazia, zoom 10 | 8.873 px, fino a 988 m | 9.526 px, fino a 1.252 m |
+
+L'unica riga che peggiora e' la Dalmazia a zoom 10, e li' non e' la maschera a
+sbagliare: a quello zoom sono le **tile** a disegnare una costa semplificata. Il
+segnale pulito e' Unije a zoom 13, dove il disegno e' a piena risoluzione e la
+sovrapposizione oltre i 100 m sparisce del tutto.
+
+**Il segno viene dalla regola della mano.** In OSM la costa e' orientata con la
+terra a sinistra del verso di percorrenza: e' una convenzione imposta e
+verificata a monte. Sui vertici la normale di un solo segmento sbaglia dentro il
+cuneo, quindi si somma alla normale del segmento adiacente. Verso confermato per
+confronto con GSHHG: con quello sbagliato l'accordo era dell'1,2% invece che del
+98,8%.
+
+**Una sola sorgente per il segno, mai due.** Il primo tentativo prendeva il segno
+da OSM entro 1,6 km dalla riva e da GSHHG oltre, per non pagare il calcolo su
+tutta la griglia. Nella laguna di Venezia le due coste dissentono di molto piu'
+di 1,6 km, e il bacino di San Marco risultava terraferma. Due sorgenti per la
+stessa grandezza vuol dire una cucitura, e la cucitura cade sempre dove le
+sorgenti non sono d'accordo. Il calcolo su 18 milioni di punti costa 75 secondi
+una volta sola.
+
+**Conseguenza accettata: dentro le lagune il campo non si disegna.** La costa
+OSM non entra nella laguna di Venezia ne' in quella di Marano, che le tile pero'
+disegnano azzurre. ADRIAC qualche cella li' dentro ce l'ha. La si lascia
+scoperta: uno stato del mare a celle da 1 km dentro una laguna non significa
+niente, e disegnarlo darebbe autorevolezza a un numero che non ce l'ha.
+**Condizione che la fa riaprire**: se serve la corrente nei canali di
+collegamento (la funzionalita' di Porto Garibaldi, sezione 1), quel dato va
+preso dalle stazioni e non dal campo, quindi la decisione non lo blocca.
 
 Ricetta e trappole stanno in `strumenti/costa_sdf.py`, che va eseguito una volta
-sola: la costa non cambia.
+sola: la costa non cambia in fretta.
 
-Misure dell'asset in uso, da GSHHG a risoluzione piena (`GSHHS_f_L1`):
+Misure dell'asset in uso:
 
 | | |
 |---|---|
+| Sorgente | `coastlines-split-4326` da osmdata.openstreetmap.de, 920 MB, rigenerata ogni giorno |
+| Nel riquadro | 7.389 polilinee, 911.012 nodi, 16.593 km di costa |
 | Griglia | 4290 x 4220, cioe' 5 volte il dato, 240 m |
 | Riquadro | identico a quello del dato, quindi stesse coordinate di texture |
-| Metodo | distanza dai segmenti infittiti a 40 m, segno per parita' |
+| Metodo | distanza dai segmenti infittiti a 40 m, segno dalla regola della mano |
 | Codifica | distanza limitata a 1,6 km e quantizzata in 8 bit, passo 6,3 m |
-| Peso | **0,47 MB** in PNG: oltre il fondoscala il campo e' saturo e si comprime a niente |
+| Peso | **0,44 MB** in PNG: oltre il fondoscala il campo e' saturo e si comprime a niente |
 | Formato in GPU | `R8` con filtraggio `LINEAR`, a differenza del dato che e' intero |
+| Costruzione | 75 secondi su 18,1 milioni di punti |
 
 Il fondoscala e' sceso da 2 km a 1,6 km apposta: il byte e' lo stesso e il passo
 di quantizzazione scende da 15,7 a 6,3 m, che e' quello che serve vicino a riva.

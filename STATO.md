@@ -360,6 +360,21 @@ m di sbordamento che l'ingestore mette di proposito. Il ritaglio si fa con una
 maschera di **distanza con segno** dalla costa, non con una maschera binaria.
 Dettaglio nella spec 7.3, ricetta in `strumenti/costa_sdf.py`.
 
+**Il ritaglio va preso dalla stessa costa che disegna la basemap.** Non perche'
+una sorgente sia piu' esatta: perche' l'occhio confronta il campo con la costa
+che vede sotto, e qualunque scarto si legge come errore del campo. Con GSHHG il
+campo sbordava sulla terraferma disegnata fino a 1.138 m a Venezia e 847 m sul
+delta; con la costa OSM gli stessi punti scendono a 161 e 121 m, e a Unije a
+zoom 13 la sovrapposizione oltre i 100 m passa da 3.260 pixel a **zero**. La
+sorgente e' `coastlines-split-4326` di osmdata.openstreetmap.de. Resta il
+disaccordo a zoom bassi, dove sono le **tile** a semplificare la costa.
+
+**Il segno di una maschera va preso da una sorgente sola.** Prendendolo da OSM
+vicino a riva e da GSHHG oltre 1,6 km si risparmiava calcolo, ma nella laguna di
+Venezia le due coste dissentono di ben piu' di 1,6 km e il bacino di San Marco
+diventava terraferma. Due sorgenti per la stessa grandezza fanno una cucitura, e
+la cucitura cade sempre dove le sorgenti non sono d'accordo.
+
 **Un campo di distanza costruito su una maschera rasterizzata non e' un campo di
 distanza.** La prima generazione dell'asset era la trasformata di distanza di una
 maschera a 240 m, e passava per buona: si interpola, e' continua, il commento nel
