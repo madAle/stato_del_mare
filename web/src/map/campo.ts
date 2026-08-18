@@ -1,0 +1,234 @@
+import type { CustomLayerInterface, Map as MappaLibre } from "maplibre-gl";
+import type { Griglia } from "../data/catalogo";
+import { paletteDi } from "./colormap";
+import { aMercatore } from "./proiezione";
+import { FRAMMENTO, VERTICE } from "./shader";
+
+/**
+ * Quanto il campo sta lontano dalla riva, in metri.
+ *
+ * In metri e non in pixel di schermo: quello che il campo copre a riva sono
+ * moli, porti e dighe foranee, che sono oggetti geografici. Un margine in pixel
+ * vale sempre meno metri man mano che si ingrandisce, quindi la struttura resta
+ * coperta proprio allo zoom a cui la si sta guardando.
+ */
+export const MARGINE_COSTA_M = 250;
+
+export type OpzioniCampo = {
+  griglia: Griglia;
+  costa: HTMLImageElement;
+  maschera: HTMLImageElement;
+  limiteCostaM: number;
+  limiteDatoM: number;
+  palette: string;
+  massimo: number;
+  scala: number;
+  opacita?: number;
+};
+
+function compila(gl: WebGL2RenderingContext, tipo: number, sorgente: string): WebGLShader {
+  const s = gl.createShader(tipo)!;
+  gl.shaderSource(s, sorgente);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    throw new Error(`shader non compilato: ${gl.getShaderInfoLog(s)}`);
+  }
+  return s;
+}
+
+function texturaR8(gl: WebGL2RenderingContext, immagine: HTMLImageElement): WebGLTexture {
+  const t = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, gl.RED, gl.UNSIGNED_BYTE, immagine);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+}
+
+export class LivelloCampo implements CustomLayerInterface {
+  readonly id = "campo";
+  readonly type = "custom" as const;
+  readonly renderingMode = "2d" as const;
+
+  private programma: WebGLProgram | null = null;
+  private buffer: WebGLBuffer | null = null;
+  private texA: WebGLTexture | null = null;
+  private texB: WebGLTexture | null = null;
+  private texCosta: WebGLTexture | null = null;
+  private texMaschera: WebGLTexture | null = null;
+  private texPalette: WebGLTexture | null = null;
+  private frazione = 0;
+  private haB = false;
+  private quad = { x0: 0, y0: 0, x1: 0, y1: 0 };
+  private mappa: MappaLibre | null = null;
+
+  constructor(private opzioni: OpzioniCampo) {}
+
+  onAdd(mappa: MappaLibre, gl: WebGL2RenderingContext): void {
+    this.mappa = mappa;
+    if (!(gl instanceof WebGL2RenderingContext)) {
+      throw new Error(
+        "contesto WebGL1: il campo ha bisogno di WebGL2 per le texture intere. " +
+          "Con WebGL1 non esiste isampler2D e il nodata non si potrebbe distinguere.",
+      );
+    }
+
+    this.programma = gl.createProgram()!;
+    gl.attachShader(this.programma, compila(gl, gl.VERTEX_SHADER, VERTICE));
+    gl.attachShader(this.programma, compila(gl, gl.FRAGMENT_SHADER, FRAMMENTO));
+    gl.linkProgram(this.programma);
+    if (!gl.getProgramParameter(this.programma, gl.LINK_STATUS)) {
+      throw new Error(`programma non collegato: ${gl.getProgramInfoLog(this.programma)}`);
+    }
+
+    this.buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+
+    this.texA = this.texturaDato(gl);
+    this.texB = this.texturaDato(gl);
+    this.texCosta = texturaR8(gl, this.opzioni.costa);
+    this.texMaschera = texturaR8(gl, this.opzioni.maschera);
+    this.texPalette = this.texturaPalette(gl, this.opzioni.palette);
+
+    // Il quadrilatero in coordinate mercatore normalizzate di MapLibre. La y
+    // cresce verso sud, quindi il nord ha la y piu' PICCOLA: scriverlo al
+    // contrario disegna il campo capovolto senza nessun errore.
+    const b = this.opzioni.griglia.boundsLonLat;
+    const nw = mercatoreNormalizzato(b.ovest, b.nord);
+    const se = mercatoreNormalizzato(b.est, b.sud);
+    this.quad = { x0: nw.x, y0: se.y, x1: se.x, y1: nw.y };
+  }
+
+  onRemove(_mappa: MappaLibre, gl: WebGL2RenderingContext): void {
+    for (const t of [this.texA, this.texB, this.texCosta, this.texMaschera, this.texPalette]) {
+      if (t) gl.deleteTexture(t);
+    }
+    if (this.buffer) gl.deleteBuffer(this.buffer);
+    if (this.programma) gl.deleteProgram(this.programma);
+  }
+
+  /** Il campo da disegnare: l'ora t, l'ora t+1 se c'e', e quanto si e' dentro. */
+  imposta(a: Int16Array, b: Int16Array | null, frazione: number): void {
+    const gl = this.contesto();
+    if (!gl) return;
+    this.carica(gl, this.texA!, a);
+    this.haB = b !== null;
+    if (b) this.carica(gl, this.texB!, b);
+    this.frazione = frazione;
+    this.mappa?.triggerRepaint();
+  }
+
+  impostaMassimo(massimo: number): void {
+    this.opzioni = { ...this.opzioni, massimo };
+    this.mappa?.triggerRepaint();
+  }
+
+  impostaPalette(nome: string): void {
+    const gl = this.contesto();
+    if (gl && this.texPalette) gl.deleteTexture(this.texPalette);
+    if (gl) this.texPalette = this.texturaPalette(gl, nome);
+    this.opzioni = { ...this.opzioni, palette: nome };
+    this.mappa?.triggerRepaint();
+  }
+
+  // Il tipo dell'interfaccia dichiara `render` come proprieta' (non come
+  // metodo), quindi TypeScript controlla il parametro `gl` in modo rigido:
+  // va accettato esattamente WebGLRenderingContext | WebGL2RenderingContext,
+  // non solo il secondo, anche se qui si usa sempre e solo un contesto
+  // WebGL2 (lo garantisce onAdd). E' uno scostamento dal brief, spiegato nel
+  // rapporto: con la 5.24 installata `gl: WebGL2RenderingContext` da solo
+  // non compila.
+  render(gl: WebGLRenderingContext | WebGL2RenderingContext, arg: unknown): void {
+    // La firma cambia fra le versioni: MapLibre 4 passa la matrice, la 5 passa
+    // un oggetto. Accettare entrambe costa tre righe e evita che un
+    // aggiornamento minore smetta di disegnare senza dire niente.
+    const matrice = Array.isArray(arg) || ArrayBuffer.isView(arg)
+      ? (arg as Float32Array)
+      : (arg as { defaultProjectionData?: { mainMatrix?: Float32Array } })
+          ?.defaultProjectionData?.mainMatrix;
+    if (!matrice || !this.programma) return;
+
+    gl.useProgram(this.programma);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    const posizione = gl.getAttribLocation(this.programma, "a_pos");
+    gl.enableVertexAttribArray(posizione);
+    gl.vertexAttribPointer(posizione, 2, gl.FLOAT, false, 0, 0);
+
+    const u = (nome: string) => gl.getUniformLocation(this.programma!, nome);
+    gl.uniformMatrix4fv(u("u_matrice"), false, matrice);
+    gl.uniform4f(u("u_quad"), this.quad.x0, this.quad.y0, this.quad.x1, this.quad.y1);
+    gl.uniform2f(u("u_dim"), this.opzioni.griglia.larghezza, this.opzioni.griglia.altezza);
+    gl.uniform1f(u("u_scala"), this.opzioni.scala);
+    gl.uniform1f(u("u_massimo"), this.opzioni.massimo);
+    gl.uniform1f(u("u_limiteCosta"), this.opzioni.limiteCostaM);
+    gl.uniform1f(u("u_limiteDato"), this.opzioni.limiteDatoM);
+    gl.uniform1f(u("u_margine"), MARGINE_COSTA_M);
+    gl.uniform1f(u("u_frazione"), this.frazione);
+    gl.uniform1i(u("u_haB"), this.haB ? 1 : 0);
+    gl.uniform1f(u("u_opacita"), this.opzioni.opacita ?? 0.88);
+
+    const unita: [WebGLTexture | null, string][] = [
+      [this.texA, "u_a"], [this.texB, "u_b"], [this.texCosta, "u_costa"],
+      [this.texMaschera, "u_maschera"], [this.texPalette, "u_palette"],
+    ];
+    unita.forEach(([tex, nome], i) => {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(u(nome), i);
+    });
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  private contesto(): WebGL2RenderingContext | null {
+    const gl = (this.mappa as unknown as { painter?: { context?: { gl?: unknown } } })
+      ?.painter?.context?.gl;
+    return gl instanceof WebGL2RenderingContext ? gl : null;
+  }
+
+  private texturaDato(gl: WebGL2RenderingContext): WebGLTexture {
+    const t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  }
+
+  private carica(gl: WebGL2RenderingContext, tex: WebGLTexture, dato: Int16Array): void {
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
+    // R16I e non R16UI: il dato e' int16 con segno, e con una texture senza
+    // segno il confronto col nodata diventerebbe un numero magico diverso da
+    // quello scritto nel formato.
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16I, this.opzioni.griglia.larghezza,
+                  this.opzioni.griglia.altezza, 0, gl.RED_INTEGER, gl.SHORT, dato);
+  }
+
+  private texturaPalette(gl: WebGL2RenderingContext, nome: string): WebGLTexture {
+    const t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, 256, 1, 0, gl.RGB, gl.UNSIGNED_BYTE,
+                  paletteDi(nome));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  }
+}
+
+/** Mercatore normalizzato [0,1] come lo vuole MapLibre, y crescente verso sud. */
+function mercatoreNormalizzato(lon: number, lat: number): { x: number; y: number } {
+  const m = aMercatore(lon, lat);
+  const meta = Math.PI * 6378137.0;
+  return { x: (m.x + meta) / (2 * meta), y: (meta - m.y) / (2 * meta) };
+}
