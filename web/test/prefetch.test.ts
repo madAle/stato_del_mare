@@ -55,4 +55,59 @@ describe("prefetch", () => {
     await p.assicura(asse, 0, 1);
     expect(carica).toHaveBeenCalledWith(asse[2]);
   });
+
+  it("ha() non ringiovanisce il frame, pronto() non ha side effects", async () => {
+    // Questo test verifica che ha() usato in pronto() non cambia l'ordine
+    // di recenza come farebbe prendi(). La cache ha budget stretto per far
+    // sì che uno sfratto sia visibile: dopo ripetuti assicura su una finestra
+    // già caricata, il frame corrente non dovrebbe diventare il meno recente.
+    const cache = new CacheFrame(70); // 3,5 frame
+    const carica = vi.fn(async () => new Int16Array(10));
+    const p = new Prefetcher(cache, carica, 2);
+
+    // Carica frames 0, 1, 2
+    await p.assicura(asse, 0, 1);
+    expect(cache.quanti).toBe(3);
+    expect(carica).toHaveBeenCalledTimes(3);
+
+    // Secondo assicura: con ha() non tocca i frame già in cache.
+    // Nessun nuovo carico dovrebbe accadere.
+    await p.assicura(asse, 0, 1);
+    expect(carica).toHaveBeenCalledTimes(3); // zero nuovi caichi
+
+    // Aggiunta di frame 3, 4, 5 (con avanti=2): la cache si riempe e sfratta il meno recente.
+    // Con ha() che non ringiovanisce, il frame corrente rimane il più vecchio,
+    // il che è il comportamento corretto (non lo stiamo consumando, solo
+    // verificando se è pronto). Se prendi() lo avesse toccato nel secondo
+    // assicura, l'ordine sarebbe cambiato e un altro frame sarebbe stato sfrattato.
+    await p.assicura(asse, 3, 1);
+    expect(carica).toHaveBeenCalledTimes(6); // 3 primi + 3 nuovi
+
+    // Verifica che la cache ha fatto sfratto per fare spazio
+    expect(cache.quanti).toBeLessThan(5);
+  });
+
+  it("prefetch si ferma al bordo superiore dell'asse", async () => {
+    const cache = new CacheFrame();
+    const carica = vi.fn(async () => new Int16Array(10));
+    const p = new Prefetcher(cache, carica, 5);
+    // Cursore vicino alla fine dell'asse, direzione avanti
+    // asse ha lunghezza 40, indice 38, avanti 5: dovrebbe caricare solo 38, 39
+    await p.assicura(asse, 38, 1);
+    expect(carica).toHaveBeenCalledTimes(2);
+    expect(p.pronto(asse[38])).toBe(true);
+    expect(p.pronto(asse[39])).toBe(true);
+  });
+
+  it("prefetch si ferma al bordo inferiore dell'asse", async () => {
+    const cache = new CacheFrame();
+    const carica = vi.fn(async () => new Int16Array(10));
+    const p = new Prefetcher(cache, carica, 5);
+    // Cursore vicino all'inizio dell'asse, direzione indietro
+    // indice 1, avanti 5, direzione -1: dovrebbe caricare solo 1, 0
+    await p.assicura(asse, 1, -1);
+    expect(carica).toHaveBeenCalledTimes(2);
+    expect(p.pronto(asse[1])).toBe(true);
+    expect(p.pronto(asse[0])).toBe(true);
+  });
 });

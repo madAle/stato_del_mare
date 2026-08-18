@@ -29,6 +29,15 @@ export class CacheFrame {
     return trovato;
   }
 
+  ha(chiave: string): boolean {
+    // Interrogare l'esistenza non e' consumare. Confondere le due cose causa
+    // lo sfratto del frame sbagliato: con il prefetch che tocca il corrente
+    // per primo e quello lontano per ultimo, a fine giro il corrente risulta
+    // il piu' vecchio e con cache quasi piena si sfratta esattamente quello
+    // che sta per andare a schermo.
+    return this.mappa.has(chiave);
+  }
+
   metti(chiave: string, dato: Int16Array): void {
     // Un frame piu' grande del budget non entra, e soprattutto non si porta
     // dietro l'intera cache svuotandola per poi non entrarci lo stesso.

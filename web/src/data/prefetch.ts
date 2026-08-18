@@ -24,7 +24,7 @@ export class Prefetcher {
   }
 
   pronto(ora: Ora): boolean {
-    return this.cache.prendi(this.chiave(ora)) !== undefined;
+    return this.cache.ha(this.chiave(ora));
   }
 
   get inVolo(): number {
@@ -43,7 +43,7 @@ export class Prefetcher {
 
   private uno(ora: Ora): Promise<void> {
     const chiave = this.chiave(ora);
-    if (this.cache.prendi(chiave) !== undefined) return Promise.resolve();
+    if (this.cache.ha(chiave)) return Promise.resolve();
     const gia = this.inCorso.get(chiave);
     if (gia) return gia;
 
