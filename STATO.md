@@ -1,15 +1,15 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-14 · **Branch:** `develop` · **Fase:** ingestore unito su `develop` e pushato, mai eseguito contro un bucket vero
+**Aggiornato:** 2026-08-18 · **Branch:** `develop` · **Fase:** ingestore in produzione, archivio popolato, SPA da iniziare
 
-**Il punto esatto in cui riprendere:** configurare Cloudflare R2 e far girare
-l'ingestore per la prima volta (4a). Il codice è finito e rivisto, ma **non ha
-mai scritto su un bucket reale**: finché non gira, ogni giorno che passa è
-storico ADRIAC perso per sempre, perché la sorgente conserva solo 8 giorni.
-Sono tre cose che solo tu puoi fare, elencate in 4a, e nessuna richiede me.
+**L'ingestore gira.** Primo run reale il 2026-08-17: 72 file su 72, zero errori,
+70 minuti, l'intera finestra ARPAE di otto giorni in archivio. Il cron delle 18
+è passato da solo la sera stessa. Il bucket è leggibile da browser, verificato
+per misura (vedi la tabella in 5).
 
-Quando il primo run è andato a buon fine, il passo successivo è il piano della
-SPA (4c), da scrivere guardando dati veri su R2 invece che una specifica.
+**Il punto esatto in cui riprendere:** il **piano della SPA** (4c). Adesso si può
+scrivere guardando dati veri invece che una specifica, che era la condizione
+posta fin dall'inizio per non progettare il client contro un formato immaginato.
 
 Questo file va letto per primo. Poi:
 
@@ -112,11 +112,19 @@ Secondo vincolo: **`src/data/` è l'unico modulo che conosce gli URL del bucket.
 
 ### 4a. Blocca il resto, e solo l'utente può farlo
 
-1. **Rendere il repo pubblico.** Su repo pubblici i minuti di GitHub Actions sono illimitati, e questo progetto scarica circa 1,9 GB al giorno. Su repo privato i 2.000 minuti mensili gratuiti diventano un vincolo.
-2. **Account Cloudflare, bucket R2, API token, accesso pubblico in lettura, CORS.** Senza credenziali R2 l'ingestore non ha dove scrivere e non si può testare oltre i test unitari. La procedura sta in `docs/setup-r2.md`.
-3. **I quattro segreti nelle impostazioni del repo su GitHub**, che `ingest.yml` si aspetta con questi nomi esatti: `R2_BUCKET`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. Fatto questo il cron parte da solo, e il primo run è anche il primo collaudo vero.
+~~Repo pubblico, bucket R2, segreti su GitHub~~. **Tutto fatto il 2026-08-17.**
+Niente è più bloccato su di te.
 
-Punto pratico: finché l'ingestore non gira, **ogni giorno che passa è storico perso per sempre** (finestra ADRIAC di 8 giorni). Questo dà priorità all'ingestore sulla presentabilità della SPA.
+Restano due cose da sapere, non da fare:
+
+- **Il bucket pubblico** è `https://pub-58d91a839da640f8ab33e576c44b89c8.r2.dev`.
+  Non è un segreto: è l'origine da cui la SPA leggerà.
+- **`static/regrid_index.npz` non si cancella dal bucket.** Non è una cache: è la
+  memoria di com'era fatta la griglia ARPAE l'ultima volta, ed è ciò che fa
+  scattare `GridMismatch` se il dominio cambia. Senza, ogni run ricostruirebbe
+  l'indice dal file corrente, che coincide sempre con sé stesso, e una
+  riconfigurazione del modello passerebbe inosservata riempiendo l'archivio di
+  valori nel posto sbagliato.
 
 ### 4b. Attende materiale o terzi
 
@@ -145,9 +153,10 @@ Niente.
 4. ~~Merge del branch dell'ingestore~~. **Fatto il 2026-08-14**: unito su
    `develop` con un merge non fast-forward, suite verde sul risultato del merge,
    pushato.
-5. **Il primo run contro R2 vero.** Serve la configurazione in 4a. È anche il
-   primo collaudo del sistema: fin qui l'ingestore ha scritto solo su bucket
-   finti nei test e su nessun bucket vero.
+5. ~~Il primo run contro R2 vero~~. **Fatto il 2026-08-17**: 72 file su 72,
+   zero errori, 70 minuti. L'indice si è costruito a 858 x 844 celle, cioè la
+   cifra prevista per misura il 13 agosto, e la batimetria è uscita da 2,0 a
+   1.245,9 m. Cinque stazioni scartate con il motivo scritto nel log (vedi 6).
 6. **Il piano della SPA**, da scrivere quando l'ingestore gira e ci sono dati osservabili su R2 invece che una specifica.
 7. **Stima della corrente nei canali di Comacchio** dal dislivello fra Porto
    Garibaldi e Bellocchio, entrambi a passo di 10 minuti. Richiesta del
@@ -236,6 +245,22 @@ curl -s -L "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtim
 | Download ingestore | circa 1,9 GB al giorno | |
 | R2 gratuito | 10 GB, egress illimitato, esaurito verso il terzo mese e mezzo | |
 
+### Il percorso di lettura, verificato il 2026-08-18
+
+Un browser legge l'archivio senza backend. Misurato con una richiesta vera e
+un `Origin` estraneo, su `frames/hwave/an/20260817/2026-08-16T1200.bin`:
+
+| | |
+|---|---|
+| Byte sul filo | 152.935 |
+| Byte dopo la decompressione automatica | 1.448.304, cioè esattamente 858 x 844 x 2 |
+| Rapporto di compressione | 9,5 volte |
+| `Content-Encoding` | `gzip`, quindi zero librerie di decompressione nel client |
+| `Access-Control-Allow-Origin` | `*` |
+| `Cache-Control` sul catalogo | `public, max-age=300` |
+| Celle di mare nel frame | 168.712 su 724.152 |
+| Valori decodificati | onda da 0 a 0,42 m, media 0,18 m (Adriatico di ferragosto) |
+
 ## 6. Trappole già pagate, da non ripagare
 
 **Il file di analisi datato `D` contiene i dati di `D-1`.** Verificato: `20260813_..._his_HPDwave_an.nc` copre dalle 01:00 del 12 alle 00:00 del 13. Datare i frame su `ocean_time`, mai sul nome del file, altrimenti tutto l'archivio slitta di 24 ore.
@@ -247,6 +272,17 @@ curl -s -L "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtim
 **Le texture intere in WebGL non supportano il filtraggio bilineare hardware.** Con `R16UI` e `usampler2D` il filtro è per forza `NEAREST`. L'interpolazione va scritta nello shader con quattro `texelFetch`, il che è anche meglio perché permette di escludere i vicini `nodata` invece di mediarli (col filtro hardware ogni costa avrebbe un alone di valori sbagliati).
 
 **ADRIAC tiene solo 8 giorni.** Verificato: il 13 agosto il file più vecchio era del 6. Non esiste archivio storico a monte. Ogni giorno senza ingestione è perso e non recuperabile in nessun modo.
+
+**La soglia di 800 m serve a due domande diverse.** Nata per il
+ricampionamento ("questo pixel può prendere il valore di quella cella", dove
+impedisce che il colore sbordi sulla terraferma), è usata anche per associare una
+stazione alla sua cella ("quale cella rappresenta questa boa"). Al primo run
+reale ha scartato cinque stazioni: le tre lagunari del delta a 977, 2.788 e
+3.003 m, giustamente, ma anche le due di Cervia Porto a 922 e 923 m, che sono
+boe in mare vero a meno di una cella di distanza. Separare le due soglie e
+portare quella delle stazioni verso 1,5 km recupererebbe Cervia lasciando fuori
+le lagune. Non è un difetto e non è stato cambiato: è una decisione su cosa
+mostrare, da prendere quando si affronteranno le stazioni.
 
 **Il dataset `swanemr` è morto.** Il CKAN `dati.arpae.it` lo elenca ancora sotto `previsioni-mare`, ma la directory è ferma a settembre 2025. Non perderci tempo.
 
