@@ -191,7 +191,14 @@ non ho fatto"):
   funzionare** (l'indice si costruisce solo nel ramo del gruppo di riferimento).
   Difetto preesistente: prima rimandava in silenzio uscendo 0, adesso lo dichiara
   e esce 1. Chi prova `--only ubar` come primo comando lo incontra.
-- **Il file di riferimento si scarica due volte per run**, circa 23 MB.
+- ~~Il file di riferimento si scarica due volte per run, circa 23 MB~~.
+  **Chiuso il 2026-08-18**: il ramo che costruisce l'indice passa a
+  `process_file` il file già sul disco, insieme al suo sha256, invece di
+  farglielo riscaricare. La cancellazione resta a chi il file lo ha creato,
+  cioè al giro di `reconcile()`, ed è nel suo `finally`: è l'unico punto
+  attraversato da tutte le uscite del giro, compreso il guasto rilanciato.
+  Due test lo tengono fermo, uno sul numero di scaricamenti e uno sui
+  residui nella cartella di lavoro.
 - **Il piano non è stato aggiornato** e contiene frammenti anteriori alle
   correzioni: rieseguirlo alla lettera reintrodurrebbe due dei tre critici.
 - **La fusione dell'anagrafica conserva le coordinate esistenti**: se ARPAE

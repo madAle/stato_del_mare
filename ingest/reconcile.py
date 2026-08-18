@@ -63,6 +63,24 @@ class EsitoFile:
     deduplicato: bool
 
 
+@dataclass(frozen=True)
+class SorgenteLocale:
+    """Un file sorgente gia' scaricato e scompattato, con la sua impronta.
+
+    Serve a non scaricare due volte il file del gruppo di riferimento: il
+    ramo che costruisce l'indice lo ha gia' sul disco, e `process_file` lo
+    riceve invece di ripartire dalla rete.
+
+    Chi lo costruisce resta proprietario del percorso e lo cancella. La
+    regola vale in un verso solo, ed e' quella che tiene il conto della
+    cancellazione a uno: `process_file` cancella solo cio' che ha scaricato
+    lui, e non deve indovinare a chi appartiene il file che ha ricevuto.
+    """
+
+    percorso: Path
+    sha256: str
+
+
 def decompress_to_nc(gz_path: Path) -> Path:
     """Scompatta un .nc.gz accanto a se stesso e cancella il compresso."""
     destinazione = gz_path.with_suffix("")
@@ -184,7 +202,14 @@ def _pubblica_griglia(store, g: grid.MercatorGrid) -> None:
     store.put_json(GRID_KEY, descrittore)
 
 
-def process_file(store, index, work: PlannedWork, workdir: Path, session=None) -> EsitoFile:
+def process_file(
+    store,
+    index,
+    work: PlannedWork,
+    workdir: Path,
+    session=None,
+    locale: SorgenteLocale | None = None,
+) -> EsitoFile:
     """Scarica, lavora e pubblica un file sorgente.
 
     Restituisce sempre un manifest: quello appena scritto, oppure quello gia'
@@ -192,9 +217,16 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None) -
     lasciava i frame di un run morto prima della fase indici assenti da
     `index/` per sempre, perche' ogni run successivo saltava il file e non
     scriveva mai la voce di indice.
+
+    Con `locale` il file e' gia' sul disco e non si scarica: e' il caso del
+    gruppo di riferimento, che il ramo dell'indice ha appena preso. La
+    cancellazione resta di chi lo ha creato, quindi qui non lo si tocca.
     """
     f = work.source
     scaricato = workdir / f.name
+    # Solo cio' che questa funzione ha scompattato: il file ricevuto da fuori
+    # non entra qui, altrimenti verrebbe cancellato due volte da due
+    # proprietari diversi e nessuno dei due saprebbe di essere il secondo.
     percorso_nc = None
     # Il finally copre anche lo scaricamento e la scompattazione, non solo la
     # lavorazione: i file di previsione 3D arrivano a quasi 2 GB contro i 14 GB
@@ -227,13 +259,21 @@ def process_file(store, index, work: PlannedWork, workdir: Path, session=None) -
             log.info("invariato alla sorgente, salto senza scaricare: %s", f.name)
             return EsitoFile(manifest.RunManifest.from_dict(esistente), True)
 
-        impronta = source.download(f.url, scaricato, session=session)
+        impronta = (
+            locale.sha256
+            if locale is not None
+            else source.download(f.url, scaricato, session=session)
+        )
         if manifest.already_ingested(esistente, impronta):
             log.info("gia' in archivio, salto: %s", f.name)
             return EsitoFile(manifest.RunManifest.from_dict(esistente), True)
 
-        percorso_nc = decompress_to_nc(scaricato)
-        with Dataset(str(percorso_nc)) as ds:
+        if locale is not None:
+            sorgente_nc = locale.percorso
+        else:
+            percorso_nc = decompress_to_nc(scaricato)
+            sorgente_nc = percorso_nc
+        with Dataset(str(sorgente_nc)) as ds:
             corrente = manifest.RunManifest(
                 source_url=f.url,
                 source_sha256=impronta,
@@ -331,6 +371,23 @@ def _pubblica_profili(store, ds, index, f, var_names) -> list[manifest.ColumnRec
     return registrate
 
 
+def _prendi_riferimento(work: PlannedWork, workdir: Path, session=None) -> SorgenteLocale:
+    """Porta sul disco il file da cui si costruisce l'indice.
+
+    Restituisce anche lo sha256, che altrimenti andrebbe ricalcolato
+    riscaricando: e' l'impronta che `process_file` confronta con quella gia'
+    in archivio, e sui file di riferimento il download costa circa 23 MB.
+    """
+    scaricato = workdir / work.source.name
+    try:
+        impronta = source.download(work.source.url, scaricato, session=session)
+        return SorgenteLocale(percorso=decompress_to_nc(scaricato), sha256=impronta)
+    finally:
+        # decompress_to_nc cancella il compresso quando riesce, ma un download
+        # interrotto a meta' no, e quel residuo non lo rimuoverebbe nessuno.
+        scaricato.unlink(missing_ok=True)
+
+
 def reconcile(
     store,
     workdir: Path,
@@ -365,26 +422,24 @@ def reconcile(
     indice = None
     prodotti = []
     for w in lavoro:
+        riferimento = None
         try:
             if indice is None and w.source.group == GRUPPO_DI_RIFERIMENTO:
-                scaricato = workdir / w.source.name
-                percorso = None
-                try:
-                    source.download(w.source.url, scaricato, session=session)
-                    percorso = decompress_to_nc(scaricato)
-                    with Dataset(str(percorso)) as ds:
-                        indice = ensure_index(store, ds, workdir)
-                finally:
-                    scaricato.unlink(missing_ok=True)
-                    if percorso is not None:
-                        percorso.unlink(missing_ok=True)
+                riferimento = _prendi_riferimento(w, workdir, session=session)
+                with Dataset(str(riferimento.percorso)) as ds:
+                    indice = ensure_index(store, ds, workdir)
 
             if indice is None:
                 log.warning("indice non disponibile, rimando: %s", w.source.name)
                 esito["deferred"] += 1
                 continue
 
-            lavorato = process_file(store, indice, w, workdir, session=session)
+            # Il file e' gia' qui: process_file lo legge invece di riscaricare
+            # gli stessi 23 MB, che era il costo fisso di ogni run in cui
+            # questo ramo passa.
+            lavorato = process_file(
+                store, indice, w, workdir, session=session, locale=riferimento
+            )
             # Anche un file deduplicato entra in `prodotti`: merge_index e'
             # idempotente, quindi rimetterlo costa una PUT per file di indice
             # toccato e ripara gli indici di un run precedente morto prima
@@ -403,6 +458,14 @@ def reconcile(
         except Exception:
             log.exception("errore su %s", w.source.name)
             esito["errors"] += 1
+        finally:
+            # Chi lo ha creato lo cancella, e lo fa qui perche' questo e'
+            # l'unico punto attraversato da ogni uscita del giro: successo,
+            # errore inghiottito, guasto rilanciato. Lasciarlo a process_file
+            # non basterebbe, perche' la scorciatoia sulla deduplica ritorna
+            # prima e il ramo `deferred` non lo chiama affatto.
+            if riferimento is not None:
+                riferimento.percorso.unlink(missing_ok=True)
 
     if prodotti:
         catalog.rebuild_indices(store, prodotti)

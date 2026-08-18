@@ -130,6 +130,13 @@ def test_la_guardia_sulla_griglia_ferma_reconcile(store, tmp_path, monkeypatch, 
 
     # Il punto della guardia: non deve essere stato scritto niente.
     assert store.get_json("catalog.json") is None
+    # E il file di riferimento non deve restare sul disco. E' la via d'uscita
+    # piu' facile da dimenticare, perche' il guasto viene rilanciato e nessun
+    # passo successivo del giro viene eseguito. L'elenco si confronta intero,
+    # e non nome per nome, perche' il nome dello scompattato lo decide lo stub
+    # di decompress_to_nc: un'asserzione su un percorso costruito qui sarebbe
+    # vacua senza dirlo. wave.nc e' la fixture, non un residuo.
+    assert {p.name for p in tmp_path.iterdir()} == {"wave.nc"}
 
 
 def test_un_cambio_di_unita_ferma_reconcile(store, tmp_path, monkeypatch):
@@ -742,3 +749,39 @@ def test_il_dry_run_non_scrive_e_non_scarica(store, tmp_path, monkeypatch):
     assert esito["planned"] >= 1
     assert esito["processed"] == 0
     assert store.get_json("catalog.json") is None
+
+
+def test_il_file_di_riferimento_si_scarica_una_volta_sola(store, tmp_path, monkeypatch):
+    """Il ramo che costruisce l'indice scarica, poi process_file riscaricava.
+
+    Sono circa 23 MB buttati a ogni run in cui quel ramo passa. Il file e'
+    gia' sul disco: process_file deve prenderlo da li'.
+
+    La seconda asserzione e' l'altra meta' della correzione: passare un file
+    gia' presente sposta la responsabilita' di cancellarlo, e lasciarlo sul
+    disco sarebbe un guasto vero, non un dettaglio (il runner ha circa 14 GB
+    liberi e i sorgenti arrivano a quasi 2 GB).
+    """
+    f = _file_sorgente()
+    monkeypatch.setattr(reconcile.source, "list_source_files", lambda session=None: [f])
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(
+        reconcile.source, "head", lambda url, session=None: {"bytes": 1, "last_modified": "x"}
+    )
+
+    scaricati = []
+
+    def traccia(url, dest, session=None):
+        scaricati.append(url)
+        return _scrivi_sintetico(url, dest)
+
+    monkeypatch.setattr(reconcile.source, "download", traccia)
+    monkeypatch.setattr(reconcile, "decompress_to_nc", lambda gz: gz.with_suffix(".nc"))
+
+    esito = reconcile.reconcile(store, tmp_path, window_days=8)
+
+    assert scaricati == [f.url]
+    assert esito["processed"] == 1
+    # L'indice in cache resta di proposito: e' un'ottimizzazione dentro il run,
+    # non un temporaneo. Tutto il resto deve essere sparito.
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["regrid_index.npz"]
