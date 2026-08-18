@@ -29,3 +29,21 @@ export function urlFrame(
     `T${p(valido.getUTCHours())}${p(valido.getUTCMinutes())}`;
   return `${ORIGINE}/frames/${variabile}/${tipo}/${riferimento}/${chiave}.bin`;
 }
+
+/** Prefisso di tutto cio' che serve alla basemap vettoriale (font, sprite, tile). */
+export function urlBasemap(): string {
+  return `${ORIGINE}/basemap`;
+}
+
+/** Modello di URL dei glifi, col segnaposto che MapLibre sostituisce da solo. */
+export function urlGlifi(): string {
+  return `${urlBasemap()}/fonts/{fontstack}/{range}.pbf`;
+}
+
+export function urlSprite(): string {
+  return `${urlBasemap()}/sprites/light`;
+}
+
+export function urlPmtiles(): string {
+  return `${urlBasemap()}/adriatico.pmtiles`;
+}

@@ -5,7 +5,7 @@ import maplibregl, {
   type StyleSpecification,
 } from "maplibre-gl";
 import { Protocol } from "pmtiles";
-import { ORIGINE } from "../data/urls";
+import { urlGlifi, urlPmtiles, urlSprite } from "../data/urls";
 import type { Griglia } from "../data/catalogo";
 
 /**
@@ -18,8 +18,6 @@ import type { Griglia } from "../data/catalogo";
  * com'e' il mare alla propria spiaggia.
  */
 export const ZOOM_MASSIMO = 15;
-
-const BASEMAP = `${ORIGINE}/basemap`;
 
 /**
  * L'id del primo livello di simboli dello stile.
@@ -42,12 +40,14 @@ function stileBasemap(): StyleSpecification {
     version: 8,
     // Font e sprite stanno nel nostro bucket, non sul dominio di terzi: se no
     // la promessa di non avere dipendenze di esecuzione sarebbe finta.
-    glyphs: `${BASEMAP}/fonts/{fontstack}/{range}.pbf`,
-    sprite: `${BASEMAP}/sprites/light`,
+    // Gli URL si compongono in data/urls.ts, l'unico modulo che li conosce:
+    // qui si chiamano soltanto.
+    glyphs: urlGlifi(),
+    sprite: urlSprite(),
     sources: {
       protomaps: {
         type: "vector",
-        url: `pmtiles://${BASEMAP}/adriatico.pmtiles`,
+        url: `pmtiles://${urlPmtiles()}`,
         attribution: '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       },
     },
