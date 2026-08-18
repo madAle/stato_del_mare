@@ -364,8 +364,15 @@ Dettaglio nella spec 7.3, ricetta in `strumenti/costa_sdf.py`.
 I nomi di baie, porti e isole stanno sotto il campo ovunque, non solo a riva. Si
 risolvono mettendo il campo sotto i livelli di etichetta, che richiede una
 basemap **vettoriale**: con una raster la tile e' un'immagine sola. Il margine
-dalla riva (18 pixel di schermo, tetto 500 m) serve per i moli e la battigia, che
-sono un problema diverso.
+dalla riva (250 m) serve per i moli e la battigia, che sono un problema diverso.
+
+**Il margine dalla riva va in metri, non in pixel di schermo.** In pixel sembra
+giusto perche' la leggibilita' si misura sullo schermo, ed e' giusto per le
+scritte. Ma quello che il campo copre a riva sono moli e porti, che sono oggetti
+geografici: un margine in pixel vale sempre meno metri man mano che si
+ingrandisce, quindi la struttura resta coperta proprio allo zoom a cui la si
+guarda. In metri si scopre a ogni zoom e a zoom basso il margine scende sotto il
+pixel da solo, senza bisogno di tetti.
 
 **Il ritaglio va preso dalla stessa costa che disegna la basemap.** Non perche'
 una sorgente sia piu' esatta: perche' l'occhio confronta il campo con la costa

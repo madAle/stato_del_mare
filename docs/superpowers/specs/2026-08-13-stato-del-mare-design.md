@@ -914,35 +914,32 @@ passa quella a gradini: stessa posizione sbagliata, aspetto piu' convincente.
 ADRIAC ha celle da 1 km e non sa dov'e' la costa meglio di cosi'; l'informazione
 va presa da una fonte che ce l'ha.
 
-**Margine dalla riva: 18 pixel di schermo, con tetto a 500 m.** Anche con il
-ritaglio giusto il campo che tocca la costa copre la fascia di battigia, i moli
-e i porti, cioe' proprio il dettaglio che si guarda su una carta costiera.
-Deciso il 2026-08-18 guardando, in due passaggi: prima 12 pixel, poi 18 perche'
-a 12 la carta sotto restava stretta.
+**Margine dalla riva: 250 m, misurati in metri e non in pixel di schermo.**
+Anche con il ritaglio sulla costa giusta, il campo che tocca la riva copre la
+fascia di battigia, i moli e i porti, cioe' proprio il dettaglio che si guarda
+su una carta costiera.
 
-**In pixel di schermo, non in metri**, perche' un molo e una scritta occupano
-gli stessi pixel a ogni ingrandimento: e' la leggibilita' della carta sotto a
-dettare la grandezza, e la leggibilita' si misura sullo schermo. In pratica
-`dist / fwidth(dist)` e' gia' la distanza dalla riva in pixel, quindi il
-margine non costa niente da calcolare.
+La prima stesura metteva il margine in **pixel di schermo**, con questo
+argomento: la leggibilita' si misura sullo schermo, e una scritta occupa gli
+stessi pixel a ogni zoom. L'argomento e' giusto e riguarda la cosa sbagliata.
+Quello che il campo copre vicino a riva non sono le scritte, sono **moli, porti
+e dighe foranee**, che sono oggetti geografici lunghi qualche centinaio di
+metri. Un margine in pixel vale sempre **meno metri** man mano che si
+ingrandisce: a 18 pixel, a zoom 16 restano 31 m di stacco, e il porto canale
+sta ancora sotto il campo proprio allo zoom a cui lo si sta guardando.
 
-**Il tetto in metri serve**, se no a zoom bassi 18 pixel diventano chilometri di
-mare cancellato: a zoom 10 varrebbero 2 km. Con il tetto a 500 m il margine
-smette di crescere sotto zoom 12,4 circa, e da li' in giu' la manopola non ha
-piu' effetto: chi la prova su una vista d'insieme la trova ferma, ed e' giusto
-che lo sia.
+In metri il molo si scopre a qualunque ingrandimento, e a zoom basso il margine
+scende sotto il pixel da solo: nessun tetto, nessun caso particolare. Lo stacco
+a 250 m vale 146 pixel a zoom 16, 73 a zoom 15, 37 a zoom 14 e 5 a zoom 11.
 
-Attenzione al verso: il margine e' il **minimo** fra i pixel richiesti e il
-tetto, e in termini di bordo il minimo fra due margini e' il **massimo** fra i
-due bordi. Scritto con `min` invece che con `max`, come nella prima stesura, il
-tetto diventa un pavimento e impone 400 m a qualunque impostazione: la manopola
-sembra rotta perche' quattro rese diverse escono identiche.
+Costo, misurato: il mare dipinto scende dal 98,4% all'80,9% a Unije a zoom 14, e
+dall'86,8% al 57,9% su Rimini a zoom 15, dove la vista e' quasi tutta sotto
+costa e quindi la fascia si mangia una quota grande di quel che si vede. A zoom
+11 il costo e' sotto l'1%.
 
-Costo, misurato a zoom 14: il mare dipinto scende dal 98,4% al 91,4% a Unije e
-dal 91,7% all'86,8% a Cesenatico (a 12 pixel erano 93,8% e 88,6%). La sovrapposizione oltre 100 m dentro la
-terraferma disegnata va a zero su quasi tutte le viste; restano Trieste e la
-Dalmazia a zoom 10 e 11, dove il tetto limita il margine a 400 m e sotto c'e' la
-costa semplificata delle tile, che a quella scala sbaglia di piu' del margine.
+**Come si sceglie il numero, se va rimesso in discussione.** Non a occhio su una
+vista: si guarda il porto piu' lungo che deve restare scoperto. Il margine deve
+valere almeno quanto sporge in mare la struttura che si vuole leggere.
 
 **Le scritte sul mare non si risolvono con il margine, e non vanno provate a
 risolvere cosi'.** I nomi di baie, porti e isole stanno sotto il campo ovunque,
