@@ -13,6 +13,10 @@ on:
         description: "Stampa il piano senza scrivere"
         type: boolean
         default: false
+      rilavora:
+        description: "Gruppi da rifare anche se gia' ingeriti, separati da virgola (es. his_temp,his_salt)"
+        type: string
+        default: ""
 
 concurrency:
   group: ingestione
@@ -45,10 +49,17 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RILAVORA: ${{ inputs.rilavora }}
         run: |
           set +e
-          uv run python -m ingest reconcile \
-            ${{ inputs.dry_run && '--dry-run' || '' }}
+          # Gli ingressi passano da variabili d'ambiente e non interpolati nel
+          # comando: un valore scelto da chi lancia il workflow non deve poter
+          # diventare shell.
+          argomenti=()
+          [ "$DRY_RUN" = "true" ] && argomenti+=(--dry-run)
+          [ -n "$RILAVORA" ] && argomenti+=(--rilavora "$RILAVORA")
+          uv run python -m ingest reconcile "${argomenti[@]}"
           codice=$?
           set -e
           # I codici di uscita esistono per distinguere "riprova domani" da
