@@ -791,6 +791,54 @@ stazioni. Inserito dichiarativamente prima di un id noto.
 **Valore sotto il mouse**: nessuna lettura dalla GPU. Si inverte la proiezione fino
 all'indice di cella e si legge dall'`Int16Array` già in memoria.
 
+### Ritaglio sulla costa vera
+
+Il campo si disegna solo in mare, ritagliato sulla linea di costa reale e non su
+quella del modello. Servono due regole distinte, trovate misurando il 2026-08-18
+(prima erano entrambe assenti e il campo copriva fino a 2 km di terraferma).
+
+**Regola 1, il campione piu' vicino.** La miscelazione pesata dei quattro vicini
+deve dipingere solo se il campione **piu' vicino** e' valido. Usando "uno
+qualunque dei quattro" il campo si allarga di una cella intera oltre il proprio
+bordo, cioe' 1.200 m di terra colorata con un dato che li' non esiste. Misurato:
+il centro di Cervia risultava dipinto mentre la sua cella e' `nodata`.
+
+**Regola 2, la maschera di costa come campo di distanza.** Un'immagine statica
+che per ogni punto porta la **distanza con segno dalla costa**, positiva in mare
+e negativa a terra. Lo shader la campiona, scarta i pixel a terra e sfuma il
+bordo su un pixel di schermo con `fwidth`.
+
+La distanza con segno, non una maschera binaria: fra 0 e 1 una maschera booleana
+non dice **dove** passi il confine dentro il texel, quindi interpolandola restano
+i gradini. Interpolando la distanza il confine si ricostruisce dentro il texel,
+ed e' la stessa ragione per cui un font SDF resta nitido ingrandito.
+
+Misure della prima generazione, da GSHHG a risoluzione piena (`GSHHS_f_L1`):
+
+| | |
+|---|---|
+| Griglia | 4290 x 4220, cioe' 5 volte il dato, 240 m |
+| Riquadro | identico a quello del dato, quindi stesse coordinate di texture |
+| Codifica | distanza limitata a 2 km e quantizzata in 8 bit, passo 15,7 m |
+| Peso | **0,41 MB** in PNG: oltre i 2 km il campo e' saturo e si comprime a niente |
+| Formato in GPU | `R8` con filtraggio `LINEAR`, a differenza del dato che e' intero |
+
+**Perche' non lisciare il bordo del dato invece di portare la costa da fuori.**
+Uno splining del contorno a 1.200 m produrrebbe una curva morbida che passa dove
+passa quella a gradini: stessa posizione sbagliata, aspetto piu' convincente.
+ADRIAC ha celle da 1 km e non sa dov'e' la costa meglio di cosi'; l'informazione
+va presa da una fonte che ce l'ha.
+
+**Cosa resta visibile, ed e' giusto che resti.** Attorno alle isole piccole il
+modello non ha celle di mare entro la distanza di ricampionamento, quindi non
+c'e' dato e non si disegna niente. Il bordo di quell'assenza resta a gradini di
+1.200 m. Non va ammorbidito: e' assenza di dato, e ammorbidirla vorrebbe dire
+disegnare qualcosa che non abbiamo.
+
+**Tetto di zoom.** La maschera rende nitida la **costa**, non il dato. Il campo
+resta a 1 km, quindi oltre un certo ingrandimento la mappa promette una
+precisione che il dato non ha. Il tetto va scelto guardando, ma esiste.
+
 ### Verificato per esecuzione, 2026-08-18
 
 Una fetta verticale buttabile (una pagina, nessun React) ha caricato un frame vero

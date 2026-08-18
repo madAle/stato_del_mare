@@ -341,6 +341,16 @@ parti per mille, cioè acqua dolce, dove la colonna del modello marino non
 significa niente. Logonovo e Bellocchio restano fuori per distanza e non sono
 nominati.
 
+**Il campo va ritagliato sulla costa vera, non su quella del modello.** Senza
+ritaglio copriva fino a 2 km di terraferma, per due cause sommate: lo shader che
+dipingeva se **uno qualunque** dei quattro vicini era valido (1.200 m), e gli 800
+m di sbordamento che l'ingestore mette di proposito. Il ritaglio si fa con una
+maschera di **distanza con segno** dalla costa (GSHHG a risoluzione piena, 240 m,
+0,41 MB), non con una maschera binaria: interpolando la distanza il confine si
+ricostruisce dentro il texel e resta liscio a ogni zoom. Lisciare il bordo del
+dato invece non serve: sposterebbe una curva morbida dove passa quella sbagliata.
+Dettaglio nella spec 7.3.
+
 **La y di MapLibre cresce verso sud, la riga 0 del frame e' a nord.** Senza un
 ribaltamento esplicito nella coordinata di texture il campo si disegna capovolto,
 e l'errore **sembra plausibile**: resta una macchia della forma giusta su un mare.
