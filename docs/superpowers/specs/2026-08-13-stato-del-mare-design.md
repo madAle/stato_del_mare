@@ -854,6 +854,20 @@ Misurata il 2026-08-18 sul frame del 16 agosto:
 **Decisione: si sfuma, non si allarga.** Il campo abbassa l'opacita' dove il dato
 si dirada. Non inventa valori: dichiara che li' il dato sta finendo.
 
+**L'opacita' misura quanto si sta estrapolando, non quanto e' affollato il
+vicinato.** Seconda correzione, 2026-08-18. Sfumare in base alla **densita'** di
+dato intorno al pixel sembra equivalente e non lo e': penalizza i filamenti
+larghi una cella, che sono dato vero al cento per cento, e li fa comparire a
+perline dove per caso superano la soglia. Erano quelle le chiazze a rombo davanti
+al delta del Po, e la misura lo ha dimostrato: il dato di tutto il dominio e' un
+**unico blocco connesso**, zero isole, quindi le perline non potevano essere dato
+isolato.
+
+La grandezza giusta e' la **distanza dal campione valido piu' vicino**: zero
+dentro il dato (anche su un filamento sottile), crescente fuori. L'opacita' e'
+piena a distanza zero e si spegne a due celle. Cosi' il campo dichiara quanto si
+sta allontanando dal dato, che e' l'informazione che il lettore deve avere.
+
 **La copertura va calcolata con gli stessi pesi continui del valore.** Prima
 stesura sbagliata, corretta il 2026-08-18 dopo averla vista: contando i vicini
 validi sul texel piu' vicino, l'opacita' resta **costante dentro ogni cella**, e
