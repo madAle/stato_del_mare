@@ -136,7 +136,34 @@ export function App({
     return <main className="errore">Impossibile aprire la mappa: {erroreMappa}</main>;
   }
 
-  if (!catalogo.data || !scelta || asse.length === 0) return <main>caricamento...</main>;
+  if (!catalogo.data) return <main>caricamento...</main>;
+
+  // Il catalogo e' arrivato per intero e non la nomina: non e' un guasto di
+  // rete ne' un caricamento ancora in corso, e' un catalogo pubblicato senza
+  // la variabile che questa versione sa disegnare. Senza questo messaggio
+  // l'app restava su "caricamento..." per sempre, mentre tutti gli altri
+  // guasti (catalogo, indice, mappa) hanno gia' un messaggio.
+  if (!scelta) {
+    return (
+      <main className="errore">
+        Il catalogo non pubblica la variabile "{VARIABILE_DISEGNATA}": impossibile disegnare la mappa.
+      </main>
+    );
+  }
+
+  if (!assi.data) return <main>caricamento...</main>;
+
+  // L'indice e' arrivato ma, dentro la finestra corrente (l'apertura
+  // normale, o l'istante esatto di un link condiviso), non c'e' nessun'ora:
+  // stesso ragionamento del caso sopra, un catalogo vuoto per la finestra
+  // scelta non e' un caricamento che deve ancora finire.
+  if (asse.length === 0) {
+    return (
+      <main className="errore">
+        Nessun orario disponibile per "{VARIABILE_DISEGNATA}" nella finestra corrente.
+      </main>
+    );
+  }
 
   const oraCorrente = inquadra(asse, istante)?.prima ?? null;
 
