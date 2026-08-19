@@ -8,7 +8,9 @@ import { Animazione, type StatoRiproduzione } from "../map/animazione";
 import { LivelloCampo } from "../map/campo";
 import { creaMappa, primoLivelloSimboli, type VistaIniziale } from "../map/mappa";
 import { valoreCorrente } from "../map/proiezione";
+import { Segnaposto } from "../map/segnaposto";
 import { creaStrozzatore } from "../map/strozzatore";
+import { scriviValore } from "./numeri";
 
 /** Centro [lat, lon] e zoom letti dalla mappa vera, non dalla vista con cui e' stata aperta. */
 export type Vista = { centro: [number, number]; zoom: number };
@@ -17,8 +19,8 @@ export type ManiglieMappa = { animazione: Animazione; livello: LivelloCampo };
 
 export function MapView({
   catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera, stile,
-  preserveDrawingBuffer, vistaIniziale,
-  alTempo, alValore, alPronto, alVista, alErrore,
+  preserveDrawingBuffer, vistaIniziale, puntoIniziale,
+  alTempo, alValore, alPunto, alPronto, alVista, alErrore,
 }: {
   catalogo: Catalogo;
   variabile: Variabile;
@@ -38,6 +40,14 @@ export function MapView({
   vistaIniziale?: VistaIniziale;
   alTempo: (istante: number, stato: StatoRiproduzione) => void;
   alValore: (valore: number | null) => void;
+  /**
+   * Il punto fissato, riportato a chi tiene lo stato perche' finisca nell'URL:
+   * un link deve poter dire "guarda l'onda qui", non solo "guarda qui".
+   * null quando chi guarda lo toglie.
+   */
+  alPunto: (punto: { lat: number; lng: number } | null) => void;
+  /** Il punto letto dall'URL, piantato al montaggio. */
+  puntoIniziale?: { lat: number; lng: number } | null;
   alPronto: (m: ManiglieMappa) => void;
   /**
    * Zoom e centro correnti, letti dalla mappa vera (m.getZoom()/getCenter())
@@ -66,6 +76,16 @@ export function MapView({
   // mentre la riproduzione scorre: senza ricordare la posizione si potrebbe
   // ricalcolare solo quando si muove il mouse, cioe' mai durante un autoplay.
   const ultimaPosizione = useRef<{ lng: number; lat: number } | null>(null);
+  // Il punto fissato, se c'e'. Quando c'e' **vince sul passaggio del mouse**:
+  // il valore a schermo e' il suo, e restarci sopra col cursore non lo cambia.
+  // La regola alternativa (il passaggio vince finche' dura, poi torna il punto)
+  // darebbe due sorgenti a un solo numero, cioe' un valore che cambia mentre
+  // chi guarda non ha chiesto niente.
+  const puntoFissato = useRef<{ lng: number; lat: number } | null>(null);
+  // Le due callback vivono dentro l'effetto a dipendenze vuote: senza un ref
+  // vedrebbero per sempre la chiusura del primo render.
+  const alPuntoRef = useRef(alPunto);
+  alPuntoRef.current = alPunto;
 
   // asse, prefetcher e variabile aggiornati a ogni render, non solo al
   // montaggio: App li ricrea quando i dati cambiano (per esempio un refetch
@@ -155,18 +175,44 @@ export function MapView({
         // numero di un altro istante accanto a una barra di stato che
         // dichiarava l'istante giusto: due meta' dello schermo che si
         // contraddicono, e quella sbagliata sembra una misura.
+        const segnaposto = new Segnaposto(m);
         const aggiornaValore = () => {
-          const dove = ultimaPosizione.current;
-          if (!dove) {
-            strozzatore.invia(null);
-            return;
+          const dove = puntoFissato.current ?? ultimaPosizione.current;
+          const valore = dove
+            ? valoreCorrente(
+                catalogo.griglia, asseRef.current, ultimoIstante.current,
+                (ora) => cache.prendi(prefetcherRef.current.chiave(ora)),
+                dove.lng, dove.lat, variabileRef.current.scala, variabileRef.current.offset,
+              )
+            : null;
+          // L'etichetta accanto al segno si scrive qui e non da React: il
+          // numero cambia dieci volte al secondo durante la riproduzione, e
+          // farlo passare da un render sarebbe esattamente il vincolo che
+          // questa architettura esiste per rispettare. E' lo stesso numero
+          // della barra di stato, scritto dalla stessa funzione.
+          if (puntoFissato.current) {
+            segnaposto.scrivi(scriviValore(valore, variabileRef.current.unita));
           }
-          strozzatore.invia(valoreCorrente(
-            catalogo.griglia, asseRef.current, ultimoIstante.current,
-            (ora) => cache.prendi(prefetcherRef.current.chiave(ora)),
-            dove.lng, dove.lat, variabileRef.current.scala, variabileRef.current.offset,
-          ));
+          strozzatore.invia(valore);
         };
+
+        // Piantare il punto e toglierlo. MapLibre distingue gia' il click dal
+        // trascinamento, quindi spostare la mappa non pianta niente.
+        m.on("click", (e) => {
+          puntoFissato.current = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+          segnaposto.metti(e.lngLat.lng, e.lngLat.lat);
+          aggiornaValore();
+          alPuntoRef.current({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+        });
+        segnaposto.alTolto = () => {
+          puntoFissato.current = null;
+          aggiornaValore();
+          alPuntoRef.current(null);
+        };
+        if (puntoIniziale) {
+          puntoFissato.current = { lng: puntoIniziale.lng, lat: puntoIniziale.lat };
+          segnaposto.metti(puntoIniziale.lng, puntoIniziale.lat);
+        }
 
         animazione = new Animazione(livello, { asse: asseRef, prefetcher: prefetcherRef, cache });
         animazione.alTempo = (istante, stato) => {
@@ -176,9 +222,13 @@ export function MapView({
         };
         alPronto({ animazione, livello });
 
+        // La posizione si ricorda sempre (serve appena si toglie il punto), ma
+        // il valore si ricalcola solo se non c'e' un punto fissato: con il
+        // punto, il numero e' il suo e ricalcolarlo a ogni movimento sarebbe
+        // lavoro a vuoto sessanta volte al secondo.
         m.on("mousemove", (e) => {
           ultimaPosizione.current = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-          aggiornaValore();
+          if (!puntoFissato.current) aggiornaValore();
         });
 
         // Uscendo dalla mappa il valore deve sparire: senza questo, il numero
@@ -188,7 +238,7 @@ export function MapView({
         // migliore, se non lo si azzera.
         m.on("mouseout", () => {
           ultimaPosizione.current = null;
-          aggiornaValore();
+          if (!puntoFissato.current) aggiornaValore();
         });
 
         (window as never as { __mappa: unknown }).__mappa = m;

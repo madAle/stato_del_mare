@@ -49,3 +49,37 @@ describe("tacche della scala", () => {
     expect(ORA_MS).toBe(3_600_000);
   });
 });
+
+describe("le tacche si diradano quando le etichette non ci stanno", () => {
+  const ORA = 3_600_000;
+  const inizio = Date.parse("2026-08-11T00:00:00Z");
+
+  it("otto giorni in una scala da telefono danno meno di otto etichette", () => {
+    // il difetto vero, visto su iPhone il 2026-08-19: l'asse aperto su tutto
+    // l'archivio produceva otto etichette da giorno larghe 55 px in 335 px di
+    // scala, una sopra l'altra. In 335 px ne stanno cinque.
+    // nove e non otto: 192 ore da mezzanotte inclusa sono nove confini di giorno
+    expect(tacche(inizio, inizio + 192 * ORA).length).toBe(9);
+    expect(tacche(inizio, inizio + 192 * ORA, 5).length).toBeLessThanOrEqual(5);
+  });
+
+  it("il passo si allarga, non si scartano tacche a caso", () => {
+    // scartare le etichette in eccesso lascerebbe buchi irregolari: si allarga
+    // il passo, cosi' la scala resta uniforme e leggibile
+    const t = tacche(inizio, inizio + 192 * ORA, 5);
+    const passi = t.slice(1).map((x, i) => x.istante - t[i].istante);
+    expect(new Set(passi).size).toBe(1);
+  });
+
+  it("senza sapere la larghezza si decide come prima, sulla sola ampiezza", () => {
+    // jsdom e il primo render non conoscono la larghezza: meglio la scelta di
+    // prima che una scala arbitrariamente rada
+    expect(tacche(inizio, inizio + 192 * ORA))
+      .toEqual(tacche(inizio, inizio + 192 * ORA, Number.POSITIVE_INFINITY));
+  });
+
+  it("un tetto impossibile non manda in ciclo infinito", () => {
+    expect(() => tacche(inizio, inizio + 192 * ORA, 0)).not.toThrow();
+    expect(tacche(inizio, inizio + 192 * ORA, 0).length).toBeGreaterThan(0);
+  });
+});

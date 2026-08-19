@@ -167,6 +167,16 @@ select[aria-label="variabile"] {
   gap: 0.75rem;
 }
 
+/* Colore e carattere dichiarati, non ereditati dal sistema: su iOS Safari un
+   <button> senza `color` prende l'accento della piattaforma, e i comandi si
+   vedevano in azzurro come se fossero collegamenti (visto su iPhone il
+   2026-08-19). Il resto dell'interfaccia e' in grigio scuro. */
+.comandi-riproduzione-play,
+.comandi-riproduzione-velocita button {
+  color: #1f2328;
+  font-family: inherit;
+}
+
 .comandi-riproduzione-play {
   padding: 0.35rem 0.9rem;
   border: 1px solid rgba(0, 0, 0, 0.25);
@@ -470,5 +480,89 @@ select[aria-label="variabile"] {
 
   .fascia-bassa {
     gap: 0.35rem;
+  }
+}
+
+/* Il punto osservato: una croce con un anello al centro, e il valore scritto
+   sopra. Il contorno bianco sotto il nero serve perche' il segno cade su un
+   campo colorato e su una basemap chiara, e un tratto nero da solo sparisce
+   sull'ombra di una costa. */
+.segnaposto {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.segnaposto-croce::before,
+.segnaposto-croce::after {
+  content: "";
+  position: absolute;
+  background: #1f2328;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+}
+
+/* i due tratti si fermano prima dell'anello, se no lo attraversano */
+.segnaposto-croce::before {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+}
+
+.segnaposto-croce::after {
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  margin-top: -0.5px;
+}
+
+.segnaposto::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border: 2px solid #1f2328;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85), inset 0 0 0 1px rgba(255, 255, 255, 0.85);
+  z-index: 1;
+}
+
+/* Il valore accanto al segno, non solo nella barra di stato: su un telefono
+   guardare il mare e leggere il numero sarebbero due punti opposti dello
+   schermo. E' lo stesso numero, scritto dalla stessa funzione (ui/numeri.ts). */
+.segnaposto-valore {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Senza dato non si scrive un riquadro vuoto, che sembrerebbe un guasto. */
+.segnaposto-valore.vuota {
+  display: none;
+}
+
+/* Col dito il bersaglio per togliere il punto cresce, come tutti gli altri.
+   La croce resta della stessa misura: e' l'elemento a crescerle attorno, e il
+   marcatore e' ancorato al centro, quindi il segno non si sposta. */
+@media (pointer: coarse) {
+  .segnaposto {
+    width: 44px;
+    height: 44px;
   }
 }

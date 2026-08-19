@@ -1,5 +1,6 @@
 import * as Toggle from "@radix-ui/react-toggle";
 import { useState } from "react";
+import { VELOCITA_PREDEFINITA } from "../map/animazione";
 
 type Props = {
   inRiproduzione: boolean;
@@ -8,12 +9,6 @@ type Props = {
 };
 
 const VELOCITA: readonly number[] = [2, 4, 8];
-
-// Deve combaciare con il valore predefinito dentro Animazione (map/animazione.ts):
-// alla prima pressione di "riproduci", senza aver ancora toccato le velocita',
-// il bottone evidenziato deve dire quello che il ciclo sta gia' facendo, non
-// una velocita' diversa scelta a caso qui.
-const VELOCITA_PREDEFINITA = 4;
 
 /**
  * Play/pausa e le tre velocita' della riproduzione.

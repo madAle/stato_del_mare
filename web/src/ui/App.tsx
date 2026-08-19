@@ -64,6 +64,12 @@ export function App({
   const [stato, setStato] = useState<StatoRiproduzione>("ferma");
   const [inRiproduzione, setInRiproduzione] = useState(false);
   const [valore, setValore] = useState<number | null>(null);
+  // Il punto osservato non e' uno stato che ridisegna: il segno lo tiene
+  // MapLibre, il valore lo scrive lo strato mappa. Serve solo a finire
+  // nell'URL, quindi vive in un ref come zoom e centro.
+  const puntoRef = useRef<{ lat: number; lng: number } | null>(
+    iniziale.punto ? { lat: iniziale.punto[0], lng: iniziale.punto[1] } : null,
+  );
   // Errore di montaggio della mappa (per esempio la basemap non ancora
   // pubblicata sul bucket): creaMappa puo' rifiutare, e senza tenere lo stato
   // qui l'app resterebbe bloccata su "caricamento" per sempre, senza dire
@@ -104,6 +110,7 @@ export function App({
         palette: paletteRef.current,
         zoom: vistaRef.current?.zoom ?? null,
         centro: vistaRef.current?.centro ?? null,
+        punto: puntoRef.current ? [puntoRef.current.lat, puntoRef.current.lng] : null,
       }));
     }, 1000),
     [],
@@ -209,12 +216,14 @@ export function App({
         stile={stile}
         preserveDrawingBuffer={preserveDrawingBuffer}
         vistaIniziale={{ centro: iniziale.centro, zoom: iniziale.zoom }}
+        puntoIniziale={puntoRef.current}
         alTempo={(i, s) => {
           setIstante(i); setStato(s);
           istanteRef.current = i;
           strozzatoreUrl.invia();
         }}
         alValore={setValore}
+        alPunto={(p) => { puntoRef.current = p; strozzatoreUrl.invia(); }}
         alPronto={(m) => { maniglie.current = m; m.animazione.vaiA(istante); }}
         alVista={(v) => { vistaRef.current = v; strozzatoreUrl.invia(); }}
         alErrore={(e) => setErroreMappa(e.message)}

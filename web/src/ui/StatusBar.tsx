@@ -1,6 +1,7 @@
 import type { Ora } from "../data/indice";
 import { provenienza } from "../data/sorgente";
 import type { StatoRiproduzione } from "../map/animazione";
+import { scriviValore } from "./numeri";
 import { istanteEsteso, soloOra } from "./tempo";
 
 /**
@@ -41,9 +42,9 @@ export function StatusBar({
       <span className="momento">{momento(istante, ora, oraDopo)}</span>
       {/* La provenienza si mostra sempre: senza, la mappa mente per omissione. */}
       <span className="provenienza">{ora ? provenienza(ora) : ""}</span>
-      <span className="valore">
-        {valore === null ? "" : `${valore.toFixed(2).replace(".", ",")} ${unita}`}
-      </span>
+      {/* Stessa funzione che scrive l'etichetta accanto al punto fissato: lo
+          stesso numero non puo' essere scritto in due modi. */}
+      <span className="valore">{scriviValore(valore, unita)}</span>
       {stato === "in attesa di dati" && <span className="attesa">in attesa di dati</span>}
     </div>
   );

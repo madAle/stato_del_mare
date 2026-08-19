@@ -9,6 +9,12 @@ export type StatoUrl = {
   palette: string | null;
   zoom: number | null;
   centro: [number, number] | null;
+  /**
+   * Il punto osservato, come "lat,lon". Viaggia nell'URL come tutto il resto
+   * dello stato: un link che dice "guarda qui" senza dire quale punto stavi
+   * guardando manda a vedere una mappa, non una misura.
+   */
+  punto: [number, number] | null;
 };
 
 // Legge lo stato dalla query string dell'URL.
@@ -67,7 +73,24 @@ export function leggiStatoUrl(ricerca: string): StatoUrl {
     }
   }
 
-  return { istante, variabile, palette, zoom, centro };
+  // punto: stesso formato del centro, e stessa regola di tolleranza. Sta nello
+  // stesso lettore e nello stesso scrittore di tutto il resto: un parametro
+  // letto da qualcuno e non riscritto verrebbe cancellato al primo
+  // aggiornamento dell'URL, cioe' appena il tempo avanza.
+  let punto: [number, number] | null = null;
+  const pStr = params.get("p");
+  if (pStr) {
+    const parts = pStr.split(",");
+    if (parts.length === 2) {
+      const lat = Number(parts[0]);
+      const lon = Number(parts[1]);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        punto = [lat, lon];
+      }
+    }
+  }
+
+  return { istante, variabile, palette, zoom, centro, punto };
 }
 
 // Scrive lo stato sulla query string dell'URL.
@@ -95,6 +118,10 @@ export function scriviStatoUrl(stato: StatoUrl): string {
 
   if (stato.centro !== null) {
     params.set("c", `${stato.centro[0]},${stato.centro[1]}`);
+  }
+
+  if (stato.punto !== null) {
+    params.set("p", `${stato.punto[0]},${stato.punto[1]}`);
   }
 
   const str = params.toString();

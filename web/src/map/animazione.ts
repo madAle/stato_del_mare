@@ -5,6 +5,20 @@ import type { Prefetcher } from "../data/prefetch";
 import { inquadra } from "../data/sorgente";
 import type { LivelloCampo } from "./campo";
 
+/**
+ * Ore di simulazione per secondo reale, alla prima pressione di "riproduci".
+ *
+ * Esportata perche' i bottoni della velocita' devono evidenziare quella che il
+ * ciclo sta gia' usando: finche' il numero stava scritto due volte, in due file
+ * diversi, cambiarne uno solo faceva dire ai bottoni una cosa e al ciclo
+ * un'altra, senza che niente se ne accorgesse.
+ *
+ * Due ore al secondo e non quattro: a quattro, le 120 ore della finestra
+ * iniziale scorrono in mezzo minuto, ed e' troppo veloce per seguire una
+ * mareggiata che entra.
+ */
+export const VELOCITA_PREDEFINITA = 2;
+
 export type StatoRiproduzione = "ferma" | "in riproduzione" | "in attesa di dati";
 
 /**
@@ -46,7 +60,7 @@ export class Animazione {
   alTempo: (istante: number, stato: StatoRiproduzione) => void = () => {};
 
   private istante = 0;
-  private oreAlSecondo = 4;
+  private oreAlSecondo = VELOCITA_PREDEFINITA;
   private stato: StatoRiproduzione = "ferma";
   private ultimoRapporto = 0;
   private ultimoFotogramma = 0;

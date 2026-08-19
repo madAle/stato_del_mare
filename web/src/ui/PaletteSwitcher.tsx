@@ -8,8 +8,8 @@
  * non per gusto. Queste tre sono state confrontate guardando lo stesso campo.
  */
 export const TAVOLOZZE = [
-  { id: "dense", nome: "blu" },
   { id: "deep", nome: "giallo e blu" },
+  { id: "dense", nome: "blu" },
   { id: "amp", nome: "rosso" },
 ] as const;
 

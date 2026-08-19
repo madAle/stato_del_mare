@@ -50,20 +50,40 @@ export function soloOra(istante: number): string {
 
 export const ORA_MS = 3_600_000;
 
+/** I passi ammessi, in ore: si sale di qui quando le etichette non ci stanno. */
+const SCALA_ORE = [6, 12, 24, 48, 96, 168, 336];
+
 /**
- * Le tacche da disegnare sulla scala, scelte in base a quanto tempo copre.
+ * Le tacche da disegnare sulla scala.
  *
- * Il passo si adatta all'ampiezza perche' una tacca ogni sei ore su un archivio
- * di settimane diventa una riga nera, e una al giorno su una finestra di dodici
- * ore non ne mostra nessuna. Le tacche cadono su ore tonde UTC, non su
- * multipli dal primo istante dell'asse: una scala che comincia alle 03:00 e
- * segna 09:00, 15:00, 21:00 e' leggibile, una che segna 03:00, 09:00, 15:00
- * lo e' molto meno.
+ * Il passo dipende da due cose, e all'inizio ne guardava una sola. L'ampiezza
+ * temporale, perche' una tacca ogni sei ore su un archivio di settimane diventa
+ * una riga nera e una al giorno su una finestra di dodici ore non ne mostra
+ * nessuna. E **quante etichette ci stanno davvero**, che e' una misura in pixel
+ * e non in ore: su un telefono, con l'asse aperto su tutto l'archivio, otto
+ * etichette da giorno larghe 55 px finivano in 335 px di scala, una sopra
+ * l'altra (visto su iPhone il 2026-08-19). Un filtro che scarta le etichette
+ * troppo vicine non basta, perche' lascerebbe buchi irregolari: si allarga il
+ * passo, che tiene la scala uniforme.
+ *
+ * Le tacche cadono su ore tonde UTC, non su multipli dal primo istante
+ * dell'asse: una scala che comincia alle 03:00 e segna 09:00, 15:00, 21:00 e'
+ * leggibile, una che segna 03:00, 09:00, 15:00 lo e' molto meno.
+ *
+ * `massimo` e' quante etichette ci stanno. Assente vuol dire "non lo so": si
+ * decide con la sola ampiezza, cioe' come prima di questa misura.
  */
-export function tacche(da: number, a: number): { istante: number; mezzanotte: boolean }[] {
+export function tacche(
+  da: number, a: number, massimo = Number.POSITIVE_INFINITY,
+): { istante: number; mezzanotte: boolean }[] {
   const ore = (a - da) / ORA_MS;
   if (!Number.isFinite(ore) || ore <= 0) return [];
-  const passoOre = ore <= 36 ? 6 : ore <= 96 ? 12 : ore <= 336 ? 24 : 48;
+  let passoOre = ore <= 36 ? 6 : ore <= 96 ? 12 : ore <= 336 ? 24 : 48;
+  while (ore / passoOre > massimo) {
+    const piuLargo = SCALA_ORE.find((p) => p > passoOre);
+    if (piuLargo === undefined) break;
+    passoOre = piuLargo;
+  }
 
   const passo = passoOre * ORA_MS;
   const prima = Math.ceil(da / passo) * passo;

@@ -36,6 +36,12 @@ type Props = {
  */
 const ETICHETTA_PX = 44;
 const BORDO_PX = 30;
+/**
+ * Quanto spazio si riserva a un'etichetta per decidere quante ne stanno.
+ * Misurata quella piu' larga ("mer 12/08"): 55 px sul telefono, piu' un po' di
+ * respiro perche' due etichette attaccate si leggono come una sola.
+ */
+const PASSO_ETICHETTA_PX = 66;
 
 export function TimelineScrubber({ asse, istante, cambia }: Props) {
   const ultimo = asse.length - 1;
@@ -118,7 +124,14 @@ export function TimelineScrubber({ asse, istante, cambia }: Props) {
     return frazione(i - 1) + dentro * (frazione(i) - frazione(i - 1));
   };
 
-  const taccheTutte = tacche(primo, finale)
+  // Quante etichette ci stanno per davvero. Finche' la larghezza non e' nota
+  // (jsdom, o prima del primo layout) non si impone nessun tetto: meglio la
+  // scelta di prima che una scala arbitrariamente rada.
+  const quanteNeStanno = larghezzaScala > 0
+    ? Math.max(1, Math.floor(larghezzaScala / PASSO_ETICHETTA_PX))
+    : Number.POSITIVE_INFINITY;
+
+  const taccheTutte = tacche(primo, finale, quanteNeStanno)
     .map((t) => ({ ...t, frazione: frazioneDelTempo(t.istante) }))
     .filter((t): t is typeof t & { frazione: number } => t.frazione !== null);
 
