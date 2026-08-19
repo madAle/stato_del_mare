@@ -66,11 +66,16 @@ jobs:
           # Che lo script sia uscito 0 dice che nessun comando ha fallito, non
           # che sul bucket ci sia una basemap che il browser puo' usare. Una
           # basemap incompleta non da' errore: da' una mappa senza etichette.
-          righe=$(aws s3 --endpoint-url "$R2_ENDPOINT" ls --recursive "s3://$R2_BUCKET/basemap/")
-          echo "$righe" | head -20
-          echo "... $(echo "$righe" | wc -l) oggetti in tutto"
+          # L'elenco va su file e non in una variabile da mandare in pipe: sotto
+          # pipefail un `head` o un `grep -q` chiudono la pipe appena hanno
+          # finito, chi scrive muore di broken pipe e il passo fallisce prima di
+          # controllare alcunche'. Con i `grep -q` sarebbe pure peggio, perche'
+          # uscirebbero non zero proprio quando il file cercato c'e'.
+          aws s3 --endpoint-url "$R2_ENDPOINT" ls --recursive "s3://$R2_BUCKET/basemap/" > oggetti.txt
+          head -20 oggetti.txt
+          echo "... $(wc -l < oggetti.txt) oggetti in tutto"
 
-          byte=$(echo "$righe" | awk '$4 == "basemap/adriatico.pmtiles" { print $3 }')
+          byte=$(awk '$4 == "basemap/adriatico.pmtiles" { print $3 }' oggetti.txt)
           if [ "${byte:-0}" -lt 100000000 ]; then
             echo "adriatico.pmtiles manca o e' troppo piccolo: ${byte:-0} byte" >&2
             exit 1
@@ -79,13 +84,13 @@ jobs:
           # L'intervallo 0-255 e' il latino di base: se manca per uno dei tre
           # stack, quel font non scrive niente e le etichette spariscono a meta'.
           for stack in "Noto Sans Regular" "Noto Sans Medium" "Noto Sans Italic"; do
-            if ! echo "$righe" | grep -q "basemap/fonts/${stack}/0-255.pbf"; then
+            if ! grep -q "basemap/fonts/${stack}/0-255.pbf" oggetti.txt; then
               echo "manca l'intervallo 0-255 di ${stack}" >&2
               exit 1
             fi
           done
 
-          sprite=$(echo "$righe" | grep -c "basemap/sprites/" || true)
+          sprite=$(grep -c "basemap/sprites/" oggetti.txt || true)
           if [ "$sprite" -ne 4 ]; then
             echo "sprite incompleti: $sprite file su 4" >&2
             exit 1
