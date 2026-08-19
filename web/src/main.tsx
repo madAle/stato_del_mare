@@ -4,6 +4,7 @@ import type { StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createRoot } from "react-dom/client";
 import { App } from "./ui/App";
+import { urlGlifi } from "./data/urls";
 // Il nostro, dopo quello di MapLibre: qui non si sovrascrive niente della
 // mappa, ma se un domani servisse l'ordine e' quello giusto.
 import "./styles.css";
@@ -25,6 +26,11 @@ function stileMinimoPerITest(): StyleSpecification {
   return {
     version: 8,
     sources: {},
+    // I glifi servono ai numeri che corrono sulle isolinee: senza, quel livello
+    // non disegna niente e il test che li cerca fallirebbe per una ragione che
+    // non ha a che vedere con le isolinee. Sono gli stessi del bucket, gia'
+    // pubblicati, e ne scarica un intervallo solo (le cifre e la 'm').
+    glyphs: urlGlifi(),
     // Il colore non e' arbitrario: deve restare distinguibile dal rosato con
     // cui si colora il campo (vedi web/e2e/resa.spec.ts) anche dopo che il
     // campo vi si mescola sopra con la propria opacita' parziale.

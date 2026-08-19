@@ -57,6 +57,24 @@ dal punto dove il colore cambia davvero è peggio di nessuna linea, perché è
 credibile ed è sbagliata. Ne segue che la resa va a classi discrete: su una rampa
 continua non esistono confini da etichettare.
 
+> **Emendata il 2026-08-19: il campo resta a rampa continua.** La conclusione
+> qui sopra è stata rovesciata guardando i dati veri. I gradini WMO in basso
+> sono 0,1 / 0,5 / 1,25 m e l'Adriatico passa gran parte dell'anno sotto i
+> 0,5 m: a bande discrete quasi tutto il mare cadrebbe in **una sola classe** e
+> la mappa sarebbe piatta proprio nella condizione normale. È lo stesso difetto
+> per cui è stata scartata la tavolozza `amp`, in forma peggiore.
+>
+> Il ragionamento originale resta valido dove si applica: **se** ci fosse un
+> confine di colore, la linea dovrebbe cadere esattamente lì. Con la rampa
+> continua quel confine non esiste, quindi non c'è niente da contraddire: le
+> linee sono l'unico confine disegnato, come le isobate su una carta nautica.
+> L'elenco unico delle soglie resta comunque in un posto solo
+> (`web/src/map/soglie.ts`), perché servirà il giorno in cui si vorranno le
+> classi discrete come opzione.
+>
+> Costo se è sbagliato: chi legge deve confrontare il colore con la legenda
+> invece di leggere la classe dal colore stesso.
+
 **Le soglie**: il codice stato del mare WMO (0,1, 0,5, 1,25, 2,5, 4, 6, 9, 14 m)
 in linea spessa e con l'etichetta, le suddivisioni intermedie di ARPAE (0,8, 1,8,
 3,2, 5, 7, 8 m) in linea sottile e senza numero. Il numero compare dove ha un

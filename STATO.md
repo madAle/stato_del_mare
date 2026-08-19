@@ -239,10 +239,13 @@ Niente.
    campagna di mezza giornata in barca. Una volta calibrata, la funzionalita'
    prevede la corrente in avanti, che e' la parte utile a chi entra o esce.
    Dettaglio e misure nella sezione 1 della spec.
-10. **Isolinee etichettate sull'altezza d'onda**, stile isobate, con resa a classi
-   discrete sui gradini del codice stato del mare WMO. Richiesta del 2026-08-13,
-   dettaglio e riferimento misurato nella sezione 1 della spec. Va con la SPA,
-   non prima: non tocca l'ingestore.
+10. ~~Isolinee etichettate sull'altezza d'onda~~. **Fatte il 2026-08-19.**
+   Soglie WMO in linea spessa e col numero, intermedie ARPAE sottili e mute,
+   elenco unico in `web/src/map/soglie.ts`. Marching squares in un worker
+   (`isolinee.worker.ts`), calcolo puro in `isolineeGeometria.ts` con dodici
+   test. **La spec e' stata emendata**: il campo resta a rampa continua invece
+   di andare a bande discrete, perche' con i gradini WMO in basso l'Adriatico
+   estivo cadrebbe tutto in una classe. Dettaglio nelle decisioni 57-60.
 
 **Cosa le correzioni hanno lasciato aperto di proposito** (dettaglio in
 `docs/superpowers/revisioni/2026-08-13-ingestore-correzioni.md`, sezione "Cosa

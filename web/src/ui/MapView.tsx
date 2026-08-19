@@ -6,8 +6,10 @@ import type { Ora } from "../data/indice";
 import type { Prefetcher } from "../data/prefetch";
 import { Animazione, type StatoRiproduzione } from "../map/animazione";
 import { LivelloCampo } from "../map/campo";
+import { Isolinee } from "../map/isolinee";
 import { creaMappa, primoLivelloSimboli, type VistaIniziale } from "../map/mappa";
 import { valoreCorrente } from "../map/proiezione";
+import { inquadra as inquadraOre } from "../data/sorgente";
 import { Segnaposto } from "../map/segnaposto";
 import { creaStrozzatore } from "../map/strozzatore";
 import { scriviValore } from "./numeri";
@@ -120,6 +122,7 @@ export function MapView({
   useEffect(() => {
     let vivo = true;
     let animazione: Animazione | null = null;
+    let isolinee: Isolinee | null = null;
     let mappa: import("maplibre-gl").Map | null = null;
     // Al massimo dieci consegne al secondo a React, come il rapporto del
     // tempo: mousemove non e' aggregato dal browser e puo' arrivare a 60 e
@@ -163,7 +166,9 @@ export function MapView({
         };
         livelloRef.current = livello;
         // prima del primo livello di simboli: le etichette restano sopra il campo
-        m.addLayer(livello, primoLivelloSimboli(m.getStyle() as never));
+        const sottoLeEtichette = primoLivelloSimboli(m.getStyle() as never);
+        m.addLayer(livello, sottoLeEtichette);
+        isolinee = new Isolinee(m, catalogo.griglia, sottoLeEtichette);
 
         // asseRef e prefetcherRef, non asse e prefetcher: l'animazione vive
         // per tutta la vita della mappa, ma i due ref restano aggiornati a
@@ -214,10 +219,34 @@ export function MapView({
           segnaposto.metti(puntoIniziale.lng, puntoIniziale.lat);
         }
 
+        // Le isolinee si calcolano sullo stesso campo che lo shader disegna,
+        // cioe' la stessa coppia di ore con la stessa frazione: prendere solo
+        // l'ora piu' vicina farebbe saltare le linee di ora in ora mentre il
+        // colore scorre liscio.
+        const aggiornaIsolinee = () => {
+          if (!isolinee) return;
+          const q = inquadraOre(asseRef.current, ultimoIstante.current);
+          if (!q) return;
+          const chiaveA = prefetcherRef.current.chiave(q.prima);
+          const datiA = cache.prendi(chiaveA);
+          if (!datiA) return;
+          const chiaveB = q.dopo ? prefetcherRef.current.chiave(q.dopo) : null;
+          const datiB = chiaveB ? cache.prendi(chiaveB) ?? null : null;
+          isolinee.aggiorna({
+            chiaveA, datiA,
+            chiaveB: datiB ? chiaveB : null,
+            datiB,
+            frazione: q.frazione,
+            scala: variabileRef.current.scala,
+            offset: variabileRef.current.offset,
+          });
+        };
+
         animazione = new Animazione(livello, { asse: asseRef, prefetcher: prefetcherRef, cache });
         animazione.alTempo = (istante, stato) => {
           ultimoIstante.current = istante;
           aggiornaValore();
+          aggiornaIsolinee();
           alTempo(istante, stato);
         };
         alPronto({ animazione, livello });
@@ -252,6 +281,7 @@ export function MapView({
 
     return () => {
       vivo = false;
+      isolinee?.distruggi();
       animazione?.distruggi();
       mappa?.remove();
       strozzatore.distruggi();
