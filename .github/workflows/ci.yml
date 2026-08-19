@@ -29,3 +29,30 @@ jobs:
       # `addopts` in pyproject.toml li deseleziona gia'.
       - name: Test
         run: uv run pytest
+
+  web:
+    # Solo typecheck e test unitari: i tre test end to end (web/e2e) aprono
+    # un browser vero e leggono il bucket pubblico su rete, e restano da
+    # eseguire a mano (npx playwright test dentro web/) prima di ogni merge.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Installa le dipendenze
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test unitari
+        run: npm test

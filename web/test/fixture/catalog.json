@@ -1,0 +1,156 @@
+{
+ "schema_version": 2,
+ "ingest_version": "0.1.0",
+ "generated_at": "2026-08-18T12:25:22Z",
+ "grid": {
+  "crs": "EPSG:3857",
+  "x_min": 1207115.2179729764,
+  "x_max": 2236715.217972976,
+  "y_min": 4830528.941284913,
+  "y_max": 5843328.941284913,
+  "width": 858,
+  "height": 844,
+  "resolution_m": 1200.0,
+  "bounds_lonlat": {
+   "west": 10.843700499983923,
+   "south": 39.75586866390025,
+   "east": 20.092754665278516,
+   "north": 46.39161194148169
+  }
+ },
+ "variables": [
+  {
+   "id": "hwave",
+   "units": "m",
+   "scale": 0.001,
+   "offset": 0.0,
+   "colormap": "amp",
+   "kinds": {
+    "an": {
+     "months": [
+      "2026-08"
+     ]
+    },
+    "fc": {
+     "months": [
+      "2026-08"
+     ]
+    }
+   }
+  },
+  {
+   "id": "pwave",
+   "units": "s",
+   "scale": 0.01,
+   "offset": 0.0,
+   "colormap": "tempo",
+   "kinds": {
+    "an": {
+     "months": [
+      "2026-08"
+     ]
+    },
+    "fc": {
+     "months": [
+      "2026-08"
+     ]
+    }
+   }
+  },
+  {
+   "id": "dwave_sin",
+   "units": "1",
+   "scale": 0.0001,
+   "offset": 0.0,
+   "colormap": "phase",
+   "kinds": {
+    "an": {
+     "months": [
+      "2026-08"
+     ]
+    },
+    "fc": {
+     "months": [
+      "2026-08"
+     ]
+    }
+   }
+  },
+  {
+   "id": "dwave_cos",
+   "units": "1",
+   "scale": 0.0001,
+   "offset": 0.0,
+   "colormap": "phase",
+   "kinds": {
+    "an": {
+     "months": [
+      "2026-08"
+     ]
+    },
+    "fc": {
+     "months": [
+      "2026-08"
+     ]
+    }
+   }
+  },
+  {
+   "id": "ubar",
+   "units": "m s-1",
+   "scale": 0.001,
+   "offset": 0.0,
+   "colormap": "speed",
+   "kinds": {
+    "an": {
+     "months": [
+      "2026-08"
+     ]
+    },
+    "fc": {
+     "months": [
+      "2026-08"
+     ]
+    }
+   }
+  },
+  {
+   "id": "vbar",
+   "units": "m s-1",
+   "scale": 0.001,
+   "offset": 0.0,
+   "colormap": "speed",
+   "kinds": {
+    "an": {
+     "months": [
+      "2026-08"
+     ]
+    },
+    "fc": {
+     "months": [
+      "2026-08"
+     ]
+    }
+   }
+  },
+  {
+   "id": "sealevel",
+   "units": "m",
+   "scale": 0.001,
+   "offset": 0.0,
+   "colormap": "balance",
+   "kinds": {
+    "an": {
+     "months": [
+      "2026-08"
+     ]
+    },
+    "fc": {
+     "months": [
+      "2026-08"
+     ]
+    }
+   }
+  }
+ ]
+}
