@@ -24,5 +24,12 @@
 
 # La pagina non si mette mai in cache: è quella che nomina le impronte di tutto
 # il resto, quindi una sua copia vecchia congela l'intera applicazione.
+#
+# Vanno dichiarati entrambi i percorsi: il browser chiede `/`, e Pages applica
+# le regole al percorso richiesto senza prima risolverlo nel file servito. Con
+# il solo `/index.html` la regola non faceva presa su nessuna richiesta vera
+# (verificato sul sito pubblicato).
+/
+  Cache-Control: no-cache
 /index.html
   Cache-Control: no-cache

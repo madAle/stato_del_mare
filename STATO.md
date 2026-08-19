@@ -1,6 +1,6 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-19 · **Branch:** `develop` (`feat/spa` unito e rimosso) · **Fase:** ingestore in produzione, SPA costruita e da guardare
+**Aggiornato:** 2026-08-19 · **Branch:** `develop`, release su `main` · **Fase:** ingestore in produzione, SPA online su https://stato-del-mare.pages.dev
 
 **L'ingestore gira.** Primo run reale il 2026-08-17: 72 file su 72, zero errori,
 70 minuti, l'intera finestra ARPAE di otto giorni in archivio. Il cron delle 18
@@ -218,22 +218,18 @@ Niente.
    1440, 900, 680, 500 e 390 px. Resta da giudicare a occhio la palette, e va
    fatto con la basemap vera sotto: senza, si vede solo grigio.
 
-8. **Perche' la SPA sia pubblicabile.** Il workflow di deploy c'e'
-   (`.github/workflows/deploy.yml`, Cloudflare Pages, progetto
-   `stato-del-mare`), la basemap e' pubblicata dal 2026-08-19. Restano **due
-   cose che puo' fare solo l'utente**:
-   - **due segreti su GitHub**: `CLOUDFLARE_API_TOKEN` (permesso
-     `Cloudflare Pages: Edit`) e `CLOUDFLARE_ACCOUNT_ID`. Senza, il workflow
-     fallisce all'autenticazione;
-   - **il branch `main`, che non esiste sul remoto.** La convenzione di questo
-     repo e' che `main` sia di release, e il deploy si innesca li'. La prima
-     pubblicazione e' `git push origin develop:main`. Fino ad allora si
-     pubblica solo con l'avvio a mano del workflow.
+8. ~~Pubblicare la SPA~~. **Fatta il 2026-08-19**: online su
+   <https://stato-del-mare.pages.dev>, Cloudflare Pages, progetto
+   `stato-del-mare`, pubblicata da `.github/workflows/deploy.yml` a ogni push
+   su `main`. Verificata aprendola in un browser vero: zero errori in console,
+   zero richieste fallite, basemap e campo disegnati. Il bucket serve gia'
+   `Access-Control-Allow-Origin: *` e autorizza le richieste a intervallo, che
+   e' quello che serve al `.pmtiles`: nessuna configurazione CORS da fare.
 
-   Resta poi da sostituire l'origine `pub-*.r2.dev`, che Cloudflare documenta
-   come endpoint di sviluppo con limiti di banda, con un dominio vero: si
-   cambia in `web/src/data/urls.ts` e basta, e conviene farlo quando il dominio
-   e' gia' agganciato al bucket.
+   **Resta aperto il dominio.** L'origine dei dati e' ancora
+   `pub-*.r2.dev`, che Cloudflare documenta come endpoint di sviluppo con
+   limiti di banda, e adesso da li' passa anche la basemap. Si aggancia un
+   dominio al bucket e si cambia una riga in `web/src/data/urls.ts`.
 
 9. **Stima della corrente nei canali di Comacchio.** Richiesta del 2026-08-18.
    Due problemi diversi. **Il bacino e' bloccato**: nessun idrometro pubblico sta
