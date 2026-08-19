@@ -53,6 +53,12 @@ test("il valore sotto il mouse coincide con quello nel frame", async ({ page, re
 
   const mostrato = await page.locator(".valore").textContent();
   const numero = Number((mostrato ?? "").replace(",", ".").replace(/[^\d.-]/g, ""));
-  // la tolleranza e' quella dell'arrotondamento a due decimali della UI
-  expect(Math.abs(numero - atteso)).toBeLessThan(0.005);
+  // La tolleranza e' mezzo passo dell'arrotondamento a due decimali della UI, e
+  // va inclusa: quando il valore vero cade esattamente sul confine (per esempio
+  // 0,415) lo scarto **e'** 0,005, non meno. Con `toBeLessThan` il test
+  // falliva a dato invariato, sul confine, con uno scarto di
+  // 0.0050000000000000044: mezzo passo piu' l'errore di rappresentazione del
+  // doppio. Un test che dipende da quale valore capita nel frame di oggi non
+  // misura quello che dice di misurare.
+  expect(Math.abs(numero - atteso)).toBeLessThanOrEqual(0.005 + 1e-9);
 });

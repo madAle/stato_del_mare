@@ -30,6 +30,16 @@ pochi e discreti, viene da una maschera.
 terra a sinistra del verso di percorrenza. Sui vertici la normale di un solo
 segmento sbaglia dentro il cuneo, quindi si usa la somma delle due normali
 adiacenti, che e' la pseudonormale del vertice.
+
+**E i due segmenti adiacenti vanno cercati anche attraverso la cucitura
+dell'anello.** Su una polilinea chiusa il vicino del primo segmento e' l'ultimo,
+non l'indice -1. Cercandolo solo a `indice +- 1` il vertice di chiusura restava
+senza pseudonormale, e tutti i punti il cui elemento di costa piu' vicino era
+quel vertice prendevano il segno della terraferma: un settore che si allarga con
+la distanza, visto come una fascia di venti chilometri accanto alle isole
+Tremiti il 2026-08-19. Sulle isole e' vistoso perche' la cucitura cade su un
+angolo; su una costa continua i tronconi si spezzano a meta' di un tratto
+diritto, dove le due normali quasi coincidono e il settore ha ampiezza nulla.
 """
 
 import argparse
@@ -39,7 +49,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 from scipy.spatial import cKDTree
 
 R = 6378137.0
@@ -87,6 +96,127 @@ def a_mercatore(p):
     return np.column_stack([x, y])
 
 
+def segmenti_e_vicini(linee):
+    """Segmenti delle polilinee, e per ognuno il segmento precedente e il successivo.
+
+    `-1` dove il vicino non c'e'. Il vicino si cerca **per coordinata
+    condivisa**, non per indice dentro la stessa polilinea, e la differenza non
+    e' teorica: `coastlines-split-4326` spezza le vie di costa in pezzi da al
+    massimo mille nodi, quindi l'anello di un'isola arriva come due o piu'
+    polilinee aperte che si toccano agli estremi. Le isole Tremiti sono
+    esattamente questo caso, e cercando il vicino a `indice +- 1` il punto di
+    giunzione restava senza pseudonormale.
+
+    Una regola sola copre tre casi: dentro un pezzo il vicino e' l'indice
+    accanto, fra due pezzi e' l'estremo condiviso, e su un anello chiuso in una
+    sola polilinea e' la cucitura (il primo nodo coincide con l'ultimo).
+
+    Dove piu' di due segmenti si toccano nello stesso nodo il vicino e'
+    ambiguo e resta `-1`: meglio la normale del solo segmento che sceglierne
+    uno a caso fra tre.
+    """
+    A, B = [], []
+    for p in linee:
+        if len(p) < 2:
+            continue
+        A.append(p[:-1])
+        B.append(p[1:])
+    if not A:
+        vuoto_p = np.empty((0, 2))
+        vuoto_i = np.empty(0, dtype=np.int64)
+        return vuoto_p, vuoto_p, vuoto_i, vuoto_i
+    A = np.concatenate(A)
+    B = np.concatenate(B)
+
+    # Un identificatore intero per ogni coordinata distinta, calcolato in una
+    # volta sola su inizi e fini insieme: due nodi sono lo stesso nodo se hanno
+    # gli stessi byte, che e' vero quando vengono dallo stesso valore nel file.
+    tutti = np.ascontiguousarray(np.concatenate([A, B]))
+    vista = tutti.view([("x", tutti.dtype), ("y", tutti.dtype)]).ravel()
+    _, nodo = np.unique(vista, return_inverse=True)
+    nodo_di_A, nodo_di_B = nodo[:len(A)], nodo[len(A):]
+    n_nodi = int(nodo.max()) + 1
+
+    def unico(nodo_di, quanti):
+        """Per ogni nodo, l'unico segmento che vi si aggancia, o -1 se non e' unico."""
+        tabella = np.full(n_nodi, -1, dtype=np.int64)
+        tabella[nodo_di] = np.arange(quanti)
+        tabella[np.bincount(nodo_di, minlength=n_nodi) != 1] = -1
+        return tabella
+
+    prec = unico(nodo_di_B, len(B))[nodo_di_A]
+    succ = unico(nodo_di_A, len(A))[nodo_di_B]
+    # un segmento non e' vicino di se stesso (succede solo se e' lungo zero)
+    proprio = np.arange(len(A))
+    prec[prec == proprio] = -1
+    succ[succ == proprio] = -1
+    return A, B, prec, succ
+
+
+def campo_con_segno(linee, P, blocco=BLOCCO, verboso=False):
+    """Distanza dalla costa e segno, per ogni punto di `P`. Positivo in mare.
+
+    Array dentro, array fuori: nessun file, nessuna rete. E' il nucleo che si
+    puo' provare, e finche' e' stato scritto dentro main() nessuno l'ha provato.
+
+    `linee` sono polilinee in metri Web Mercator, orientate come le coste OSM
+    (terra a sinistra del verso di percorrenza).
+    """
+    A, B, prec, succ = segmenti_e_vicini(linee)
+    lung = np.hypot(*(B - A).T)
+
+    n = np.maximum(1, np.ceil(lung / PASSO_INFITTIMENTO)).astype(np.int64)
+    seg = np.repeat(np.arange(len(n)), n)
+    off = np.concatenate([[0], np.cumsum(n)[:-1]])
+    t = (np.arange(int(n.sum())) - np.repeat(off, n)) / n[seg]
+    albero = cKDTree(A[seg] + (B[seg] - A[seg]) * t[:, None])
+    if verboso:
+        print(f"segmenti {len(A)}, costa {lung.sum()/1000:.0f} km, "
+              f"campioni {len(seg)}", file=sys.stderr)
+
+    def normale_mare(i):
+        """Normale verso il mare: la terra sta a sinistra del verso di percorrenza."""
+        u = B[i] - A[i]
+        u = u / np.maximum(np.hypot(*u.T), 1e-9)[:, None]
+        return np.column_stack([-u[:, 1], u[:, 0]])
+
+    dist = np.empty(len(P))
+    segno = np.empty(len(P))
+    for i0 in range(0, len(P), blocco):
+        Q = P[i0:i0 + blocco]
+        # Il campione piu' vicino non basta: serve il SEGMENTO piu' vicino, e
+        # vicino a un vertice non e' quello del campione. Otto candidati.
+        _, vic = albero.query(Q, k=min(8, albero.n), workers=-1)
+        vic = np.atleast_2d(vic)
+        cand = seg[vic]
+        Ac, ab = A[cand], B[cand] - A[cand]
+        aq = Q[:, None, :] - Ac
+        tt = np.clip((aq * ab).sum(-1) / np.maximum((ab * ab).sum(-1), 1e-9), 0.0, 1.0)
+        vicino = Ac + tt[..., None] * ab
+        dd = np.hypot(*(Q[:, None, :] - vicino).transpose(2, 0, 1))
+        scelto = np.argmin(dd, axis=1)
+        r = np.arange(len(Q))
+        s_scelto, t_scelto, punto = cand[r, scelto], tt[r, scelto], vicino[r, scelto]
+
+        nrm = normale_mare(s_scelto)
+        for estremo, vicino_di in ((0.0, prec), (1.0, succ)):
+            v = np.flatnonzero(np.isclose(t_scelto, estremo))
+            if not len(v):
+                continue
+            j = vicino_di[s_scelto[v]]
+            ok = j >= 0
+            if ok.any():
+                somma = nrm[v].copy()
+                somma[ok] += normale_mare(j[ok])
+                nrm[v] = somma / np.maximum(np.hypot(*somma.T), 1e-9)[:, None]
+
+        dist[i0:i0 + blocco] = dd[r, scelto]
+        segno[i0:i0 + blocco] = np.where(((Q - punto) * nrm).sum(1) > 0, 1.0, -1.0)
+        if verboso:
+            print(f"  {min(i0 + blocco, len(P))}/{len(P)}", file=sys.stderr)
+    return dist, segno
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -117,67 +247,14 @@ def main():
     linee = polilinee(a.coste, lon0, lat0, lon1, lat1)
     print(f"polilinee {len(linee)}, nodi {sum(len(t) for t in linee)}", file=sys.stderr)
 
-    A, B, capo = [], [], []
-    for i, linea in enumerate(linee):
-        p = a_mercatore(linea)
-        A.append(p[:-1])
-        B.append(p[1:])
-        capo.append(np.full(len(p) - 1, i))
-    A = np.concatenate(A)
-    B = np.concatenate(B)
-    capo = np.concatenate(capo)
-    lung = np.hypot(*(B - A).T)
-
-    n = np.maximum(1, np.ceil(lung / PASSO_INFITTIMENTO)).astype(np.int64)
-    seg = np.repeat(np.arange(len(n)), n)
-    off = np.concatenate([[0], np.cumsum(n)[:-1]])
-    t = (np.arange(int(n.sum())) - np.repeat(off, n)) / n[seg]
-    albero = cKDTree(A[seg] + (B[seg] - A[seg]) * t[:, None])
-    print(f"segmenti {len(A)}, costa {lung.sum()/1000:.0f} km, campioni {len(seg)}", file=sys.stderr)
-
-    def normale_mare(i):
-        """Normale verso il mare: la terra sta a sinistra del verso di percorrenza."""
-        u = B[i] - A[i]
-        u = u / np.maximum(np.hypot(*u.T), 1e-9)[:, None]
-        return np.column_stack([-u[:, 1], u[:, 0]])
-
     xs = x0 + (np.arange(W) + 0.5) * a.risoluzione
     ys = y1 - (np.arange(H) + 0.5) * a.risoluzione       # riga 0 a nord, come i frame
     MX, MY = np.meshgrid(xs, ys)
     P = np.column_stack([MX.ravel(), MY.ravel()])
-    dist = np.empty(len(P))
-    segno = np.empty(len(P))
 
-    for i0 in range(0, len(P), BLOCCO):
-        Q = P[i0:i0 + BLOCCO]
-        # Il campione piu' vicino non basta: serve il SEGMENTO piu' vicino, e
-        # vicino a un vertice non e' quello del campione. Otto candidati.
-        _, vic = albero.query(Q, k=8, workers=-1)
-        cand = seg[vic]
-        Ac, ab = A[cand], B[cand] - A[cand]
-        aq = Q[:, None, :] - Ac
-        tt = np.clip((aq * ab).sum(-1) / np.maximum((ab * ab).sum(-1), 1e-9), 0.0, 1.0)
-        vicino = Ac + tt[..., None] * ab
-        dd = np.hypot(*(Q[:, None, :] - vicino).transpose(2, 0, 1))
-        scelto = np.argmin(dd, axis=1)
-        r = np.arange(len(Q))
-        s_scelto, t_scelto, punto = cand[r, scelto], tt[r, scelto], vicino[r, scelto]
+    dist, segno = campo_con_segno([a_mercatore(linea) for linea in linee], P, verboso=True)
 
-        nrm = normale_mare(s_scelto)
-        for estremo, passo in ((0.0, -1), (1.0, +1)):
-            v = np.flatnonzero(np.isclose(t_scelto, estremo))
-            if not len(v):
-                continue
-            j = s_scelto[v] + passo
-            ok = (j >= 0) & (j < len(A)) & (capo[np.clip(j, 0, len(A) - 1)] == capo[s_scelto[v]])
-            if ok.any():
-                somma = nrm[v].copy()
-                somma[ok] += normale_mare(j[ok])
-                nrm[v] = somma / np.maximum(np.hypot(*somma.T), 1e-9)[:, None]
-
-        dist[i0:i0 + BLOCCO] = dd[r, scelto]
-        segno[i0:i0 + BLOCCO] = np.where(((Q - punto) * nrm).sum(1) > 0, 1.0, -1.0)
-        print(f"  {min(i0 + BLOCCO, len(P))}/{len(P)}", file=sys.stderr)
+    from PIL import Image  # solo per scrivere: il nucleo sopra e' puro
 
     campo = (np.clip(dist, 0, a.limite) * segno).reshape(H, W)
     byte = np.clip(np.rint((campo / a.limite + 1.0) * 0.5 * 255.0), 0, 255).astype(np.uint8)
