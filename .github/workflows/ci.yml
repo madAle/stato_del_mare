@@ -12,9 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v5
+      # setup-uv non pubblica piu' i tag di major dalla v8: si aggancia alla
+      # versione esatta, o al githash. Va alzato a mano quando esce una major.
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
@@ -31,7 +33,7 @@ jobs:
         run: uv run pytest
 
   web:
-    # Solo typecheck e test unitari: i tre test end to end (web/e2e) aprono
+    # Solo typecheck e test unitari: i test end to end (web/e2e) aprono
     # un browser vero e leggono il bucket pubblico su rete, e restano da
     # eseguire a mano (npx playwright test dentro web/) prima di ogni merge.
     runs-on: ubuntu-latest
@@ -40,9 +42,9 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

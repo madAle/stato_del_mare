@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Libera spazio su disco
         # I file 3D di previsione arrivano a quasi 2 GB compressi. Il runner
@@ -36,7 +36,9 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
           df -h /
 
-      - uses: astral-sh/setup-uv@v5
+      # setup-uv non pubblica piu' i tag di major dalla v8: si aggancia alla
+      # versione esatta, o al githash. Va alzato a mano quando esce una major.
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
