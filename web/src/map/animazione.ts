@@ -153,7 +153,31 @@ export class Animazione {
     if (this.richiesta !== null) cancelAnimationFrame(this.richiesta);
     this.richiesta = null;
     this.stato = "ferma";
+    // Fermi si sta sempre su un'ora. Il dato e' orario: fra due ore la mappa
+    // mostra una dissolvenza, che serve all'occhio mentre il tempo scorre ma
+    // non e' un istante che il modello abbia mai calcolato. Restarci fermi
+    // vorrebbe dire lasciare a schermo, a tempo indefinito, un fotogramma
+    // costruito dal disegno e non dal mare, con un'ora accanto che promette
+    // una precisione che non esiste.
+    this.istante = this.oraPiuVicina(this.istante);
+    this.disegna();
     this.riporta(true);
+  }
+
+  /** L'ora dell'asse piu' vicina a un istante, o l'istante stesso se l'asse e' vuoto. */
+  private oraPiuVicina(istante: number): number {
+    const asse = this.opzioni.asse.current;
+    if (asse.length === 0) return istante;
+    let migliore = asse[0].istante;
+    let distanza = Math.abs(istante - migliore);
+    for (const ora of asse) {
+      const d = Math.abs(istante - ora.istante);
+      if (d < distanza) {
+        distanza = d;
+        migliore = ora.istante;
+      }
+    }
+    return migliore;
   }
 
   impostaVelocita(oreAlSecondo: number): void {

@@ -258,3 +258,38 @@ describe("animazione", () => {
     expect(stati).not.toContain("in riproduzione");
   });
 });
+
+describe("fermi si sta sempre su un'ora", () => {
+  it("la pausa si aggancia all'ora piu' vicina", async () => {
+    const cache = new CacheFrame();
+    const p = new Prefetcher(cache, async () => new Int16Array(10), 12);
+    await p.assicura(asse, 0, 1);
+    const livello = livelloFinto();
+    const riportati: number[] = [];
+
+    const a = new Animazione(livello as never, { asse: { current: asse }, prefetcher: { current: p }, cache });
+    a.alTempo = (istante) => riportati.push(istante);
+    // un istante a 40 minuti dentro l'ora, cioe' piu' vicino all'ora dopo
+    a.vaiA(asse[3].istante + 40 * 60_000);
+    a.pausa();
+
+    // Il dato e' orario: fermarsi fra due ore vorrebbe dire mostrare per sempre
+    // una dissolvenza, cioe' un istante che il modello non ha mai calcolato.
+    expect(riportati.at(-1)).toBe(asse[4].istante);
+  });
+
+  it("su un'ora esatta la pausa non sposta niente", async () => {
+    const cache = new CacheFrame();
+    const p = new Prefetcher(cache, async () => new Int16Array(10), 12);
+    await p.assicura(asse, 0, 1);
+    const livello = livelloFinto();
+    const riportati: number[] = [];
+
+    const a = new Animazione(livello as never, { asse: { current: asse }, prefetcher: { current: p }, cache });
+    a.alTempo = (istante) => riportati.push(istante);
+    a.vaiA(asse[5].istante);
+    a.pausa();
+
+    expect(riportati.at(-1)).toBe(asse[5].istante);
+  });
+});

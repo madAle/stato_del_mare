@@ -165,7 +165,12 @@ export function App({
     );
   }
 
-  const oraCorrente = inquadra(asse, istante)?.prima ?? null;
+  const inquadratura = inquadra(asse, istante);
+  const oraCorrente = inquadratura?.prima ?? null;
+  // L'ora successiva serve alla barra di stato per dire "09:00 -> 10:00"
+  // mentre si passa fra le due, invece di scrivere un minuto che il dato,
+  // che e' orario, non ha mai avuto.
+  const oraDopo = inquadratura?.dopo ?? null;
 
   return (
     <main>
@@ -192,7 +197,7 @@ export function App({
           stretto li impila, invece di lasciarli accavallare. */}
       <div className="fascia-alta">
         <LayerSwitcher variabili={variabili} scelta={variabile} cambia={setVariabile} />
-        <StatusBar istante={istante} ora={oraCorrente} valore={valore} unita={scelta.unita} stato={stato} />
+        <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={scelta.unita} stato={stato} />
         <Legend palette={scelta.colormap} massimo={4} unita={scelta.unita} />
       </div>
       <TimelineScrubber asse={asse} istante={istante}
