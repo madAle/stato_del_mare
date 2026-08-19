@@ -187,8 +187,14 @@ export function App({
         alVista={(v) => { vistaRef.current = v; strozzatoreUrl.invia(); }}
         alErrore={(e) => setErroreMappa(e.message)}
       />
-      <LayerSwitcher variabili={variabili} scelta={variabile} cambia={setVariabile} />
-      <Legend palette={scelta.colormap} massimo={4} unita={scelta.unita} />
+      {/* I tre pannelli in alto stanno in un contenitore che a schermo largo non
+          fa niente (restano posizionati ognuno per conto suo) e a schermo
+          stretto li impila, invece di lasciarli accavallare. */}
+      <div className="fascia-alta">
+        <LayerSwitcher variabili={variabili} scelta={variabile} cambia={setVariabile} />
+        <StatusBar istante={istante} ora={oraCorrente} valore={valore} unita={scelta.unita} stato={stato} />
+        <Legend palette={scelta.colormap} massimo={4} unita={scelta.unita} />
+      </div>
       <TimelineScrubber asse={asse} istante={istante}
         cambia={(i) => { setIstante(i); maniglie.current?.animazione.vaiA(i); }} />
       <PlaybackControls
@@ -200,7 +206,6 @@ export function App({
         }}
         cambiaVelocita={(v) => maniglie.current?.animazione.impostaVelocita(v)}
       />
-      <StatusBar ora={oraCorrente} valore={valore} unita={scelta.unita} stato={stato} />
     </main>
   );
 }

@@ -1,5 +1,6 @@
 import * as Slider from "@radix-ui/react-slider";
 import { buchi, type Ora } from "../data/indice";
+import { istanteEsteso, soloGiorno, soloOra, tacche } from "./tempo";
 import { inquadra } from "../data/sorgente";
 
 type Props = {
@@ -13,14 +14,6 @@ type Props = {
  * del file): mostrarlo nel fuso del browser farebbe leggere ore diverse a chi
  * guarda lo stesso frame da fusi diversi, quindi si formatta sempre in UTC.
  */
-const formattaOra = new Intl.DateTimeFormat("it-IT", {
-  timeZone: "UTC",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 /**
  * Lo scrubber non e' un intervallo continuo: e' un asse di ore che puo' avere
@@ -80,14 +73,60 @@ export function TimelineScrubber({ asse, istante, cambia }: Props) {
 
   const frazione = (indice: number) => (ultimo > 0 ? indice / ultimo : 0);
 
+  // Le tacche si posizionano sulla stessa scala a indici dello slider, non sul
+  // tempo: l'asse puo' avere buchi, quindi due ore lontane possono essere
+  // adiacenti come indici. Mettere le tacche in proporzione al tempo le
+  // farebbe scivolare rispetto al cursore, che si muove per indici.
+  const primo = asse[0]?.istante ?? 0;
+  const finale = asse[ultimo]?.istante ?? 0;
+  const frazioneDelTempo = (istanteCercato: number): number | null => {
+    if (asse.length < 2) return null;
+    let i = asse.findIndex((o) => o.istante >= istanteCercato);
+    if (i < 0) return null;
+    if (i === 0) return istanteCercato < primo ? null : 0;
+    const prima = asse[i - 1];
+    const dopo = asse[i];
+    const dentro = (istanteCercato - prima.istante) / (dopo.istante - prima.istante);
+    return frazione(i - 1) + dentro * (frazione(i) - frazione(i - 1));
+  };
+
+  const taccheAsse = tacche(primo, finale)
+    .map((t) => ({ ...t, frazione: frazioneDelTempo(t.istante) }))
+    .filter((t): t is typeof t & { frazione: number } => t.frazione !== null);
+
+  // "Adesso" e' il riferimento che rende leggibile una scala che copre passato
+  // e futuro: senza, per capire dove finisce l'analisi bisogna leggere le date.
+  const frazioneAdesso = frazioneDelTempo(Date.now());
+
   return (
     <div className="scrubber">
       <div className="scrubber-orologio" data-testid="orologio">
         {oraCorrente
-          ? `${formattaOra.format(oraCorrente.istante)} UTC (${
+          ? `${istanteEsteso(oraCorrente.istante)} (${
               oraCorrente.tipo === "an" ? "analisi" : "previsione"
             })`
           : "nessun dato"}
+      </div>
+      <div className="scrubber-scala" aria-hidden="true">
+        {taccheAsse.map((t) => (
+          <div
+            key={t.istante}
+            className={t.mezzanotte ? "scrubber-tacca giorno" : "scrubber-tacca"}
+            style={{ left: `${t.frazione * 100}%` }}
+          >
+            <span>{t.mezzanotte ? soloGiorno(t.istante) : soloOra(t.istante)}</span>
+          </div>
+        ))}
+        {frazioneAdesso !== null && (
+          <div
+            className="scrubber-adesso"
+            data-testid="adesso"
+            style={{ left: `${frazioneAdesso * 100}%` }}
+            title="Adesso"
+          >
+            <span>adesso</span>
+          </div>
+        )}
       </div>
       <div className="scrubber-traccia">
         {frazioneConfine !== null && (

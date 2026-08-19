@@ -150,7 +150,13 @@ select[aria-label="variabile"] {
  */
 .comandi-riproduzione {
   right: 1rem;
-  bottom: 6rem;
+  /* Sopra lo scrubber, non addosso. Il valore segue l'altezza del pannello
+     dello scrubber, che con la scala del tempo e' cresciuto: era 6rem quando
+     la traccia stava da sola, e a 6rem i comandi coprivano le tacche di destra
+     (misurato, non supposto: si sovrapponevano di 17 px). Se un giorno lo
+     scrubber cambia altezza, questo numero va rimisurato, e il test
+     e2e/pannelli.spec.ts lo dice subito. */
+  bottom: 8.5rem;
   padding: 0.6rem 0.75rem;
   display: flex;
   align-items: center;
@@ -284,4 +290,101 @@ select[aria-label="variabile"] {
 .scrubber-slider-cursore:focus-visible {
   outline: 2px solid #1f2328;
   outline-offset: 2px;
+}
+
+/* La scala del tempo sopra la traccia: tacche su ore tonde UTC, etichettate col
+   giorno a mezzanotte e con l'ora altrimenti. Serve a rispondere a "che momento
+   sto guardando" senza dover leggere l'orologio e ricostruire dove cade. */
+.scrubber-scala {
+  position: relative;
+  height: 18px;
+  margin-bottom: 2px;
+  font-size: 0.7rem;
+  color: rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.scrubber-tacca,
+.scrubber-adesso {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* la tacca marca un istante, quindi la sua riga deve cadere sul punto e non
+     accanto: senza questo scarto l'etichetta sposterebbe il segno */
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.scrubber-tacca::before,
+.scrubber-adesso::before {
+  content: "";
+  width: 1px;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.scrubber-tacca.giorno {
+  color: rgba(0, 0, 0, 0.8);
+  font-weight: 600;
+}
+
+.scrubber-tacca.giorno::before {
+  height: 10px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* "Adesso" e' il riferimento che rende leggibile una scala che copre passato e
+   futuro insieme: senza, per capire da che parte si sta bisogna leggere le date. */
+.scrubber-adesso {
+  color: #b03030;
+  font-weight: 600;
+}
+
+.scrubber-adesso::before {
+  height: 12px;
+  background: #b03030;
+}
+
+.barra-stato .momento {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.barra-stato .provenienza {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* Sotto questa larghezza i tre pannelli in alto si sovrapponevano: la barra di
+   stato sta al centro, la legenda a destra e il selettore a sinistra, e a
+   schermo stretto si incrociavano. Si impilano invece di accavallarsi. E'
+   anche la larghezza di un telefono, cioe' il modo piu' probabile di aprire
+   questa mappa. */
+@media (max-width: 680px) {
+  .barra-stato,
+  .legenda,
+  select[aria-label="variabile"] {
+    position: static;
+    transform: none;
+    width: auto;
+  }
+
+  .fascia-alta {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    align-items: stretch;
+  }
+
+  .legenda .scala {
+    width: auto;
+    flex: 1;
+  }
 }
