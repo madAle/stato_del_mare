@@ -1,0 +1,11 @@
+{
+ "width": 4290,
+ "height": 4220,
+ "resolution_m": 240.0,
+ "limite_m": 1600.0,
+ "x_min": 1207115.2179729764,
+ "x_max": 2236715.217972976,
+ "y_min": 4830528.941284913,
+ "y_max": 5843328.941284913,
+ "metodo": "distanza dai segmenti della costa OSM, segno dalla regola della mano"
+}

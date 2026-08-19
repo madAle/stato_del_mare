@@ -1,6 +1,6 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-18 · **Branch:** `feat/spa` (da unire su `develop`) · **Fase:** ingestore in produzione, SPA costruita e da guardare
+**Aggiornato:** 2026-08-19 · **Branch:** `develop` (`feat/spa` unito e rimosso) · **Fase:** ingestore in produzione, SPA costruita e da guardare
 
 **L'ingestore gira.** Primo run reale il 2026-08-17: 72 file su 72, zero errori,
 70 minuti, l'intera finestra ARPAE di otto giorni in archivio. Il cron delle 18
@@ -8,8 +8,8 @@
 per misura (vedi la tabella in 5).
 
 **La SPA esiste.** Piano scritto e eseguito il 2026-08-18: 16 task, un subagente
-per task e una revisione dopo ognuno, 51 commit su `feat/spa`. 121 test unitari e
-3 end to end verdi, typecheck pulito. Le 42 decisioni prese eseguendo stanno in
+per task e una revisione dopo ognuno, 51 commit su `feat/spa`. Oggi la suite
+e' di 140 test unitari e 11 end to end, typecheck pulito. Le 43 decisioni stanno in
 `docs/superpowers/revisioni/2026-08-18-spa-decisioni.md`, e **la maggior parte
 corregge il piano, non l'esecuzione**: quel documento va letto prima di riusare
 il piano come riferimento.
@@ -96,9 +96,9 @@ web/              la SPA: Vite, React 19, MapLibre 5, TypeScript
     TimelineScrubber.tsx  asse a indici, buchi visibili, confine analisi/previsione
     PlaybackControls.tsx  play e pausa, tre velocità
     Legend.tsx, StatusBar.tsx, LayerSwitcher.tsx, statoUrl.ts
-  test/           121 test; test/vincoli.test.ts è il cancello dei tre strati
-  e2e/            3 test Playwright: resa (asserisce la posizione) e coerenza
-  public/         asset generati, NON versionati (vedi 5)
+  test/           140 test; test/vincoli.test.ts è il cancello dei tre strati
+  e2e/            11 test Playwright: resa, coerenza, valore nel tempo, pannelli
+  public/         asset generati dagli strumenti, versionati (690 KB, vedi 43)
 strumenti/        si eseguono a mano, una volta sola
   costa_sdf.py    campo di distanza dalla costa OSM (75 s, serve GSHHG o OSM)
   maschera_dato.py campo di distanza dal bordo del dato
@@ -298,12 +298,12 @@ non ho fatto"):
 
 I comandi di verifica del codice stanno in fondo, nella sezione 7.
 
-**La SPA.** Si lavora dentro `web/`. Gli asset di `web/public/` **non sono
-versionati** e vanno prodotti una volta sola, se no tre test falliscono con un
-messaggio che lo dice:
+**La SPA.** Si lavora dentro `web/`. Gli asset di `web/public/` **sono
+versionati** (690 KB), quindi un clone e' subito buono: i comandi qui sotto
+servono solo a rigenerarli quando cambia la griglia o la sorgente delle coste.
 
 ```bash
-# gli asset, una volta sola (la costa scarica 920 MB di linee OSM, 75 s di calcolo)
+# solo per rigenerarli (la costa scarica 920 MB di linee OSM, 75 s di calcolo)
 curl -O https://osmdata.openstreetmap.de/download/coastlines-split-4326.zip && unzip -q coastlines-split-4326.zip
 uv run strumenti/costa_sdf.py --coste coastlines-split-4326 --uscita web/public
 uv run strumenti/maschera_dato.py --uscita web/public \
@@ -311,7 +311,7 @@ uv run strumenti/maschera_dato.py --uscita web/public \
 
 npm --prefix web install
 npm --prefix web run dev          # apre in locale, legge da R2
-npm --prefix web test             # 121 test unitari
+npm --prefix web test             # 140 test unitari
 npm --prefix web run typecheck    # NON usare `npm --prefix web exec tsc`: exec non cambia cartella
 cd web && npx playwright test     # 3 test end to end, servono un browser e la rete
 ```
