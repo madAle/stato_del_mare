@@ -78,6 +78,23 @@ for (const f of FINESTRE) {
   });
 }
 
+test("ogni pannello ha un fondo suo, non la mappa", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => (window as never as { __primoFrame: boolean }).__primoFrame);
+
+  // Il contrasto vero non si misura qui (i test montano uno sfondo grigio
+  // piatto apposta), ma il difetto era piu' grossolano: barra di stato e
+  // legenda scrivevano direttamente sulla mappa, senza riquadro, e sopra i nomi
+  // delle citta' della basemap vera non si leggevano. Sul grigio dei test si
+  // leggevano benissimo, ed e' per questo che nessuna misura geometrica se n'e'
+  // accorta. Un fondo dichiarato e' l'invariante che sarebbe bastato.
+  for (const selettore of [".barra-stato", ".legenda", ".scrubber", ".comandi-riproduzione"]) {
+    const fondo = await page.locator(selettore).evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(fondo, `${selettore} non ha un fondo suo`).not.toBe("rgba(0, 0, 0, 0)");
+    expect(fondo, `${selettore} non ha un fondo suo`).not.toBe("transparent");
+  }
+});
+
 test("la scala del tempo mostra le tacche e il riferimento adesso", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => (window as never as { __primoFrame: boolean }).__primoFrame);

@@ -79,11 +79,21 @@ main:not(.errore) > :only-child:not(.mappa) {
  * Pannelli sovrapposti alla mappa: stesso trattamento visivo per tutti
  * (sfondo quasi opaco, bordo leggero, angoli arrotondati), cosi' restano
  * leggibili sopra un campo colorato qualunque sia il colore sotto.
+ *
+ * L'elenco comprende tutti i pannelli, e ci e' voluto un po': la barra di
+ * stato e la legenda erano rimaste fuori. Sopra lo sfondo grigio piatto dello
+ * stile dei test si leggevano lo stesso, quindi nessun test se n'e' accorto
+ * (misurano la geometria, non il contrasto) e il difetto e' venuto fuori solo
+ * guardando la mappa vera, dove quel testo cadeva sopra i nomi delle citta'.
+ *
+ * Il posizionamento non sta qui: i pannelli sono figli di `.fascia-alta` o
+ * `.fascia-bassa`, che li dispongono. Questa regola dice solo come si vedono.
  */
 .scrubber,
 .comandi-riproduzione,
+.barra-stato,
+.legenda,
 select[aria-label="variabile"] {
-  position: absolute;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 4px;
@@ -92,8 +102,6 @@ select[aria-label="variabile"] {
 }
 
 select[aria-label="variabile"] {
-  top: 1rem;
-  left: 1rem;
   padding: 0.4rem 0.6rem;
   font-size: 0.9rem;
 }
@@ -398,11 +406,6 @@ select[aria-label="variabile"] {
   pointer-events: auto;
 }
 
-.barra-stato,
-.legenda,
-select[aria-label="variabile"] {
-  position: static;
-}
 
 /* I due pannelli in basso, impilati dalla stessa idea della fascia alta: il
    contenitore li mette in colonna, quindi nessuno dei due deve conoscere
@@ -435,10 +438,6 @@ select[aria-label="variabile"] {
   pointer-events: auto;
 }
 
-.scrubber,
-.comandi-riproduzione {
-  position: static;
-}
 
 /* Bersagli da dito. Si applica solo dove il puntatore e' grosso, cosi' il
    disegno su schermo grande resta quello misurato dai test dei pannelli.
