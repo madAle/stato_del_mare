@@ -1,0 +1,91 @@
+name: Deploy
+
+# La SPA su Cloudflare Pages, cioe' nello stesso account che ospita il bucket:
+# un solo posto da amministrare, e il dominio che un giorno sostituira'
+# `pub-*.r2.dev` si configura li' accanto.
+#
+# L'innesco e' `main`, che in questo repo e' il branch di release (vedi
+# CLAUDE.md): si sviluppa su `develop` e si pubblica unendo. Finche' `main` non
+# esiste, l'unico modo di pubblicare e' l'avvio a mano, che resta comunque utile
+# per rimettere online una versione senza toccare i branch.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+env:
+  # Fissata come pmtiles in Basemap: e' lo strumento che decide cosa finisce
+  # online, e non deve cambiare sotto i piedi fra due pubblicazioni.
+  WRANGLER: wrangler@4.124.0
+  PROGETTO: stato-del-mare
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Installa le dipendenze
+        run: npm ci
+
+      # Il cancello prima della pubblicazione. Non sono i test end to end (che
+      # vogliono un browser e la rete, e restano a mano), ma pubblicare senza
+      # nemmeno il typecheck vorrebbe dire mettere online codice che non compila.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test unitari
+        run: npm test
+
+      - name: Costruisce
+        run: npm run build
+
+      - name: Crea il progetto Pages se non c'e'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Senza questo passo la prima pubblicazione fallisce chiedendo conferma
+        # a un terminale che non c'e'. Crearlo qui evita un passo manuale non
+        # scritto da nessuna parte, che e' il modo in cui un workflow diventa
+        # inservibile sei mesi dopo.
+        run: |
+          if ! npx --yes "$WRANGLER" pages project list | grep -q "$PROGETTO"; then
+            npx --yes "$WRANGLER" pages project create "$PROGETTO" --production-branch=main
+          fi
+
+      - name: Pubblica
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes "$WRANGLER" pages deploy dist --project-name="$PROGETTO" --branch=main
+
+      - name: Verifica che cio' che serve sia stato pubblicato
+        # Che wrangler sia uscito 0 dice che il caricamento non ha fallito, non
+        # che online ci sia un'applicazione che si apre. I quattro asset dei
+        # campi di distanza non sono importati dal codice (si caricano per
+        # percorso fisso da main.tsx): se un giorno sparissero dalla build,
+        # niente fallirebbe in compilazione e la mappa mostrerebbe il campo non
+        # ritagliato dalla costa.
+        run: |
+          set -euo pipefail
+          for f in index.html costa_sdf.png costa_sdf.json maschera_dato.png maschera_dato.json _headers; do
+            if [ ! -s "dist/$f" ]; then
+              echo "manca dist/$f nella build pubblicata" >&2
+              exit 1
+            fi
+          done
+          echo "pubblicati $(find dist -type f | wc -l | tr -d ' ') file"

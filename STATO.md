@@ -218,11 +218,22 @@ Niente.
    1440, 900, 680, 500 e 390 px. Resta da giudicare a occhio la palette, e va
    fatto con la basemap vera sotto: senza, si vede solo grigio.
 
-8. **Perche' la SPA sia pubblicabile**, in ordine: sostituire l'origine
-   `pub-*.r2.dev`, che Cloudflare documenta come endpoint di sviluppo con limiti
-   di banda, con un dominio vero (si cambia in `web/src/data/urls.ts` e basta);
-   aggiungere un workflow di deploy per `web/`. La basemap non e' piu' fra
-   queste: e' stata pubblicata il 2026-08-19 (vedi 6).
+8. **Perche' la SPA sia pubblicabile.** Il workflow di deploy c'e'
+   (`.github/workflows/deploy.yml`, Cloudflare Pages, progetto
+   `stato-del-mare`), la basemap e' pubblicata dal 2026-08-19. Restano **due
+   cose che puo' fare solo l'utente**:
+   - **due segreti su GitHub**: `CLOUDFLARE_API_TOKEN` (permesso
+     `Cloudflare Pages: Edit`) e `CLOUDFLARE_ACCOUNT_ID`. Senza, il workflow
+     fallisce all'autenticazione;
+   - **il branch `main`, che non esiste sul remoto.** La convenzione di questo
+     repo e' che `main` sia di release, e il deploy si innesca li'. La prima
+     pubblicazione e' `git push origin develop:main`. Fino ad allora si
+     pubblica solo con l'avvio a mano del workflow.
+
+   Resta poi da sostituire l'origine `pub-*.r2.dev`, che Cloudflare documenta
+   come endpoint di sviluppo con limiti di banda, con un dominio vero: si
+   cambia in `web/src/data/urls.ts` e basta, e conviene farlo quando il dominio
+   e' gia' agganciato al bucket.
 
 9. **Stima della corrente nei canali di Comacchio.** Richiesta del 2026-08-18.
    Due problemi diversi. **Il bacino e' bloccato**: nessun idrometro pubblico sta

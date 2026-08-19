@@ -1,0 +1,28 @@
+# Politica di cache, letta da Cloudflare Pages e non servita ai visitatori.
+#
+# Esiste per una ragione precisa: Vite mette un'impronta nel nome di tutto
+# quello che importa dal codice, ma i quattro asset dei campi di distanza si
+# caricano per percorso fisso da main.tsx (`/costa_sdf.png`), quindi il nome non
+# cambia mai. Con la cache lunga che si dà di norma a un file statico, chi
+# rigenerasse la griglia continuerebbe a servire il vecchio ritaglio della costa
+# a chi ha già visitato il sito, e il difetto sembrerebbe dello shader.
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Un'ora di validità e poi si richiede: la risposta è quasi sempre un 304 da
+# poche decine di byte, e il costo di sbagliare è servire per settimane un
+# ritaglio della costa che non corrisponde più alla griglia.
+/costa_sdf.png
+  Cache-Control: public, max-age=3600, must-revalidate
+/costa_sdf.json
+  Cache-Control: public, max-age=3600, must-revalidate
+/maschera_dato.png
+  Cache-Control: public, max-age=3600, must-revalidate
+/maschera_dato.json
+  Cache-Control: public, max-age=3600, must-revalidate
+
+# La pagina non si mette mai in cache: è quella che nomina le impronte di tutto
+# il resto, quindi una sua copia vecchia congela l'intera applicazione.
+/index.html
+  Cache-Control: no-cache
