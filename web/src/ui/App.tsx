@@ -17,6 +17,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import { StatusBar } from "./StatusBar";
 import { TimelineScrubber } from "./TimelineScrubber";
 import { PALETTE } from "../map/colormap";
+import { PaletteSwitcher } from "./PaletteSwitcher";
 import { leggiStatoUrl, scriviStatoUrl } from "./statoUrl";
 
 /** Finestra iniziale: 48 ore passate piu' 72 previste, cursore su adesso. */
@@ -44,10 +45,14 @@ export function App({
   // sullo stesso dato: le scelte di colore si decidono guardando, non a
   // ragionamenti. Un nome sconosciuto viene ignorato invece di far saltare la
   // mappa, perche' questo parametro finisce nei link che ci si scambia.
-  const paletteScelta = useMemo(() => {
-    const chiesta = new URLSearchParams(location.search).get("palette");
+  // La tavolozza: dall'URL se c'e' e se esiste, altrimenti quella del catalogo
+  // (che per l'altezza d'onda pubblica `dense`). Un nome sconosciuto viene
+  // ignorato invece di far saltare la mappa, perche' questo parametro finisce
+  // nei link che ci si scambia.
+  const [palette, setPalette] = useState<string | null>(() => {
+    const chiesta = iniziale.palette;
     return chiesta && chiesta in PALETTE ? chiesta : null;
-  }, []);
+  });
   // Un link condiviso con ?var= su una variabile diversa da quella disegnata
   // avrebbe montato la mappa gia' incoerente con la legenda fin dal primo
   // render: stessa incoerenza del LayerSwitcher, stesso rimedio, cioe' non
@@ -74,6 +79,11 @@ export function App({
   variabileRef.current = variabile;
   const istanteRef = useRef(istante);
   istanteRef.current = istante;
+  // Come gli altri ref: lo scrittore dell'URL vive dentro uno strozzatore
+  // creato una volta sola, quindi legge i valori correnti e non quelli del
+  // primo render.
+  const paletteRef = useRef<string | null>(palette);
+  paletteRef.current = palette;
   // Zoom e centro veri, riportati da MapView a ogni "moveend" (vedi
   // MapView.tsx): prima di questo ref l'URL non li conosceva mai e
   // scriveva sempre null, cancellando la vista di un link condiviso.
@@ -91,6 +101,7 @@ export function App({
       history.replaceState(null, "", scriviStatoUrl({
         istante: istanteRef.current,
         variabile: variabileRef.current,
+        palette: paletteRef.current,
         zoom: vistaRef.current?.zoom ?? null,
         centro: vistaRef.current?.centro ?? null,
       }));
@@ -106,8 +117,8 @@ export function App({
   // confrontare le alternative sullo stesso dato, che e' l'unico modo per
   // deciderle. Il catalogo resta la scelta di default: questo e' un parametro
   // per guardare, non una configurazione.
-  const scelta = sceltaGrezza && paletteScelta
-    ? { ...sceltaGrezza, colormap: paletteScelta }
+  const scelta = sceltaGrezza && palette
+    ? { ...sceltaGrezza, colormap: palette }
     : sceltaGrezza;
 
   const assi = useQuery({
@@ -214,7 +225,12 @@ export function App({
       <div className="fascia-alta">
         <LayerSwitcher variabili={variabili} scelta={variabile} cambia={setVariabile} />
         <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={scelta.unita} stato={stato} />
-        <Legend palette={scelta.colormap} massimo={4} unita={scelta.unita} />
+        <Legend palette={scelta.colormap} massimo={4} unita={scelta.unita}>
+          <PaletteSwitcher
+            scelta={scelta.colormap}
+            cambia={(id) => { setPalette(id); strozzatoreUrl.invia(); }}
+          />
+        </Legend>
       </div>
       <TimelineScrubber asse={asse} istante={istante}
         cambia={(i) => { setIstante(i); maniglie.current?.animazione.vaiA(i); }} />

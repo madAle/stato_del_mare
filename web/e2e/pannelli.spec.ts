@@ -24,7 +24,7 @@ for (const larghezza of LARGHEZZE) {
     await page.waitForFunction(() => (window as never as { __primoFrame: boolean }).__primoFrame);
     await page.waitForTimeout(300);
 
-    const pannelli = ["\.barra-stato", "\.legenda", "\.scrubber", "\.comandi-riproduzione"];
+    const pannelli = ["\.barra-stato", "\.legenda", "\.scrubber", "\.comandi-riproduzione", "select[aria-label='variabile']"];
     const rettangoli: { nome: string; r: Rett }[] = [];
     for (const selettore of pannelli) {
       const r = await page.locator(selettore).boundingBox();

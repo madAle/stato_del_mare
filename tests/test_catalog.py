@@ -97,7 +97,11 @@ def test_il_catalogo_elenca_le_variabili_con_unita_e_colormap(store):
     per_id = {v["id"]: v for v in c["variables"]}
     assert per_id["hwave"]["units"] == "m"
     assert per_id["hwave"]["scale"] == 0.001
-    assert per_id["hwave"]["colormap"] == "amp"
+    # dense e non amp: scelto guardando il 2026-08-19, perche' con amp il mare
+    # calmo e la terraferma avevano lo stesso colore e l'Adriatico sta sotto i
+    # 0,5 m gran parte dell'anno. Il valore e' scritto qui alla lettera apposta:
+    # e' il contratto che la SPA legge, e cambiarlo deve costare un test rosso.
+    assert per_id["hwave"]["colormap"] == "dense"
     assert c["schema_version"]
     assert c["grid"]["crs"] == "EPSG:3857"
 

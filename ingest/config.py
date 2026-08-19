@@ -93,7 +93,12 @@ class FieldSpec:
 # di source_units sono state lette dalle intestazioni reali dell'archivio il
 # 2026-08-13, non dedotte: sbagliarle fermerebbe ogni run.
 FIELDS: tuple[FieldSpec, ...] = (
-    FieldSpec("hwave", "his_HPDwave", "Hwave", 0.001, "m", "amp", "meter"),
+    # Tavolozza scelta guardando il 2026-08-19, e la ragione non e' estetica:
+    # con `amp` il mare calmo e la terraferma hanno lo stesso colore (distanza
+    # percettiva Lab 2,6, cioe' sotto la soglia in cui due colori si
+    # distinguono), e l'Adriatico passa gran parte dell'anno sotto i 0,5 m,
+    # quindi era la condizione normale. Con `dense` quella distanza sale a 5,8.
+    FieldSpec("hwave", "his_HPDwave", "Hwave", 0.001, "m", "dense", "meter"),
     FieldSpec("pwave", "his_HPDwave", "Pwave_top", 0.01, "s", "tempo", "second"),
     FieldSpec("dwave_sin", "his_HPDwave", "Dwave", 0.0001, "1", "phase", "degrees", "sin"),
     FieldSpec("dwave_cos", "his_HPDwave", "Dwave", 0.0001, "1", "phase", "degrees", "cos"),

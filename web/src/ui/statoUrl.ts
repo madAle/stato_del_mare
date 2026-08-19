@@ -5,6 +5,8 @@
 export type StatoUrl = {
   istante: number | null;
   variabile: string | null;
+  /** Nome della tavolozza, per condividere anche la scelta di colore. */
+  palette: string | null;
   zoom: number | null;
   centro: [number, number] | null;
 };
@@ -25,6 +27,14 @@ export function leggiStatoUrl(ricerca: string): StatoUrl {
       istante = parsed;
     }
   }
+
+  // palette: stessa regola della variabile. Sta qui e non in un parametro
+  // letto per conto suo perche' l'URL ha un solo scrittore: un secondo lettore
+  // che non scrive verrebbe cancellato dal primo aggiornamento, e la scelta
+  // sparirebbe dal link appena il tempo avanza.
+  let palette: string | null = null;
+  const palStr = params.get("palette");
+  if (palStr) palette = palStr;
 
   // variabile: stringa non vuota, null se assente o vuota
   let variabile: string | null = null;
@@ -57,7 +67,7 @@ export function leggiStatoUrl(ricerca: string): StatoUrl {
     }
   }
 
-  return { istante, variabile, zoom, centro };
+  return { istante, variabile, palette, zoom, centro };
 }
 
 // Scrive lo stato sulla query string dell'URL.
@@ -72,6 +82,9 @@ export function scriviStatoUrl(stato: StatoUrl): string {
     params.set("t", date.toISOString());
   }
 
+  if (stato.palette !== null) {
+    params.set("palette", stato.palette);
+  }
   if (stato.variabile !== null) {
     params.set("var", stato.variabile);
   }

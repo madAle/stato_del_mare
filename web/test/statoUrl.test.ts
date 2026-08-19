@@ -11,20 +11,20 @@ describe("stato nell'URL", () => {
   });
 
   it("un URL vuoto non inventa valori", () => {
-    expect(leggiStatoUrl("")).toEqual({ istante: null, variabile: null, zoom: null, centro: null });
+    expect(leggiStatoUrl("")).toEqual({ istante: null, variabile: null, palette: null, zoom: null, centro: null });
   });
 
   it("un URL rotto non fa saltare l'applicazione", () => {
     // un link vecchio o troncato deve aprire l'app sulle impostazioni
     // predefinite, non su una pagina bianca
     const s = leggiStatoUrl("?t=domani&z=molto&c=cosi");
-    expect(s).toEqual({ istante: null, variabile: null, zoom: null, centro: null });
+    expect(s).toEqual({ istante: null, variabile: null, palette: null, zoom: null, centro: null });
   });
 
   it("scrive e rilegge senza perdere niente", () => {
     const stato = {
       istante: Date.parse("2026-08-13T14:00:00Z"),
-      variabile: "hwave", zoom: 8, centro: [44.21, 12.48] as [number, number],
+      variabile: "hwave", palette: null, zoom: 8, centro: [44.21, 12.48] as [number, number],
     };
     expect(leggiStatoUrl(scriviStatoUrl(stato))).toEqual(stato);
   });
@@ -32,7 +32,7 @@ describe("stato nell'URL", () => {
   it("lo zoom frazionario (naturale di MapLibre) si conserva", () => {
     const stato = {
       istante: Date.parse("2026-08-13T14:00:00Z"),
-      variabile: "hwave", zoom: 10.4, centro: [44.21, 12.48] as [number, number],
+      variabile: "hwave", palette: null, zoom: 10.4, centro: [44.21, 12.48] as [number, number],
     };
     expect(leggiStatoUrl(scriviStatoUrl(stato))).toEqual(stato);
   });
@@ -40,7 +40,7 @@ describe("stato nell'URL", () => {
   it("le coordinate negative si conservano", () => {
     const stato = {
       istante: Date.parse("2026-08-13T14:00:00Z"),
-      variabile: "hwave", zoom: 8, centro: [44.21, -12.48] as [number, number],
+      variabile: "hwave", palette: null, zoom: 8, centro: [44.21, -12.48] as [number, number],
     };
     expect(leggiStatoUrl(scriviStatoUrl(stato))).toEqual(stato);
   });
@@ -48,7 +48,7 @@ describe("stato nell'URL", () => {
   it("l'istante con minuti diversi da zero si conserva", () => {
     const stato = {
       istante: Date.parse("2026-08-13T14:23:45Z"),
-      variabile: "hwave", zoom: 8, centro: [44.21, 12.48] as [number, number],
+      variabile: "hwave", palette: null, zoom: 8, centro: [44.21, 12.48] as [number, number],
     };
     expect(leggiStatoUrl(scriviStatoUrl(stato))).toEqual(stato);
   });
@@ -56,5 +56,23 @@ describe("stato nell'URL", () => {
   it("la variabile vuota diventa null, non stringa vuota", () => {
     const s = leggiStatoUrl("?var=");
     expect(s.variabile).toBeNull();
+  });
+});
+
+describe("la tavolozza nell'URL", () => {
+  it("si legge e si riscrive, se no il primo aggiornamento la cancella", () => {
+    // e' il difetto che si voleva evitare: un parametro letto da qualcuno e non
+    // scritto da chi riscrive l'URL sparisce appena il tempo avanza, e il
+    // selettore sembra funzionare finche' non si guarda la barra degli indirizzi
+    const stato = {
+      istante: Date.parse("2026-08-19T09:00:00Z"),
+      variabile: "hwave", palette: "dense", zoom: 9, centro: [44.2, 12.6] as [number, number],
+    };
+    expect(leggiStatoUrl(scriviStatoUrl(stato))).toEqual(stato);
+  });
+
+  it("senza il parametro resta null, cosi' vale quella del catalogo", () => {
+    expect(leggiStatoUrl("?t=2026-08-19T09:00Z").palette).toBeNull();
+    expect(leggiStatoUrl("?palette=").palette).toBeNull();
   });
 });

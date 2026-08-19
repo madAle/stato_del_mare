@@ -80,8 +80,6 @@ main:not(.errore) > :only-child:not(.mappa) {
  * (sfondo quasi opaco, bordo leggero, angoli arrotondati), cosi' restano
  * leggibili sopra un campo colorato qualunque sia il colore sotto.
  */
-.legenda,
-.barra-stato,
 .scrubber,
 .comandi-riproduzione,
 select[aria-label="variabile"] {
@@ -101,9 +99,6 @@ select[aria-label="variabile"] {
 }
 
 .barra-stato {
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -124,8 +119,6 @@ select[aria-label="variabile"] {
 }
 
 .legenda {
-  top: 1rem;
-  right: 1rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -363,28 +356,45 @@ select[aria-label="variabile"] {
    schermo stretto si incrociavano. Si impilano invece di accavallarsi. E'
    anche la larghezza di un telefono, cioe' il modo piu' probabile di aprire
    questa mappa. */
-@media (max-width: 680px) {
-  .barra-stato,
-  .legenda,
-  select[aria-label="variabile"] {
-    position: static;
-    transform: none;
-    width: auto;
-  }
 
-  .fascia-alta {
-    position: absolute;
-    top: 0.5rem;
-    left: 0.5rem;
-    right: 0.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    align-items: stretch;
-  }
 
-  .legenda .scala {
-    width: auto;
-    flex: 1;
-  }
+/* Il selettore della tavolozza sta dentro il riquadro della legenda: e' una
+   scelta di colore, quindi va letta accanto alla scala che cambia, non in un
+   angolo diverso dello schermo. */
+.selettore-tavolozza {
+  margin-left: 0.5rem;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.2rem;
+}
+
+/* I tre pannelli in alto stanno in una fascia flessibile invece che
+   posizionati uno per uno. Con una soglia in pixel la sovrapposizione tornava
+   ogni volta che un pannello cresceva (e' successo due volte: aggiungendo
+   l'ora nella barra di stato, e il selettore nella legenda). Cosi' invece non
+   puo' tornare per costruzione: quando non ci stanno, vanno a capo. */
+.fascia-alta {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  /* la fascia non deve intercettare i click sulla mappa fra un pannello e
+     l'altro: solo i pannelli sono cliccabili */
+  pointer-events: none;
+}
+
+.fascia-alta > * {
+  pointer-events: auto;
+}
+
+.barra-stato,
+.legenda,
+select[aria-label="variabile"] {
+  position: static;
 }
