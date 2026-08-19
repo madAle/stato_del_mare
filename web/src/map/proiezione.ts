@@ -91,7 +91,25 @@ export function valoreCorrente(
 ): number | null {
   const q = inquadra(asse, istante);
   if (!q) return null;
-  const dato = prendiFrame(q.prima);
-  if (!dato) return null;
-  return valoreA(griglia, dato, lon, lat, scala, offset);
+
+  // Si fondono le due ore con la stessa frazione con cui le fonde lo shader
+  // (vedi `u_frazione` in shader.ts). Prendendo solo l'ora precedente, il
+  // numero accanto all'orologio apparterrebbe a un istante diverso da quello
+  // che la mappa sta disegnando e da quello che il pannello dichiara: a meta'
+  // fra le 09:00 e le 10:00 la mappa e' a meta' strada e il numero direbbe
+  // ancora 09:00.
+  const primo = prendiFrame(q.prima);
+  const a = primo ? valoreA(griglia, primo, lon, lat, scala, offset) : null;
+  if (!q.dopo) return a;
+
+  const secondo = prendiFrame(q.dopo);
+  const b = secondo ? valoreA(griglia, secondo, lon, lat, scala, offset) : null;
+
+  // Stessa regola dello shader anche sul nodata: se una delle due ore non ha
+  // dato in questo punto si usa l'altra, invece di mediare con niente. Mediare
+  // con un buco farebbe sprofondare e risalire l'onda a ogni ora, cioe'
+  // un'oscillazione inventata dal disegno e non presente nel mare.
+  if (a === null) return b;
+  if (b === null) return a;
+  return a + (b - a) * q.frazione;
 }
