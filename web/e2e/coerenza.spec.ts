@@ -43,6 +43,14 @@ test("il valore sotto il mouse coincide con quello nel frame", async ({ page, re
       .__mappa.project([lon, lat]), [NAUSICAA.lon, NAUSICAA.lat]);
   await page.mouse.move(punto.x, punto.y);
 
+  // Si aspetta che il valore compaia, senza aspettare che diventi quello
+  // giusto: la lettura sotto resta secca. Serve perche' il valore passa da uno
+  // strozzatore a 10 Hz e puo' arrivare fino a un decimo di secondo dopo il
+  // movimento del mouse, e leggere subito prendeva la stringa vuota, che
+  // Number() trasforma in zero e quindi in un fallimento che sembra un errore
+  // di misura invece che di attesa.
+  await expect(page.locator(".valore")).not.toHaveText("");
+
   const mostrato = await page.locator(".valore").textContent();
   const numero = Number((mostrato ?? "").replace(",", ".").replace(/[^\d.-]/g, ""));
   // la tolleranza e' quella dell'arrotondamento a due decimali della UI

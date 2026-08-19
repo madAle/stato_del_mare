@@ -61,6 +61,11 @@ export function MapView({
   // arriva strozzato a 10 Hz dal ciclo di animazione, e uno stato in piu' qui
   // ricreerebbe il gestore di mousemove a ogni rapporto.
   const ultimoIstante = useRef(asse[0]?.istante ?? 0);
+  // Dove sta il cursore, o null se e' fuori dalla mappa. Il valore mostrato
+  // dipende da DUE cose, la posizione e l'istante, e la seconda cambia da sola
+  // mentre la riproduzione scorre: senza ricordare la posizione si potrebbe
+  // ricalcolare solo quando si muove il mouse, cioe' mai durante un autoplay.
+  const ultimaPosizione = useRef<{ lng: number; lat: number } | null>(null);
 
   // asse, prefetcher e variabile aggiornati a ogni render, non solo al
   // montaggio: App li ricrea quando i dati cambiano (per esempio un refetch
@@ -144,20 +149,46 @@ export function MapView({
         // per tutta la vita della mappa, ma i due ref restano aggiornati a
         // ogni render di MapView (vedi sopra), quindi legge sempre i valori
         // correnti invece di quelli del primo montaggio.
+        // Il valore a schermo e' una funzione di (posizione, istante), quindi va
+        // ricalcolato quando cambia l'una O l'altro. Ricalcolarlo solo sul
+        // movimento del mouse lasciava a schermo, durante la riproduzione, un
+        // numero di un altro istante accanto a una barra di stato che
+        // dichiarava l'istante giusto: due meta' dello schermo che si
+        // contraddicono, e quella sbagliata sembra una misura.
+        const aggiornaValore = () => {
+          const dove = ultimaPosizione.current;
+          if (!dove) {
+            strozzatore.invia(null);
+            return;
+          }
+          strozzatore.invia(valoreCorrente(
+            catalogo.griglia, asseRef.current, ultimoIstante.current,
+            (ora) => cache.prendi(prefetcherRef.current.chiave(ora)),
+            dove.lng, dove.lat, variabileRef.current.scala, variabileRef.current.offset,
+          ));
+        };
+
         animazione = new Animazione(livello, { asse: asseRef, prefetcher: prefetcherRef, cache });
         animazione.alTempo = (istante, stato) => {
           ultimoIstante.current = istante;
+          aggiornaValore();
           alTempo(istante, stato);
         };
         alPronto({ animazione, livello });
 
         m.on("mousemove", (e) => {
-          const valore = valoreCorrente(
-            catalogo.griglia, asseRef.current, ultimoIstante.current,
-            (ora) => cache.prendi(prefetcherRef.current.chiave(ora)),
-            e.lngLat.lng, e.lngLat.lat, variabileRef.current.scala, variabileRef.current.offset,
-          );
-          strozzatore.invia(valore);
+          ultimaPosizione.current = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+          aggiornaValore();
+        });
+
+        // Uscendo dalla mappa il valore deve sparire: senza questo, il numero
+        // dell'ultimo punto toccato resterebbe a schermo e continuerebbe pure
+        // ad aggiornarsi nel tempo, per una posizione che il cursore ha
+        // lasciato. Il ricordo della posizione rende il difetto peggiore, non
+        // migliore, se non lo si azzera.
+        m.on("mouseout", () => {
+          ultimaPosizione.current = null;
+          aggiornaValore();
         });
 
         (window as never as { __mappa: unknown }).__mappa = m;
