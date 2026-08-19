@@ -214,10 +214,11 @@ Niente.
      nessun servizio di terzi.
 7. **Da guardare sulla SPA, e vuole occhi umani.** Il foglio di stile e' nato
    nell'ultima onda di correzioni, non era nel piano, e la sua palette e'
-   dichiaratamente provvisoria. Sotto i 615 px di larghezza la barra di stato si
-   sovrappone alla legenda, e sotto i 400 anche il selettore: su un telefono, che
-   e' il caso d'uso principale di questa mappa, si vede. Tutti i comandi restano
-   cliccabili fino a 320 px, quindi e' leggibilita' e non usabilita'.
+   dichiaratamente provvisoria. Le sovrapposizioni sugli schermi stretti sono
+   chiuse dal 2026-08-19: la fascia alta e' un flex che va a capo invece di una
+   soglia in pixel, e `web/e2e/pannelli.spec.ts` misura i rettangoli veri a
+   1440, 900, 680, 500 e 390 px. Resta da giudicare a occhio la palette, e va
+   fatto con la basemap vera sotto: senza, si vede solo grigio.
 
 8. **Perche' la SPA sia pubblicabile**, in ordine: caricare la basemap con
    `strumenti/asset.sh` (700 MB, mai eseguito, e finche' non c'e' la build di
