@@ -17,15 +17,13 @@ il piano come riferimento.
 **Il punto esatto in cui riprendere:** aprire l'applicazione e **guardarla**
 (sezione 5 per il comando). Due cose la aspettano, ed entrambe vogliono occhi
 umani: il foglio di stile è nato in emergenza nell'ultima onda di correzioni e la
-sua palette è provvisoria, e sotto i 615 px di larghezza la barra di stato si
-sovrappone alla legenda, che su un telefono è il caso d'uso principale.
+sua palette è provvisoria e va giudicata a occhio, adesso che sotto c'è la
+basemap vera.
 
-**Cosa manca perché sia pubblicabile**, in ordine: caricare la basemap sul bucket
-(`strumenti/asset.sh`, 700 MB, mai eseguito), sostituire l'origine `r2.dev` con un
-dominio vero, e aggiungere un workflow di deploy per `web/`. Finché la basemap non
-è pubblicata, la build di produzione mostra "Impossibile aprire la mappa": è il
-percorso che nessun test copre, perché i test end to end montano uno stile minimo
-locale apposta per non dipendere da un asset che non esiste ancora.
+**Cosa manca perché sia pubblicabile**, in ordine: sostituire l'origine `r2.dev`
+con un dominio vero, e aggiungere un workflow di deploy per `web/`. La basemap è
+sul bucket dal 2026-08-19 (736 MB, build Protomaps `20260819`, 773 oggetti),
+caricata dal workflow `Basemap` a mano.
 
 Questo file va letto per primo. Poi:
 
@@ -103,7 +101,7 @@ strumenti/        si eseguono a mano, una volta sola
   costa_sdf.py    campo di distanza dalla costa OSM (75 s, serve GSHHG o OSM)
   maschera_dato.py campo di distanza dal bordo del dato
   colormap.py     scrive src/map/colormap.ts da cmocean
-  asset.sh        estrae la basemap e carica font e sprite sul bucket
+  asset.sh        estrae la basemap e carica font e sprite (lo lancia il workflow Basemap)
 ```
 
 **Codici di uscita della CLI**, su cui il cron decide: `0` tutto bene, `1`
@@ -220,12 +218,11 @@ Niente.
    1440, 900, 680, 500 e 390 px. Resta da giudicare a occhio la palette, e va
    fatto con la basemap vera sotto: senza, si vede solo grigio.
 
-8. **Perche' la SPA sia pubblicabile**, in ordine: caricare la basemap con
-   `strumenti/asset.sh` (700 MB, mai eseguito, e finche' non c'e' la build di
-   produzione mostra "Impossibile aprire la mappa"); sostituire l'origine
+8. **Perche' la SPA sia pubblicabile**, in ordine: sostituire l'origine
    `pub-*.r2.dev`, che Cloudflare documenta come endpoint di sviluppo con limiti
    di banda, con un dominio vero (si cambia in `web/src/data/urls.ts` e basta);
-   aggiungere un workflow di deploy per `web/`.
+   aggiungere un workflow di deploy per `web/`. La basemap non e' piu' fra
+   queste: e' stata pubblicata il 2026-08-19 (vedi 6).
 
 9. **Stima della corrente nei canali di Comacchio.** Richiesta del 2026-08-18.
    Due problemi diversi. **Il bacino e' bloccato**: nessun idrometro pubblico sta
@@ -314,15 +311,21 @@ npm --prefix web install
 npm --prefix web run dev          # apre in locale, legge da R2
 npm --prefix web test             # 140 test unitari
 npm --prefix web run typecheck    # NON usare `npm --prefix web exec tsc`: exec non cambia cartella
-cd web && npx playwright test     # 3 test end to end, servono un browser e la rete
+cd web && npx playwright test     # 11 test end to end, servono un browser e la rete
 ```
 
-**Perché la basemap manca.** `strumenti/asset.sh AAAAMMGG` estrae il `.pmtiles`
-dell'Adriatico e carica font e sprite sul bucket, ma non è mai stato eseguito:
-sono 700 MB su una risorsa condivisa e la decisione è dell'utente. Serve
-`pmtiles`, `jq`, `aws` e le stesse quattro variabili d'ambiente dell'ingestore.
-Finché non gira, `npm run dev` e la build mostrano "Impossibile aprire la mappa";
-i test end to end no, perché montano uno stile minimo locale apposta.
+**La basemap.** È sul bucket dal 2026-08-19: 736 MB di tile fino a zoom 13,
+tre stack di font e quattro sprite, 773 oggetti in tutto. Non si carica a mano:
+si lancia il workflow `Basemap` da GitHub passando la build di Protomaps da
+estrarre, perché i segreti di scrittura del bucket stanno lì e non su un
+portatile.
+
+```bash
+gh workflow run Basemap --ref develop -f giorno=AAAAMMGG   # l'elenco delle build e' su build.protomaps.com
+```
+
+Il workflow finisce guardando il bucket, non il codice di uscita dello script:
+una basemap incompleta non fallisce, dà una mappa senza etichette.
 
 **Recuperare prodotti cambiati da una correzione**, su file che il manifest
 dà già per ingeriti. L'elenco è di gruppi sorgente, non un interruttore
