@@ -16,6 +16,7 @@ import { MapView, type ManiglieMappa, type Vista } from "./MapView";
 import { PlaybackControls } from "./PlaybackControls";
 import { StatusBar } from "./StatusBar";
 import { TimelineScrubber } from "./TimelineScrubber";
+import { PALETTE } from "../map/colormap";
 import { leggiStatoUrl, scriviStatoUrl } from "./statoUrl";
 
 /** Finestra iniziale: 48 ore passate piu' 72 previste, cursore su adesso. */
@@ -39,6 +40,14 @@ export function App({
   preserveDrawingBuffer?: boolean;
 }) {
   const iniziale = useMemo(() => leggiStatoUrl(location.search), []);
+  // Tavolozza sostituibile con `?palette=dense` per confrontare le alternative
+  // sullo stesso dato: le scelte di colore si decidono guardando, non a
+  // ragionamenti. Un nome sconosciuto viene ignorato invece di far saltare la
+  // mappa, perche' questo parametro finisce nei link che ci si scambia.
+  const paletteScelta = useMemo(() => {
+    const chiesta = new URLSearchParams(location.search).get("palette");
+    return chiesta && chiesta in PALETTE ? chiesta : null;
+  }, []);
   // Un link condiviso con ?var= su una variabile diversa da quella disegnata
   // avrebbe montato la mappa gia' incoerente con la legenda fin dal primo
   // render: stessa incoerenza del LayerSwitcher, stesso rimedio, cioe' non
@@ -92,7 +101,14 @@ export function App({
 
   const catalogo = useQuery({ queryKey: ["catalogo"], queryFn: () => leggiCatalogo() });
   const variabili = catalogo.data?.variabili ?? [];
-  const scelta = variabili.find((v) => v.id === variabile);
+  const sceltaGrezza = variabili.find((v) => v.id === variabile);
+  // La tavolozza del catalogo si puo' sostituire con `?palette=dense` per
+  // confrontare le alternative sullo stesso dato, che e' l'unico modo per
+  // deciderle. Il catalogo resta la scelta di default: questo e' un parametro
+  // per guardare, non una configurazione.
+  const scelta = sceltaGrezza && paletteScelta
+    ? { ...sceltaGrezza, colormap: paletteScelta }
+    : sceltaGrezza;
 
   const assi = useQuery({
     queryKey: ["asse", variabile, scelta?.tipi.an.mesi.join()],

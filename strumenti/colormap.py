@@ -18,6 +18,14 @@ import numpy as np
 # I nomi sono quelli che il catalogo pubblica per variabile.
 PALETTE = {
     "amp": cmocean.cm.amp,
+    # Alternative in toni di blu per l'altezza d'onda, aggiunte il 2026-08-19
+    # per poterle confrontare guardando invece che a ragionamenti: `dense` va
+    # dal quasi bianco al blu profondo, `ice` e' la stessa idea con piu'
+    # contrasto in alto, `deep` passa dal giallo al blu ed e' l'unica che non
+    # rischia di leggersi come profondita'.
+    "dense": cmocean.cm.dense,
+    "ice": cmocean.cm.ice,
+    "deep": cmocean.cm.deep,
     "tempo": cmocean.cm.tempo,
     "phase": cmocean.cm.phase,
     "speed": cmocean.cm.speed,
