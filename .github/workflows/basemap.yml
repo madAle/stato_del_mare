@@ -1,0 +1,94 @@
+name: Basemap
+
+# Si esegue a mano, quando serve: la basemap non e' deperibile, pesa 700 MB e
+# cambia solo quando si vuole una build piu' recente di Protomaps.
+#
+# Gira qui e non sul portatile per una ragione sola: i segreti del bucket stanno
+# gia' qui. Farla a mano vorrebbe dire installare pmtiles e la CLI di aws su una
+# macchina personale e tenerci le credenziali di scrittura dell'archivio.
+on:
+  workflow_dispatch:
+    inputs:
+      giorno:
+        description: "Build di Protomaps da estrarre, AAAAMMGG (l'elenco e' su build.protomaps.com)"
+        type: string
+        required: true
+
+concurrency:
+  group: basemap
+  cancel-in-progress: false
+
+jobs:
+  basemap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Installa pmtiles
+        # Versione fissata: e' lo strumento che decide cosa finisce nel file
+        # servito al browser, e non deve cambiare sotto i piedi fra due run.
+        run: |
+          curl -sfL https://github.com/protomaps/go-pmtiles/releases/download/v1.31.2/go-pmtiles_1.31.2_Linux_x86_64.tar.gz \
+            | tar -xz pmtiles
+          sudo mv pmtiles /usr/local/bin/
+          pmtiles version
+
+      - name: Estrae l'Adriatico e carica basemap, font e sprite
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          # asset.sh parla con R2 attraverso la CLI di aws, che le credenziali le
+          # legge dalle variabili AWS_*. Sono gli stessi segreti che l'ingestore
+          # passa a boto3, con altri nomi.
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 non e' S3. Dalla 2.23 la CLI di aws aggiunge somme di controllo
+          # di sua iniziativa, che i servizi compatibili non sono tenuti ad
+          # accettare, e quando non passano l'errore che arriva non nomina la
+          # causa. Qui le chiediamo solo dove il protocollo le richiede.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          # L'ingresso passa da una variabile e non interpolato nel comando: un
+          # valore scelto da chi lancia il workflow non deve poter diventare shell.
+          GIORNO: ${{ inputs.giorno }}
+        run: strumenti/asset.sh "$GIORNO"
+
+      - name: Verifica cosa c'e' davvero sul bucket
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          # Che lo script sia uscito 0 dice che nessun comando ha fallito, non
+          # che sul bucket ci sia una basemap che il browser puo' usare. Una
+          # basemap incompleta non da' errore: da' una mappa senza etichette.
+          righe=$(aws s3 --endpoint-url "$R2_ENDPOINT" ls --recursive "s3://$R2_BUCKET/basemap/")
+          echo "$righe" | head -20
+          echo "... $(echo "$righe" | wc -l) oggetti in tutto"
+
+          byte=$(echo "$righe" | awk '$4 == "basemap/adriatico.pmtiles" { print $3 }')
+          if [ "${byte:-0}" -lt 100000000 ]; then
+            echo "adriatico.pmtiles manca o e' troppo piccolo: ${byte:-0} byte" >&2
+            exit 1
+          fi
+
+          # L'intervallo 0-255 e' il latino di base: se manca per uno dei tre
+          # stack, quel font non scrive niente e le etichette spariscono a meta'.
+          for stack in "Noto Sans Regular" "Noto Sans Medium" "Noto Sans Italic"; do
+            if ! echo "$righe" | grep -q "basemap/fonts/${stack}/0-255.pbf"; then
+              echo "manca l'intervallo 0-255 di ${stack}" >&2
+              exit 1
+            fi
+          done
+
+          sprite=$(echo "$righe" | grep -c "basemap/sprites/" || true)
+          if [ "$sprite" -ne 4 ]; then
+            echo "sprite incompleti: $sprite file su 4" >&2
+            exit 1
+          fi
+
+          echo "basemap pubblicata: $((byte / 1000000)) MB di tile, font e sprite al completo"
