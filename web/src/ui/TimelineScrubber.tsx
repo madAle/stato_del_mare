@@ -1,4 +1,5 @@
 import * as Slider from "@radix-ui/react-slider";
+import { useEffect, useRef, useState } from "react";
 import { buchi, type Ora } from "../data/indice";
 import { istanteEsteso, soloGiorno, soloOra, tacche } from "./tempo";
 import { inquadra } from "../data/sorgente";
@@ -27,8 +28,35 @@ type Props = {
  * un rettangolo per ogni buco restituito da buchi(asse), lo sfondo della
  * zona di previsione, e il confine netto fra analisi e previsione.
  */
+/**
+ * Quanto spazio vuole un'etichetta della scala perche' non finisca addosso al
+ * vicino o mezza fuori dal bordo. Misurato sul carattere piu' lungo che ci
+ * finisce ("mer 19/08" a 0,7rem): sono pixel, non frazioni dell'asse, perche'
+ * il testo non si restringe quando la finestra si restringe.
+ */
+const ETICHETTA_PX = 44;
+const BORDO_PX = 30;
+
 export function TimelineScrubber({ asse, istante, cambia }: Props) {
   const ultimo = asse.length - 1;
+
+  // La larghezza vera della scala, per decidere quali etichette ci stanno.
+  // Serve misurarla: le posizioni sono in percentuale, le etichette in pixel, e
+  // su un telefono le seconde non entrano piu' nelle prime. Zero (jsdom, o
+  // prima del primo layout) vuol dire "non so ancora": nel dubbio si disegna
+  // tutto, come prima di questa misura.
+  const scalaRef = useRef<HTMLDivElement | null>(null);
+  const [larghezzaScala, setLarghezzaScala] = useState(0);
+  useEffect(() => {
+    const el = scalaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const osservatore = new ResizeObserver(([voce]) => {
+      setLarghezzaScala(voce.contentRect.width);
+    });
+    osservatore.observe(el);
+    setLarghezzaScala(el.getBoundingClientRect().width);
+    return () => osservatore.disconnect();
+  }, []);
   // Per prossimita' (la stessa regola con cui inquadra() sceglie il
   // fotogramma da disegnare), non per uguaglianza stretta: durante la
   // riproduzione l'istante avanza con continuita' in millisecondi e non
@@ -90,13 +118,27 @@ export function TimelineScrubber({ asse, istante, cambia }: Props) {
     return frazione(i - 1) + dentro * (frazione(i) - frazione(i - 1));
   };
 
-  const taccheAsse = tacche(primo, finale)
+  const taccheTutte = tacche(primo, finale)
     .map((t) => ({ ...t, frazione: frazioneDelTempo(t.istante) }))
     .filter((t): t is typeof t & { frazione: number } => t.frazione !== null);
 
   // "Adesso" e' il riferimento che rende leggibile una scala che copre passato
   // e futuro: senza, per capire dove finisce l'analisi bisogna leggere le date.
   const frazioneAdesso = frazioneDelTempo(Date.now());
+
+  // Due tacche cadono e la ragione e' la stessa: un'etichetta che non ci sta
+  // non e' informazione, e' un pasticcio. Quella troppo vicina al bordo veniva
+  // tagliata a meta' dalla finestra (vista su telefono: "ven 2"), quella
+  // troppo vicina ad "adesso" ci finiva sopra. Vince "adesso", che dice da che
+  // parte si sta guardando e non e' ricavabile dal resto.
+  const taccheAsse = larghezzaScala === 0
+    ? taccheTutte
+    : taccheTutte.filter((t) => {
+        const x = t.frazione * larghezzaScala;
+        if (x < BORDO_PX || larghezzaScala - x < BORDO_PX) return false;
+        if (frazioneAdesso === null) return true;
+        return Math.abs(t.frazione - frazioneAdesso) * larghezzaScala >= ETICHETTA_PX;
+      });
 
   return (
     <div className="scrubber">
@@ -107,7 +149,7 @@ export function TimelineScrubber({ asse, istante, cambia }: Props) {
             })`
           : "nessun dato"}
       </div>
-      <div className="scrubber-scala" aria-hidden="true">
+      <div className="scrubber-scala" aria-hidden="true" ref={scalaRef}>
         {taccheAsse.map((t) => (
           <div
             key={t.istante}

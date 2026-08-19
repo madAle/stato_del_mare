@@ -98,11 +98,20 @@ select[aria-label="variabile"] {
   font-size: 0.9rem;
 }
 
+/* Su un telefono la barra e' piu' larga della finestra (misurato: 411 px in
+   390), e senza andare a capo il pezzo di destra sparisce senza che niente lo
+   sveli, perche' i pannelli non scorrono. Va a capo la barra, non i suoi campi:
+   una data spezzata a meta' e' peggio di una riga in piu'. */
 .barra-stato {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.15rem 0.75rem;
   padding: 0.5rem 0.9rem;
+  max-width: 100%;
+}
+
+.barra-stato > * {
   white-space: nowrap;
 }
 
@@ -139,17 +148,11 @@ select[aria-label="variabile"] {
  * del previsto, copriva un pezzo della traccia e intercettava i click
  * destinati al bottone "riproduci" (trovato da un test end to end).
  * Impilarli in verticale non richiede conoscere la larghezza di nessuno dei
- * due.
+ * due: adesso lo fa la fascia bassa, senza che nessuno dei due sappia
+ * l'altezza dell'altro (vedi in fondo).
  */
 .comandi-riproduzione {
-  right: 1rem;
-  /* Sopra lo scrubber, non addosso. Il valore segue l'altezza del pannello
-     dello scrubber, che con la scala del tempo e' cresciuto: era 6rem quando
-     la traccia stava da sola, e a 6rem i comandi coprivano le tacche di destra
-     (misurato, non supposto: si sovrapponevano di 17 px). Se un giorno lo
-     scrubber cambia altezza, questo numero va rimisurato, e il test
-     e2e/pannelli.spec.ts lo dice subito. */
-  bottom: 8.5rem;
+  align-self: flex-end;
   padding: 0.6rem 0.75rem;
   display: flex;
   align-items: center;
@@ -192,9 +195,6 @@ select[aria-label="variabile"] {
 
 /* Lo scrubber occupa tutta la fascia bassa della finestra, sotto i comandi di riproduzione. */
 .scrubber {
-  left: 1rem;
-  right: 1rem;
-  bottom: 1rem;
   padding: 0.6rem 0.9rem;
 }
 
@@ -270,7 +270,12 @@ select[aria-label="variabile"] {
   background: #1f2328;
 }
 
+/* Il pallino resta piccolo perche' deve lasciar vedere la traccia sotto, ma
+   14 px non si prendono con un dito (la linea guida e' 44). L'area sensibile si
+   allarga con uno pseudo-elemento invisibile: cresce il bersaglio, non il
+   segno. */
 .scrubber-slider-cursore {
+  position: relative;
   display: block;
   width: 14px;
   height: 14px;
@@ -278,6 +283,13 @@ select[aria-label="variabile"] {
   background: #1f2328;
   box-shadow: 0 0 0 2px #fff;
   cursor: pointer;
+}
+
+.scrubber-slider-cursore::after {
+  content: "";
+  position: absolute;
+  inset: -15px;
+  border-radius: 50%;
 }
 
 .scrubber-slider-cursore:focus-visible {
@@ -351,13 +363,6 @@ select[aria-label="variabile"] {
   color: rgba(0, 0, 0, 0.6);
 }
 
-/* Sotto questa larghezza i tre pannelli in alto si sovrapponevano: la barra di
-   stato sta al centro, la legenda a destra e il selettore a sinistra, e a
-   schermo stretto si incrociavano. Si impilano invece di accavallarsi. E'
-   anche la larghezza di un telefono, cioe' il modo piu' probabile di aprire
-   questa mappa. */
-
-
 /* Il selettore della tavolozza sta dentro il riquadro della legenda: e' una
    scelta di colore, quindi va letta accanto alla scala che cambia, non in un
    angolo diverso dello schermo. */
@@ -397,4 +402,74 @@ select[aria-label="variabile"] {
 .legenda,
 select[aria-label="variabile"] {
   position: static;
+}
+
+/* I due pannelli in basso, impilati dalla stessa idea della fascia alta: il
+   contenitore li mette in colonna, quindi nessuno dei due deve conoscere
+   l'altezza dell'altro. Prima i comandi stavano a `bottom: 8.5rem`, un numero
+   misurato a mano sull'altezza dello scrubber, e ogni riga aggiunta allo
+   scrubber lo falsificava: e' successo con la scala del tempo. */
+.fascia-bassa {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  /* Lascia in fondo la striscia dell'attribuzione di MapLibre, che vive
+     nell'angolo in basso a destra della mappa e altrimenti finisce sopra il
+     pannello dello scrubber (visto su telefono in entrambi gli orientamenti).
+     La distanza dipende dall'altezza dell'attribuzione, che e' stabile, non
+     dall'altezza dello scrubber, che cambia. Misurata: il controllo di MapLibre
+     e' alto 24 px e sta 10 px sopra il fondo, quindi occupa i 34 px in basso.
+     Se cambia, e' e2e/pannelli.spec.ts a dirlo, perche' controlla che
+     l'attribuzione non finisca sotto nessun pannello. */
+  bottom: 2.5rem;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  /* come la fascia alta: cliccabili i pannelli, non lo spazio fra loro */
+  pointer-events: none;
+}
+
+.fascia-bassa > * {
+  pointer-events: auto;
+}
+
+.scrubber,
+.comandi-riproduzione {
+  position: static;
+}
+
+/* Bersagli da dito. Si applica solo dove il puntatore e' grosso, cosi' il
+   disegno su schermo grande resta quello misurato dai test dei pannelli.
+   44 px e' la soglia sotto la quale un bersaglio si sbaglia. */
+@media (pointer: coarse) {
+  .comandi-riproduzione-play,
+  .comandi-riproduzione-velocita button,
+  select[aria-label="variabile"],
+  .selettore-tavolozza {
+    min-height: 44px;
+  }
+
+  .comandi-riproduzione-velocita button {
+    min-width: 44px;
+  }
+}
+
+/* Schermo basso, cioe' un telefono girato: 331 px di altezza, di cui lo
+   scrubber si prendeva 97. L'orologio dello scrubber ripete il momento che la
+   barra di stato scrive gia' in alto, quindi qui e' il primo a cedere: quei
+   pixel servono al mare, che e' la ragione per cui si apre questa mappa. */
+@media (max-height: 480px) {
+  .scrubber-orologio {
+    display: none;
+  }
+
+  .scrubber {
+    padding: 0.4rem 0.9rem;
+  }
+
+  .fascia-bassa {
+    gap: 0.35rem;
+  }
 }

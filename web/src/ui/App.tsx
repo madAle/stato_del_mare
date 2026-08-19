@@ -232,17 +232,22 @@ export function App({
           />
         </Legend>
       </div>
-      <TimelineScrubber asse={asse} istante={istante}
-        cambia={(i) => { setIstante(i); maniglie.current?.animazione.vaiA(i); }} />
-      <PlaybackControls
-        inRiproduzione={inRiproduzione}
-        cambia={(attiva) => {
-          setInRiproduzione(attiva);
-          if (attiva) maniglie.current?.animazione.riproduci();
-          else maniglie.current?.animazione.pausa();
-        }}
-        cambiaVelocita={(v) => maniglie.current?.animazione.impostaVelocita(v)}
-      />
+      {/* Come la fascia alta: il contenitore impila, quindi ne' i comandi ne'
+          lo scrubber devono conoscere l'altezza dell'altro. I comandi stanno
+          prima perche' vanno sopra. */}
+      <div className="fascia-bassa">
+        <PlaybackControls
+          inRiproduzione={inRiproduzione}
+          cambia={(attiva) => {
+            setInRiproduzione(attiva);
+            if (attiva) maniglie.current?.animazione.riproduci();
+            else maniglie.current?.animazione.pausa();
+          }}
+          cambiaVelocita={(v) => maniglie.current?.animazione.impostaVelocita(v)}
+        />
+        <TimelineScrubber asse={asse} istante={istante}
+          cambia={(i) => { setIstante(i); maniglie.current?.animazione.vaiA(i); }} />
+      </div>
     </main>
   );
 }

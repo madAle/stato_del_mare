@@ -1,6 +1,25 @@
 import { expect, test } from "@playwright/test";
 
-/** Il colore del campo si distingue dal mare della basemap: rosato contro azzurro. */
+/**
+ * Lo sfondo piatto dello stile minimo dei test, definito in src/main.tsx
+ * (`stileMinimoPerITest`). Se cambia li', questo test fallisce invece di
+ * passare per caso: e' il punto di riferimento rispetto a cui si decide se un
+ * pixel e' stato dipinto dal campo o no.
+ */
+const SFONDO = [190, 195, 200];
+/** Sotto questo scarto due colori sono lo stesso colore, per i nostri scopi. */
+const SCARTO = 12;
+
+/**
+ * Dipinto vuol dire "diverso dallo sfondo", non "di un certo colore".
+ *
+ * La prima versione chiedeva rosso > blu, cioe' dava per scontata la tavolozza
+ * `amp`. Quando il catalogo e' passato a `dense` il mare e' diventato azzurro e
+ * il test e' diventato rosso, pur essendo la mappa perfettamente corretta: il
+ * test verificava la tinta invece della presenza del campo, che e' la cosa che
+ * gli interessa davvero. Misurato il 2026-08-19 su questa inquadratura: al
+ * largo 226,251,255, sull'entroterra 190,195,200, cioe' lo sfondo esatto.
+ */
 async function dipinto(pagina: import("@playwright/test").Page, x: number, y: number) {
   const px = await pagina.evaluate(([px, py]) => {
     const tela = document.querySelector("canvas") as HTMLCanvasElement;
@@ -18,7 +37,7 @@ async function dipinto(pagina: import("@playwright/test").Page, x: number, y: nu
     const d = g.getImageData(px, py, 1, 1).data;
     return [d[0], d[1], d[2]];
   }, [x, y]);
-  return px[0] > px[2] + 8;
+  return Math.max(...px.map((c, i) => Math.abs(c - SFONDO[i]))) > SCARTO;
 }
 
 test("il campo si disegna dove c'e' il mare e non dove c'e' la terra", async ({ page }) => {
