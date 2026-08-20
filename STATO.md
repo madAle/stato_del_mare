@@ -526,6 +526,19 @@ più, e che vale la pena riconoscere al volo:
 La domanda che li trova tutti, e che vale la pena farsi in revisione: **questa
 riga sa davvero quello che dice di sapere?**
 
+**Il campo `sealevel` contiene la marea.** Verificato il 2026-08-20 estraendo la
+serie temporale e cercandone le periodicita': il periodo dominante e' **12,03 h**
+(semidiurno) con una seconda componente a 24,06 h, in tutti e tre i punti
+provati. La firma che conferma che il segnale e' quello vero e' geografica:
+l'ampiezza cresce andando a nord, da +-13 cm al largo di Bari a +-22 al largo di
+Rimini a +-35 davanti a Venezia, cioe' l'onda di marea che si amplifica contro
+l'estremita' chiusa del bacino. **Non e' pero' solo marea**: e' il livello
+totale, marea astronomica piu' contributo meteorologico (vento che ammassa acqua
+contro la costa, pressione). D'estate il secondo pezzo e' piccolo; l'acqua alta e'
+quando si somma al primo. Nota pratica: l'**analisi** del livello del mare e' a
+passo di **10 minuti** (1440 istanti in dieci giorni), non oraria come le altre
+grandezze, quindi su questa lo scorrimento nel passato e' sei volte piu' fine.
+
 **L'ora di pubblicazione ARPAE oscilla di sei ore, e il file delle onde e' fra
 gli ultimi.** I primi file della giornata escono alle 09:00 in punto tutti i
 giorni, ma `his_HPDwave_fc` e' in fondo alla catena: misurato su sette giorni
