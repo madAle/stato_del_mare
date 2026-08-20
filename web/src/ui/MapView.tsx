@@ -11,6 +11,7 @@ import { creaMappa, primoLivelloSimboli, type VistaIniziale } from "../map/mappa
 import { valoreCorrente } from "../map/proiezione";
 import type { Grandezza } from "./grandezze";
 import { inquadra as inquadraOre } from "../data/sorgente";
+import { LivelloParticelle } from "../map/livelloParticelle";
 import { Segnaposto } from "../map/segnaposto";
 import { haStatoDelMare } from "../map/soglie";
 import { creaStrozzatore } from "../map/strozzatore";
@@ -25,6 +26,7 @@ export function MapView({
   catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera, stile,
   preserveDrawingBuffer, vistaIniziale, puntoIniziale,
   alTempo, alValore, alPunto, alPronto, alVista, alErrore, isolinee: isolineeAccese, grandezza,
+  direzione, asseDirezione, prefetcherDirezione, scaleDirezione,
 }: {
   catalogo: Catalogo;
   variabile: Variabile;
@@ -78,6 +80,18 @@ export function MapView({
    * dati, non scelte di resa) ma dalla tabella in `ui/grandezze.ts`.
    */
   grandezza: Grandezza;
+  /** Se disegnare l'animazione della direzione dell'onda. */
+  direzione: boolean;
+  /**
+   * L'asse dei tempi **della direzione**, che non e' quello della grandezza
+   * scelta: il livello del mare e' archiviato ogni dieci minuti, e chiedere
+   * quegli istanti a un campo orario darebbe una sfilza di 404.
+   */
+  asseDirezione: Ora[];
+  /** Un prefetcher per campo: seno, coseno, periodo. */
+  prefetcherDirezione: Prefetcher[] | null;
+  /** Le scale dei tre campi, nello stesso ordine. */
+  scaleDirezione: [number, number, number];
 }) {
   const contenitore = useRef<HTMLDivElement>(null);
   // L'istanza delle isolinee vive dentro l'effetto di montaggio (a dipendenze
@@ -91,11 +105,19 @@ export function MapView({
   // una volta sola: senza il ref vedrebbero per sempre quella del primo render.
   const grandezzaRef = useRef(grandezza);
   grandezzaRef.current = grandezza;
+  const direzioneRef = useRef({ accesa: direzione, asse: asseDirezione, pref: prefetcherDirezione, scale: scaleDirezione });
+  direzioneRef.current = { accesa: direzione, asse: asseDirezione, pref: prefetcherDirezione, scale: scaleDirezione };
+  const particelleRef = useRef<LivelloParticelle | null>(null);
   // La funzione che chiede il ricalcolo vive anche lei dentro l'effetto di
   // montaggio: serve qui fuori per rifare le linee **subito** quando si
   // riaccendono, se no restano vuote fino al prossimo avanzamento del tempo,
   // che a mappa ferma non arriva mai.
   const chiediIsolinee = useRef<() => void>(() => {});
+  // Stessa ragione: l'asse e i campi della direzione arrivano da due query
+  // asincrone, e a mappa ferma nessun rapporto del tempo li va a raccogliere.
+  // Senza questo, accendere l'interruttore non fa niente finche' non si tocca
+  // qualcosa, che e' il modo in cui un comando sembra rotto.
+  const chiediDirezione = useRef<() => void>(() => {});
   // L'ultimo istante disegnato: il gestore di mousemove lo legge per mostrare
   // il valore del fotogramma che si vede a schermo, non quello con cui la
   // mappa e' stata montata. Un ref e non uno stato React, perche' alTempo gia'
@@ -207,9 +229,16 @@ export function MapView({
           (window as never as { __primoFrame: boolean }).__primoFrame = true;
         };
         livelloRef.current = livello;
+
+        // Le particelle stanno sopra il campo e sotto le etichette, come le
+        // isolinee: sono un secondo strato di lettura dello stesso mare.
+        const particelle = new LivelloParticelle("direzione-onda", catalogo.griglia);
+        particelleRef.current = particelle;
         // prima del primo livello di simboli: le etichette restano sopra il campo
         const sottoLeEtichette = primoLivelloSimboli(m.getStyle() as never);
         m.addLayer(livello, sottoLeEtichette);
+        m.addLayer(particelle, sottoLeEtichette);
+
         isolinee = new Isolinee(m, catalogo.griglia, sottoLeEtichette);
         isolineeRef.current = isolinee;
         isolinee.mostra(accese.current && haStatoDelMare(variabileRef.current.id));
@@ -293,10 +322,57 @@ export function MapView({
           asse: asseRef, prefetcher: prefetcherRef, cache,
           dissolvenza: { get current() { return grandezzaRef.current.dissolvenza; } },
         });
+        const aggiornaDirezione = (giaRiprovato = false) => {
+          const d = direzioneRef.current;
+          if (!d.accesa || !d.pref || d.asse.length === 0) { particelle.svuota(); return; }
+          const q = inquadraOre(d.asse, ultimoIstante.current);
+          if (!q) { particelle.svuota(); return; }
+          // Sei fotogrammi: tre campi per due ore. Se ne manca uno non si
+          // disegna niente invece di mescolare istanti diversi, che sarebbe
+          // un'animazione perfettamente fluida e sbagliata.
+          const chiesti = d.pref.map((p) => [
+            cache.prendi(p.chiave(q.prima)),
+            q.dopo ? cache.prendi(p.chiave(q.dopo)) ?? null : null,
+          ] as const);
+          // Si tiene pieno un piccolo margine davanti, come per il campo: senza,
+          // ogni ora nuova arriverebbe con l'animazione gia' ferma.
+          const indice = d.asse.indexOf(q.prima);
+          const mancano = chiesti.some(([a]) => !a);
+          if (indice >= 0) {
+            const arrivati = Promise.all(d.pref.map((p) => p.assicura(d.asse, indice, 1, 2)));
+            // A mappa ferma il ciclo di animazione non gira, quindi nessuno
+            // ripasserebbe di qui quando i fotogrammi arrivano: senza questa
+            // riga l'animazione resta spenta finche' non si tocca qualcosa, che
+            // e' il modo in cui un comando sembra rotto. Si riprova una volta
+            // sola, se no un fotogramma che non arriva mai diventa un ciclo.
+            if (mancano && !giaRiprovato) {
+              void arrivati.then(() => {
+                if (direzioneRef.current.accesa) aggiornaDirezione(true);
+              });
+            }
+          }
+          if (mancano) return;
+          particelle.imposta(
+            chiesti[0][0]!, q.dopo ? chiesti[0][1] : null,
+            chiesti[1][0]!, q.dopo ? chiesti[1][1] : null,
+            chiesti[2][0]!, q.dopo ? chiesti[2][1] : null,
+            q.dopo && chiesti.every(([, b]) => b) ? q.frazione : 0,
+            d.scale[0], d.scale[2],
+          );
+        };
+
+        // Le due query della direzione e la costruzione della mappa finiscono in
+        // ordine imprevedibile. L'effetto qui sopra copre "prima la mappa, poi i
+        // dati"; questa chiamata copre "prima i dati, poi la mappa", quando
+        // l'effetto ha gia' girato trovando ancora la funzione vuota.
+        chiediDirezione.current = aggiornaDirezione;
+        aggiornaDirezione();
+
         animazione.alTempo = (istante, stato) => {
           ultimoIstante.current = istante;
           aggiornaValore();
           aggiornaIsolinee();
+          aggiornaDirezione();
           alTempo(istante, stato);
         };
         alPronto({ animazione, livello });
@@ -350,6 +426,10 @@ export function MapView({
     isolineeRef.current?.mostra(isolineeVive);
     if (isolineeVive) chiediIsolinee.current();
   }, [isolineeVive]);
+
+  useEffect(() => {
+    chiediDirezione.current();
+  }, [direzione, asseDirezione, prefetcherDirezione]);
 
   return <div ref={contenitore} className="mappa" />;
 }

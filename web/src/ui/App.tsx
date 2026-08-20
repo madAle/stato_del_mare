@@ -73,6 +73,10 @@ export function App({
   // chi apre la mappa per la prima volta non sa di poterle chiedere. Si possono
   // togliere per guardare il colore pulito, e la scelta viaggia nell'URL.
   const [isolinee, setIsolinee] = useState(iniziale.isolinee ?? true);
+  // L'animazione della direzione e' spenta di casa: costa un asse dei tempi in
+  // piu' e tre campi per istante, e chi apre la mappa la prima volta cerca
+  // "com'e' il mare", non "da dove viene".
+  const [direzione, setDirezione] = useState(iniziale.direzione ?? false);
   // Il punto osservato non e' uno stato che ridisegna: il segno lo tiene
   // MapLibre, il valore lo scrive lo strato mappa. Serve solo a finire
   // nell'URL, quindi vive in un ref come zoom e centro.
@@ -101,6 +105,8 @@ export function App({
   paletteRef.current = palette;
   const isolineeRef = useRef(isolinee);
   isolineeRef.current = isolinee;
+  const direzioneRef = useRef(direzione);
+  direzioneRef.current = direzione;
   // Zoom e centro veri, riportati da MapView a ogni "moveend" (vedi
   // MapView.tsx): prima di questo ref l'URL non li conosceva mai e
   // scriveva sempre null, cancellando la vista di un link condiviso.
@@ -123,6 +129,7 @@ export function App({
         centro: vistaRef.current?.centro ?? null,
         punto: puntoRef.current ? [puntoRef.current.lat, puntoRef.current.lng] : null,
         isolinee: isolineeRef.current,
+        direzione: direzioneRef.current,
       }));
     }, 1000),
     [],
@@ -188,12 +195,36 @@ export function App({
     return tutte.filter((o) => o.istante > adesso - INDIETRO_MS && o.istante < adesso + AVANTI_MS);
   }, [assi.data, iniziale.istante]);
 
+  // La direzione ha un asse dei tempi **suo**: il livello del mare, per
+  // esempio, e' archiviato ogni dieci minuti, e chiedere quegli istanti ai
+  // campi della direzione (che sono orari) darebbe una sfilza di 404. Si carica
+  // solo quando serve davvero.
+  const campiDirezione = ["dwave_sin", "dwave_cos", "pwave"] as const;
+  const specDirezione = campiDirezione.map((c) => variabili.find((v) => v.id === c));
+  const asseDirezione = useQuery({
+    queryKey: ["asseDirezione", specDirezione[0]?.tipi.an.mesi.join()],
+    enabled: direzione && specDirezione.every(Boolean),
+    queryFn: async () => asseDeiTempi(
+      await leggiIndice("dwave_sin", "an", specDirezione[0]!.tipi.an.mesi),
+      await leggiIndice("dwave_sin", "fc", specDirezione[0]!.tipi.fc.mesi),
+    ),
+  });
+
   const cache = useMemo(() => new CacheFrame(), []);
   const prefetcher = useMemo(
     () => new Prefetcher(cache, scelta?.id ?? variabile, (ora: Ora) =>
       leggiFrame(urlFrame(scelta?.id ?? variabile, ora.tipo, ora.riferimento, new Date(ora.istante)),
                  catalogo.data!.griglia)),
     [cache, scelta?.id, variabile, catalogo.data],
+  );
+
+  const prefetcherDirezione = useMemo(
+    () => (catalogo.data
+      ? campiDirezione.map((campo) => new Prefetcher(cache, campo, (ora: Ora) =>
+          leggiFrame(urlFrame(campo, ora.tipo, ora.riferimento, new Date(ora.istante)),
+                     catalogo.data!.griglia)))
+      : null),
+    [cache, catalogo.data],
   );
 
   // Un catalogo o un asse che non arrivano sono la stessa categoria di guasto
@@ -260,6 +291,10 @@ export function App({
         puntoIniziale={puntoRef.current}
         isolinee={isolinee}
         grandezza={grandezza!}
+        direzione={direzione && Boolean(asseDirezione.data) && Boolean(prefetcherDirezione)}
+        asseDirezione={asseDirezione.data ?? []}
+        prefetcherDirezione={prefetcherDirezione}
+        scaleDirezione={specDirezione.map((v) => v?.scala ?? 1) as [number, number, number]}
         alTempo={(i, s) => {
           setIstante(i); setStato(s);
           istanteRef.current = i;
@@ -309,6 +344,21 @@ export function App({
               }}
             />
             isolinee
+          </label>
+          {/* L'animazione della direzione: le particelle vanno dove l'onda va,
+              e la loro velocita' viene dal periodo (c = g T / 2 pi), non da un
+              numero scelto a mano. */}
+          <label className="interruttore">
+            <input
+              type="checkbox"
+              checked={direzione}
+              onChange={(e) => {
+                direzioneRef.current = e.target.checked;
+                setDirezione(e.target.checked);
+                strozzatoreUrl.invia();
+              }}
+            />
+            direzione
           </label>
         </Legend>
       </div>

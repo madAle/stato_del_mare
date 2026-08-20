@@ -42,7 +42,7 @@ test("passando al periodo cambiano scala, unita', numero e isolinee", async ({ p
   expect(await page.evaluate(
     () => (window as never as { __mappa: Mappa }).__mappa.querySourceFeatures("isolinee").length,
   )).toBe(0);
-  await expect(page.locator(".interruttore input")).toBeDisabled();
+  await expect(page.getByLabel("isolinee")).toBeDisabled();
 
   expect(errori, "errori in console cambiando grandezza").toEqual([]);
 });
@@ -113,4 +113,54 @@ test("una tavolozza scelta sull'onda non segue sul livello del mare", async ({ p
   await page.getByLabel("variabile").selectOption("sealevel");
   await page.waitForTimeout(3000);
   await expect(page.getByLabel("tavolozza dei colori")).toHaveValue("balance");
+});
+
+/**
+ * L'animazione della direzione dell'onda.
+ *
+ * Si guardano i numeri del livello e non i pixel: un'animazione che non si vede
+ * puo' essere spenta per cinque ragioni diverse, e a schermo sono tutte
+ * identiche, cioe' niente. La prima volta trovare quella giusta e' costato
+ * un'ora, e la ragione vera (le scie erano lunghe un quarto di pixel) da uno
+ * screenshot non si sarebbe vista mai.
+ */
+type Livello = { implementation?: { diagnosi: Record<string, number | boolean> } };
+
+test("le particelle della direzione si muovono davvero", async ({ page }) => {
+  const errori: string[] = [];
+  page.on("console", (m) => { if (m.type() === "error") errori.push(m.text()); });
+  page.on("pageerror", (e) => errori.push(String(e)));
+
+  await pronta(page, "?t=2026-08-16T12:00Z&z=7&c=44.2,13.6&dir=1&iso=0");
+  const diagnosi = async () => page.evaluate(() => {
+    const l = (window as never as { __mappa: { getLayer(id: string): Livello } })
+      .__mappa.getLayer("direzione-onda");
+    return l?.implementation?.diagnosi ?? null;
+  });
+  await expect.poll(async () => (await diagnosi())?.vertici ?? 0, { timeout: 25_000 })
+    .toBeGreaterThan(1000);
+
+  const d = (await diagnosi())!;
+  expect(d.campi, "i tre campi non sono arrivati").toBe(true);
+  expect(d.particelle, "nessuna particella e' nata").toBeGreaterThan(100);
+  // Il fattore di velocita' dipende dallo zoom: se fosse zero le particelle
+  // starebbero ferme, e a schermo sarebbe identico a "non ci sono".
+  expect(d.fattore, "le particelle sono ferme").toBeGreaterThan(0);
+  expect(d.pixelPerCella, "la scala della griglia non e' nota").toBeGreaterThan(0);
+  expect(errori).toEqual([]);
+});
+
+test("spegnendo la direzione le particelle spariscono e non si calcolano piu'", async ({ page }) => {
+  await pronta(page, "?t=2026-08-16T12:00Z&z=7&c=44.2,13.6&dir=1&iso=0");
+  const vertici = async () => page.evaluate(() => {
+    const l = (window as never as { __mappa: { getLayer(id: string): Livello } })
+      .__mappa.getLayer("direzione-onda");
+    return l?.implementation?.diagnosi.vertici ?? 0;
+  });
+  await expect.poll(vertici, { timeout: 25_000 }).toBeGreaterThan(1000);
+
+  await page.getByLabel("direzione").uncheck();
+  await page.waitForTimeout(1500);
+  expect(await vertici(), "le particelle continuano a girare da spente").toBe(0);
+  await expect.poll(() => page.evaluate(() => location.search), { timeout: 5000 }).toMatch(/dir=0/);
 });

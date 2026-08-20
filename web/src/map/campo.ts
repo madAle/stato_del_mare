@@ -1,7 +1,7 @@
 import type { CustomLayerInterface, Map as MappaLibre } from "maplibre-gl";
 import type { Griglia } from "../data/catalogo";
 import { paletteDi } from "./colormap";
-import { aMercatore } from "./proiezione";
+import { quadroGriglia } from "./proiezione";
 import { FRAMMENTO, VERTICE } from "./shader";
 
 /**
@@ -140,10 +140,7 @@ export class LivelloCampo implements CustomLayerInterface {
     // Il quadrilatero in coordinate mercatore normalizzate di MapLibre. La y
     // cresce verso sud, quindi il nord ha la y piu' PICCOLA: scriverlo al
     // contrario disegna il campo capovolto senza nessun errore.
-    const b = this.opzioni.griglia.boundsLonLat;
-    const nw = mercatoreNormalizzato(b.ovest, b.nord);
-    const se = mercatoreNormalizzato(b.est, b.sud);
-    this.quad = { x0: nw.x, y0: se.y, x1: se.x, y1: nw.y };
+    this.quad = quadroGriglia(this.opzioni.griglia.boundsLonLat);
   }
 
   onRemove(_mappa: MappaLibre, gl: WebGL2RenderingContext): void {
@@ -305,9 +302,3 @@ export class LivelloCampo implements CustomLayerInterface {
   }
 }
 
-/** Mercatore normalizzato [0,1] come lo vuole MapLibre, y crescente verso sud. */
-function mercatoreNormalizzato(lon: number, lat: number): { x: number; y: number } {
-  const m = aMercatore(lon, lat);
-  const meta = Math.PI * 6378137.0;
-  return { x: (m.x + meta) / (2 * meta), y: (meta - m.y) / (2 * meta) };
-}

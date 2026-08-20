@@ -120,3 +120,29 @@ export function valoreCorrente(
   if (b === null) return a;
   return a + (b - a) * q.frazione;
 }
+
+/** Mercatore normalizzato [0,1] come lo vuole MapLibre, y crescente verso sud. */
+export function mercatoreNormalizzato(lon: number, lat: number): { x: number; y: number } {
+  const m = aMercatore(lon, lat);
+  const meta = Math.PI * 6378137.0;
+  return { x: (m.x + meta) / (2 * meta), y: (meta - m.y) / (2 * meta) };
+}
+
+/**
+ * Il rettangolo della griglia in coordinate di MapLibre.
+ *
+ * Sta qui e non dentro un livello perche' lo usano in due (il campo e le
+ * particelle) e devono usarne **lo stesso**: se i due lo calcolassero per conto
+ * proprio, una differenza di mezza cella farebbe scivolare le frecce rispetto
+ * al colore, e sarebbe un difetto che si vede solo ingrandendo molto.
+ *
+ * La y cresce verso sud, quindi il nord ha la y piu' PICCOLA: scriverlo al
+ * contrario disegna tutto capovolto senza nessun errore.
+ */
+export function quadroGriglia(
+  bounds: { ovest: number; est: number; sud: number; nord: number },
+): { x0: number; y0: number; x1: number; y1: number } {
+  const nw = mercatoreNormalizzato(bounds.ovest, bounds.nord);
+  const se = mercatoreNormalizzato(bounds.est, bounds.sud);
+  return { x0: nw.x, y0: se.y, x1: se.x, y1: nw.y };
+}

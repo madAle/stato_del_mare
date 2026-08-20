@@ -21,6 +21,8 @@ export type StatoUrl = {
    * comprese le linee che uno aveva tolto per vedere il campo pulito.
    */
   isolinee: boolean | null;
+  /** Se l'animazione della direzione dell'onda e' accesa. */
+  direzione: boolean | null;
 };
 
 // Legge lo stato dalla query string dell'URL.
@@ -105,7 +107,12 @@ export function leggiStatoUrl(ricerca: string): StatoUrl {
   if (isoStr === "1") isolinee = true;
   else if (isoStr === "0") isolinee = false;
 
-  return { istante, variabile, palette, zoom, centro, punto, isolinee };
+  let direzione: boolean | null = null;
+  const dirStr = params.get("dir");
+  if (dirStr === "1") direzione = true;
+  else if (dirStr === "0") direzione = false;
+
+  return { istante, variabile, palette, zoom, centro, punto, isolinee, direzione };
 }
 
 // Scrive lo stato sulla query string dell'URL.
@@ -141,6 +148,10 @@ export function scriviStatoUrl(stato: StatoUrl): string {
 
   if (stato.isolinee !== null) {
     params.set("iso", stato.isolinee ? "1" : "0");
+  }
+
+  if (stato.direzione !== null) {
+    params.set("dir", stato.direzione ? "1" : "0");
   }
 
   const str = params.toString();

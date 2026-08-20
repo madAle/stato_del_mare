@@ -285,10 +285,19 @@ Niente.
    estremi sono simmetrici (-0,8 / +0,8 m, misurati) e la tavolozza e'
    divergente, perche' con una sequenziale lo zero non avrebbe un colore suo.
 
-   Restano due, e sono lo stesso lavoro:
-   - **direzione** e **corrente**: non sono campi scalari, vogliono **frecce**,
-     due campi da ricomporre e una densita' per livello di zoom. Non e'
-     "accendere un layer": e' un motore di disegno nuovo.
+   La **direzione dell'onda** e' fatta il 2026-08-20, ma non come layer: e' una
+   **sovrapposizione animata a particelle** (interruttore "direzione" accanto a
+   "isolinee", `dir=1` nell'URL), perche' una direzione non ha grandezza da
+   colorare e le frecce statiche dicono meta' della cosa. Il moto sta in
+   `web/src/map/particelle.ts` (puro, dodici test), il disegno in
+   `livelloParticelle.ts`. La velocita' viene dalla fisica (`c = g T / 2 pi`,
+   col periodo dall'archivio), non da un numero scelto.
+
+   Resta la **corrente**: stesso motore, ma ha un modulo, quindi puo' essere un
+   layer a se' (colore = velocita', particelle = verso). E resta la voce
+   "direzione dell'onda" nel selettore, che l'utente ha chiesto in aggiunta alla
+   sovrapposizione: **una sola implementazione**, cioe' le stesse particelle su
+   un fondo neutro, se no i due modi divergono.
 
    Nomi, accorpamento delle componenti e scelte di resa stanno in
    `web/src/ui/grandezze.ts`. **Vincolo da sciogliere prima della direzione**:
