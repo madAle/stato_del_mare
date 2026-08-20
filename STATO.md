@@ -256,7 +256,16 @@ Niente.
    discrete, perche' con i gradini Douglas in basso l'Adriatico estivo cadrebbe
    tutto in una classe. Dettaglio nelle decisioni 57-60 e 64-70.
 
-11. **Dati misurati dalle boe ondametriche, accanto al modello.** Richiesta del
+11. **Le altre variabili del catalogo non si disegnano ancora.** Il selettore
+   le elenca (altezza d'onda, periodo, direzione, corrente, livello del mare) ma
+   solo l'altezza d'onda e' selezionabile: le altre restano disabilitate con la
+   spiegazione, perche' selezionarne una lascerebbe la legenda su un'unita' e la
+   mappa a disegnarne un'altra. Direzione e corrente non sono campi scalari:
+   vogliono frecce, non una rampa di colore, quindi non e' "accendere un
+   layer". I nomi e l'accorpamento delle componenti (`dwave_sin`+`dwave_cos`,
+   `ubar`+`vbar`) stanno in `web/src/ui/grandezze.ts`.
+
+12. **Dati misurati dalle boe ondametriche, accanto al modello.** Richiesta del
    2026-08-20. Oggi la mappa non contiene **nessuna misura**: analisi e
    previsione sono lo stesso modello con due forzanti diverse (lo dice la
    descrizione del dataset ARPAE: i file `an` sono "forzati da analisi

@@ -55,17 +55,33 @@ describe("LayerSwitcher", () => {
 
   it("lascia selezionabile solo la variabile che la mappa disegna davvero", () => {
     render(<LayerSwitcher variabili={variabili} scelta="hwave" cambia={() => {}} />);
-    const hwave = screen.getByRole("option", { name: "hwave" }) as HTMLOptionElement;
-    const sealevel = screen.getByRole("option", { name: "sealevel" }) as HTMLOptionElement;
-    expect(hwave.disabled).toBe(false);
-    expect(sealevel.disabled).toBe(true);
+    const onda = screen.getByRole("option", { name: "altezza d'onda" }) as HTMLOptionElement;
+    const livello = screen.getByRole("option", { name: "livello del mare" }) as HTMLOptionElement;
+    expect(onda.disabled).toBe(false);
+    expect(livello.disabled).toBe(true);
   });
 
   it("spiega perche' le altre variabili sono disabilitate", () => {
     // senza una spiegazione visibile, un comando disabilitato sembra un guasto
     render(<LayerSwitcher variabili={variabili} scelta="hwave" cambia={() => {}} />);
-    const sealevel = screen.getByRole("option", { name: "sealevel" }) as HTMLOptionElement;
-    expect(sealevel.title).toMatch(/altezza d'onda/);
+    const livello = screen.getByRole("option", { name: "livello del mare" }) as HTMLOptionElement;
+    expect(livello.title).toMatch(/altezza d'onda/);
+  });
+
+  it("scrive nomi leggibili, non gli identificatori dell'archivio", () => {
+    // "hwave" in un menu di un sito pubblico non vuol dire niente a nessuno, e
+    // "dwave_sin" e' peggio: e' il seno di un angolo, cioe' come il dato e'
+    // conservato, non una grandezza che qualcuno voglia guardare.
+    const conComponenti: Variabile[] = [
+      ...variabili,
+      { id: "dwave_sin", unita: "1", scala: 1e-4, offset: 0, colormap: "phase", tipi: { an: { mesi: [] }, fc: { mesi: [] } } },
+      { id: "dwave_cos", unita: "1", scala: 1e-4, offset: 0, colormap: "phase", tipi: { an: { mesi: [] }, fc: { mesi: [] } } },
+    ];
+    render(<LayerSwitcher variabili={conComponenti} scelta="hwave" cambia={() => {}} />);
+    expect(screen.queryByRole("option", { name: "hwave" })).toBeNull();
+    expect(screen.queryByRole("option", { name: /dwave/ })).toBeNull();
+    // e le due componenti sono una voce sola
+    expect(screen.getAllByRole("option", { name: "direzione dell'onda" })).toHaveLength(1);
   });
 });
 
