@@ -34,15 +34,24 @@ describe("lo stato del mare secondo Douglas", () => {
     for (const s of SOGLIE) expect(s.nome).toBe(true);
   });
 
-  it("l'etichetta della linea dice lo stesso nome del numero sotto il dito", () => {
-    // Due formattatori diversi sono il modo in cui la linea e la barra di stato
-    // cominciano a contraddirsi: la linea a 0,5 m non puo' dire "mosso" mentre
-    // il valore misurato li' sopra dice "poco mosso".
+  it("sulla linea va solo l'altezza: il nome del grado sta accanto al valore misurato", () => {
+    // La corsa lungo una curva e' il posto piu' stretto dell'interfaccia: una
+    // etichetta lunga il triplo si scavalla con la vicina o non compare
+    // affatto. Il nome sta dove c'e' spazio per dirlo.
+    expect(etichettaSoglia(0.5)).toBe("0,5 m");
+    expect(etichettaSoglia(1.25)).toBe("1,25 m");
+    for (const s of SOGLIE) expect(etichettaSoglia(s.valore)).not.toContain(statoDelMare(s.valore));
+  });
+
+  it("ma il valore misurato **sulla** linea dice il grado che quella linea apre", () => {
+    // E' l'aggancio fra i due: chi appoggia il dito sulla linea da 0,5 m legge
+    // "mosso", cioe' il grado che quella linea comincia. Se il confine
+    // appartenesse al grado che chiude, la linea e il dito direbbero cose
+    // diverse nello stesso punto.
     for (const s of SOGLIE) {
-      expect(etichettaSoglia(s.valore)).toContain(statoDelMare(s.valore));
+      expect(scriviValoreEStato(s.valore, "m", "hwave")).toContain(statoDelMare(s.valore));
     }
-    expect(etichettaSoglia(0.5)).toBe("0,5 m · mosso");
-    expect(etichettaSoglia(1.25)).toBe("1,25 m · molto mosso");
+    expect(scriviValoreEStato(0.5, "m", "hwave")).toBe("0,50 m · mosso");
   });
 });
 

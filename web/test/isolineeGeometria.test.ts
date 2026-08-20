@@ -103,9 +103,9 @@ describe("le linee prodotte", () => {
     for (const f of fc.features) {
       const p = f.properties!;
       // ogni soglia e' un confine di classe Douglas, quindi porta sempre il
-      // nome, e l'etichetta dice altezza e stato che comincia li'
+      // numero; il nome del grado sta accanto al valore misurato, non qui
       expect(p.nome).toBe(true);
-      expect(String(p.etichetta)).toMatch(/^\d+(,\d+)? m · \w/);
+      expect(String(p.etichetta)).toMatch(/^\d+(,\d+)? m$/);
     }
   });
 
@@ -233,7 +233,7 @@ describe("il numero sulle isolinee", () => {
     const anello = linee[0].geometry as GeoJSON.LineString;
     expect(anello.coordinates[0]).toEqual(anello.coordinates[anello.coordinates.length - 1]);
     expect(numeri).toHaveLength(1);
-    expect(numeri[0].properties!.etichetta).toBe("0,5 m · mosso");
+    expect(numeri[0].properties!.etichetta).toBe("0,5 m");
     expect(numeri[0].properties!.valore).toBe(0.5);
     expect(Number.isFinite(numeri[0].properties!.gradi as number)).toBe(true);
   });

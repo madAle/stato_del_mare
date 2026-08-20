@@ -62,10 +62,9 @@ test("ogni linea e' un confine Douglas e lo scrive col nome dello stato", async 
   for (const c of coppie) {
     expect(DOUGLAS, `la soglia ${c.valore} non e' un confine Douglas`).toContain(c.valore);
     expect(c.nome, `la soglia ${c.valore} dovrebbe portare il nome`).toBe(true);
-    // L'etichetta dice l'altezza **e lo stato che comincia li'**: e' la
-    // risposta alla domanda per cui la mappa esiste, e attraversare la linea
-    // vuol dire passare da un mare che ha un nome a un altro.
-    expect(c.etichetta).toMatch(/^\d+(,\d+)? m · [a-z ]+$/);
+    // Sulla linea va solo l'altezza: il nome del grado sta accanto al valore
+    // misurato, dove c'e' spazio per scriverlo.
+    expect(c.etichetta).toMatch(/^\d+(,\d+)? m$/);
   }
 });
 

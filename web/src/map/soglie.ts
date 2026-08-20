@@ -103,13 +103,15 @@ export const SOGLIE: readonly Soglia[] = GRADI
 export const VALORI_SOGLIA: readonly number[] = SOGLIE.map((s) => s.valore);
 
 /**
- * L'etichetta di una soglia: l'altezza e lo stato che comincia li'.
+ * L'etichetta di una soglia: solo l'altezza.
  *
- * Il nome sta sulla linea e non solo nella barra di stato perche' e' la
- * risposta alla domanda per cui la mappa esiste: attraversare quella linea vuol
- * dire passare da un mare che ha un nome a un altro. Con i soli confini Douglas
- * le linee sono poche, quindi un'etichetta piu' lunga ci sta senza affollare.
+ * Il nome del grado (`mosso`, `poco mosso`) sta accanto al **valore misurato**,
+ * nella barra di stato e sul segnaposto, non sulla linea. Sulla linea sarebbe
+ * lungo il triplo e la corsa lungo la curva e' il posto piu' stretto che
+ * l'interfaccia abbia: un'etichetta lunga su una linea che gira si spezza, si
+ * scavalla con la vicina o non compare affatto. Che ogni linea sia comunque un
+ * confine di classe resta vero, e resta scritto dove c'e' spazio per dirlo.
  */
 export function etichettaSoglia(valore: number): string {
-  return `${valore.toString().replace(".", ",")} m · ${statoDelMare(valore)}`;
+  return `${valore.toString().replace(".", ",")} m`;
 }
