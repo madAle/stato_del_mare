@@ -1,10 +1,18 @@
 import type React from "react";
 import { coloreA } from "../map/colormap";
 
+/** Come si scrive un estremo della scala: virgola italiana, zero senza decimali. */
+function estremo(v: number, unita: string): string {
+  const n = Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0$/, "").replace(".", ",");
+  return `${n} ${unita}`;
+}
+
 export function Legend({
-  palette, massimo, unita, children,
+  palette, minimo, massimo, unita, children,
 }: {
   palette: string;
+  /** Fondoscala basso: negativo per le grandezze con segno, che vogliono lo zero in mezzo. */
+  minimo: number;
   massimo: number;
   unita: string;
   /** Il selettore della tavolozza: sta dentro la legenda perche' e' una scelta
@@ -17,9 +25,9 @@ export function Legend({
   });
   return (
     <div className="legenda">
-      <span>0 {unita}</span>
+      <span>{estremo(minimo, unita)}</span>
       <div className="scala" style={{ background: `linear-gradient(90deg, ${tappe.join(",")})` }} />
-      <span>{massimo} {unita}</span>
+      <span>{estremo(massimo, unita)}</span>
       {children}
     </div>
   );

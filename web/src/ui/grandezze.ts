@@ -29,6 +29,12 @@ export type Grandezza = {
   /** I campi del catalogo che la compongono, nell'ordine in cui servono. */
   campi: string[];
   /**
+   * Il valore in fondo alla scala di colore. Zero per le grandezze positive,
+   * negativo per quelle che hanno segno: con la scala ancorata a zero, meta'
+   * del livello del mare finirebbe schiacciata nello stesso colore.
+   */
+  minimo: number;
+  /**
    * Il valore in cima alla scala di colore.
    *
    * Non si ricava dal dato: un massimo calcolato sul fotogramma corrente
@@ -54,7 +60,7 @@ const TABELLA: readonly Grandezza[] = [
     id: "hwave", nome: "altezza d'onda", unita: "m", campi: ["hwave"],
     // Quattro metri e' il confine fra "agitato" e "molto agitato" nella scala
     // Douglas: sopra, in Adriatico, si va di rado.
-    massimo: 4, dissolvenza: true, disegnabile: true,
+    minimo: 0, massimo: 4, dissolvenza: true, disegnabile: true,
   },
   {
     id: "pwave", nome: "periodo dell'onda", unita: "s", campi: ["pwave"],
@@ -63,7 +69,7 @@ const TABELLA: readonly Grandezza[] = [
     // 7,37. Otto lascia margine senza schiacciare in fondo alla rampa i valori
     // veri, che stanno fra 2,4 e 5,1 nell'88 per cento del mare. **Sopra gli 8
     // secondi la scala satura**: da rivedere con un inverno di dati.
-    massimo: 8,
+    minimo: 0, massimo: 8,
     // Niente dissolvenza: 17 livelli in progressione geometrica (griglia delle
     // frequenze di SWAN), interpolarli inventerebbe periodi che non esistono.
     dissolvenza: false, disegnabile: true,
@@ -73,16 +79,22 @@ const TABELLA: readonly Grandezza[] = [
     id: "dwave", nome: "direzione dell'onda", unita: "gradi",
     campi: ["dwave_sin", "dwave_cos"],
     // Una direzione non si disegna con una rampa: vuole le frecce.
-    massimo: 360, dissolvenza: true, disegnabile: false,
+    minimo: 0, massimo: 360, dissolvenza: true, disegnabile: false,
   },
   {
     id: "corrente", nome: "corrente", unita: "m/s", campi: ["ubar", "vbar"],
-    massimo: 1, dissolvenza: true, disegnabile: false,
+    minimo: 0, massimo: 1, dissolvenza: true, disegnabile: false,
   },
   {
     id: "sealevel", nome: "livello del mare", unita: "m", campi: ["sealevel"],
-    // Ha segno: vuole una scala centrata sullo zero, che la legenda non sa fare.
-    massimo: 1, dissolvenza: true, disegnabile: false,
+    // Ha segno, quindi la scala e' **simmetrica**: se non lo fosse, lo zero non
+    // cadrebbe in mezzo alla tavolozza divergente e il colore neutro non
+    // vorrebbe piu' dire "livello medio". Misurato su tutto l'archivio (288
+    // fotogrammi fra analisi e previsione): da -0,654 a +0,575 m, con meta' del
+    // mare fra -0,06 e +0,09. Zero virgola otto copre il misurato con margine;
+    // **sopra satura**, e un'acqua alta vera lo supera, quindi va rivisto con
+    // un inverno di dati.
+    minimo: -0.8, massimo: 0.8, dissolvenza: true, disegnabile: true,
   },
 ];
 
@@ -116,7 +128,7 @@ export function grandezzeDi(variabili: Variabile[]): Grandezza[] {
       gia.add(v.id);
       fuori.push({
         id: v.id, nome: v.id, unita: v.unita, campi: [v.id],
-        massimo: 1, dissolvenza: true, disegnabile: false,
+        minimo: 0, massimo: 1, dissolvenza: true, disegnabile: false,
       });
     }
   }

@@ -27,7 +27,8 @@ uniform float u_limiteDato;    // fondoscala della distanza dal dato, in metri
 uniform float u_margine;       // quanto stare lontani dalla riva, in metri
 uniform vec2 u_dim;            // larghezza, altezza in celle
 uniform float u_scala;         // da intero a unita' fisica
-uniform float u_massimo;       // fondoscala della colorazione
+uniform float u_minimo;        // fondoscala basso della colorazione
+uniform float u_massimo;       // fondoscala alto della colorazione
 uniform float u_opacita;
 
 const int NODATA = -32768;
@@ -100,7 +101,10 @@ void main() {
     valore = va;
   }
 
-  float t = clamp(valore * u_scala / u_massimo, 0.0, 1.0);
+  // Fra minimo e massimo, non fra zero e massimo: il livello del mare ha segno,
+  // e con la scala ancorata a zero tutti i valori negativi finivano schiacciati
+  // nello stesso colore, cioe' meta' del fenomeno sarebbe stata invisibile.
+  float t = clamp((valore * u_scala - u_minimo) / (u_massimo - u_minimo), 0.0, 1.0);
   vec3 colore = texture(u_palette, vec2(t, 0.5)).rgb;
   fragColor = vec4(colore, u_opacita * bordo * dissolvenza);
 }`;

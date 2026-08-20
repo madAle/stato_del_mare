@@ -34,10 +34,18 @@ describe("StatusBar", () => {
 });
 
 describe("Legend", () => {
-  it("mostra il fondoscala con l'unita' del catalogo", () => {
-    render(<Legend palette="amp" massimo={4} unita="m" />);
+  it("mostra i due fondoscala con l'unita'", () => {
+    render(<Legend palette="amp" minimo={0} massimo={4} unita="m" />);
     expect(screen.getByText("0 m")).toBeDefined();
     expect(screen.getByText("4 m")).toBeDefined();
+  });
+
+  it("su una grandezza con segno scrive anche il fondo negativo", () => {
+    // Il livello del mare va sotto lo zero: una legenda che parte da zero
+    // direbbe che meta' del fenomeno non esiste.
+    render(<Legend palette="balance" minimo={-0.8} massimo={0.8} unita="m" />);
+    expect(screen.getByText("-0,8 m")).toBeDefined();
+    expect(screen.getByText("0,8 m")).toBeDefined();
   });
 });
 
@@ -58,14 +66,20 @@ describe("LayerSwitcher", () => {
     const onda = screen.getByRole("option", { name: "altezza d'onda" }) as HTMLOptionElement;
     const livello = screen.getByRole("option", { name: "livello del mare" }) as HTMLOptionElement;
     expect(onda.disabled).toBe(false);
-    expect(livello.disabled).toBe(true);
+    expect(livello.disabled).toBe(false);
   });
 
   it("spiega perche' le altre variabili sono disabilitate", () => {
     // senza una spiegazione visibile, un comando disabilitato sembra un guasto
-    render(<LayerSwitcher variabili={variabili} scelta="hwave" cambia={() => {}} />);
-    const livello = screen.getByRole("option", { name: "livello del mare" }) as HTMLOptionElement;
-    expect(livello.title).toMatch(/scala col segno/);
+    const conDirezione: Variabile[] = [
+      ...variabili,
+      { id: "dwave_sin", unita: "1", scala: 1e-4, offset: 0, colormap: "phase", tipi: { an: { mesi: [] }, fc: { mesi: [] } } },
+      { id: "dwave_cos", unita: "1", scala: 1e-4, offset: 0, colormap: "phase", tipi: { an: { mesi: [] }, fc: { mesi: [] } } },
+    ];
+    render(<LayerSwitcher variabili={conDirezione} scelta="hwave" cambia={() => {}} />);
+    const direzione = screen.getByRole("option", { name: "direzione dell'onda" }) as HTMLOptionElement;
+    expect(direzione.disabled).toBe(true);
+    expect(direzione.title).toMatch(/frecce/);
   });
 
   it("scrive nomi leggibili, non gli identificatori dell'archivio", () => {

@@ -77,7 +77,40 @@ test("un link con ?var=pwave apre direttamente il periodo", async ({ page }) => 
 test("un link con una grandezza non disegnabile ricade sull'altezza d'onda", async ({ page }) => {
   // Aprire la mappa su una grandezza che non si sa disegnare lascerebbe la
   // legenda su un'unita' e il campo su un'altra fin dal primo render.
-  await pronta(page, "?t=2026-08-16T12:00Z&z=7&c=44.2,13.6&var=corrente");
+  await pronta(page, "?t=2026-08-16T12:00Z&z=7&c=44.2,13.6&var=dwave");
   await expect(page.getByLabel("variabile")).toHaveValue("hwave");
   await expect(page.locator(".legenda")).toContainText("4 m");
+});
+
+test("il livello del mare ha la scala col segno e una tavolozza divergente", async ({ page }) => {
+  const errori: string[] = [];
+  page.on("console", (m) => { if (m.type() === "error") errori.push(m.text()); });
+
+  await pronta(page, "?t=2026-08-16T12:00Z&z=7&c=44.2,13.6&var=sealevel");
+  await page.waitForTimeout(3000);
+
+  // Con la scala ancorata a zero, meta' del fenomeno (tutta l'acqua sotto il
+  // livello medio) finirebbe schiacciata nello stesso colore.
+  await expect(page.locator(".legenda")).toContainText("-0,8 m");
+  await expect(page.locator(".legenda")).toContainText("0,8 m");
+
+  // Una grandezza con segno vuole una tavolozza divergente: con una sequenziale
+  // lo zero non avrebbe nessun colore che lo distingue. Ce n'e' una sola,
+  // quindi il comando resta ma disabilitato, invece di sparire.
+  const tavolozza = page.getByLabel("tavolozza dei colori");
+  await expect(tavolozza).toBeDisabled();
+  await expect(tavolozza).toHaveValue("balance");
+
+  expect(errori).toEqual([]);
+});
+
+test("una tavolozza scelta sull'onda non segue sul livello del mare", async ({ page }) => {
+  // Il selettore mostrerebbe il nome di una tavolozza e la mappa ne
+  // disegnerebbe un'altra: due parti dello schermo che si contraddicono.
+  await pronta(page, "?t=2026-08-16T12:00Z&z=7&c=44.2,13.6&palette=amp");
+  await expect(page.getByLabel("tavolozza dei colori")).toHaveValue("amp");
+
+  await page.getByLabel("variabile").selectOption("sealevel");
+  await page.waitForTimeout(3000);
+  await expect(page.getByLabel("tavolozza dei colori")).toHaveValue("balance");
 });

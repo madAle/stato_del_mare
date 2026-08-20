@@ -280,9 +280,12 @@ Niente.
    l'altra: prende 17 valori in tutto l'archivio (griglia delle frequenze di
    SWAN) e interpolarli inventerebbe periodi che il modello non produce.
 
-   Restano tre, e non sono lo stesso lavoro:
-   - **livello del mare**: scalare ma **con segno**, vuole una legenda centrata
-     sullo zero (la tavolozza `balance` c'e' gia');
+   Fatto lo stesso giorno anche il **livello del mare**, primo campo con segno:
+   la scala di colore adesso va da `minimo` a `massimo` invece che da zero, gli
+   estremi sono simmetrici (-0,8 / +0,8 m, misurati) e la tavolozza e'
+   divergente, perche' con una sequenziale lo zero non avrebbe un colore suo.
+
+   Restano due, e sono lo stesso lavoro:
    - **direzione** e **corrente**: non sono campi scalari, vogliono **frecce**,
      due campi da ricomporre e una densita' per livello di zoom. Non e'
      "accendere un layer": e' un motore di disegno nuovo.

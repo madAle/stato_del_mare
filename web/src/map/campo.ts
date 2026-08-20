@@ -21,6 +21,8 @@ export type OpzioniCampo = {
   limiteCostaM: number;
   limiteDatoM: number;
   palette: string;
+  /** Fondoscala basso. Zero per le grandezze positive, negativo per quelle con segno. */
+  minimo: number;
   massimo: number;
   scala: number;
   opacita?: number;
@@ -182,8 +184,8 @@ export class LivelloCampo implements CustomLayerInterface {
     this.mappa?.triggerRepaint();
   }
 
-  impostaMassimo(massimo: number): void {
-    this.opzioni = { ...this.opzioni, massimo };
+  impostaEstremi(minimo: number, massimo: number): void {
+    this.opzioni = { ...this.opzioni, minimo, massimo };
     this.mappa?.triggerRepaint();
   }
 
@@ -236,6 +238,7 @@ export class LivelloCampo implements CustomLayerInterface {
     gl.uniform4f(u("u_quad"), this.quad.x0, this.quad.y0, this.quad.x1, this.quad.y1);
     gl.uniform2f(u("u_dim"), this.opzioni.griglia.larghezza, this.opzioni.griglia.altezza);
     gl.uniform1f(u("u_scala"), this.opzioni.scala);
+    gl.uniform1f(u("u_minimo"), this.opzioni.minimo);
     gl.uniform1f(u("u_massimo"), this.opzioni.massimo);
     gl.uniform1f(u("u_limiteCosta"), this.opzioni.limiteCostaM);
     gl.uniform1f(u("u_limiteDato"), this.opzioni.limiteDatoM);

@@ -153,8 +153,8 @@ export function MapView({
   // diverso.
   useEffect(() => {
     livelloRef.current?.impostaScala(variabile.scala);
-    livelloRef.current?.impostaMassimo(grandezza.massimo);
-  }, [variabile.scala, grandezza.massimo]);
+    livelloRef.current?.impostaEstremi(grandezza.minimo, grandezza.massimo);
+  }, [variabile.scala, grandezza.minimo, grandezza.massimo]);
 
   // Dipendenze vuote di proposito: la mappa si costruisce una volta sola. Se si
   // ricostruisce a ogni cambio di stato, ogni ora di riproduzione ricreerebbe
@@ -194,7 +194,8 @@ export function MapView({
         const livello = new LivelloCampo({
           griglia: catalogo.griglia, costa, maschera,
           limiteCostaM: metaCosta.limite_m, limiteDatoM: metaMaschera.limite_m,
-          palette: variabile.colormap, massimo: grandezzaRef.current.massimo,
+          palette: variabile.colormap,
+          minimo: grandezzaRef.current.minimo, massimo: grandezzaRef.current.massimo,
           scala: variabile.scala,
         });
         // Il segnale che lo smoke test aspetta invece di dormire un tempo a

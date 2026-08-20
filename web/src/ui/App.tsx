@@ -19,7 +19,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import { StatusBar } from "./StatusBar";
 import { TimelineScrubber } from "./TimelineScrubber";
 import { PALETTE } from "../map/colormap";
-import { PaletteSwitcher } from "./PaletteSwitcher";
+import { PaletteSwitcher, TAVOLOZZE, TAVOLOZZE_CON_SEGNO } from "./PaletteSwitcher";
 import { leggiStatoUrl, scriviStatoUrl } from "./statoUrl";
 
 /** Finestra iniziale: 48 ore passate piu' 72 previste, cursore su adesso. */
@@ -144,8 +144,17 @@ export function App({
   // confrontare le alternative sullo stesso dato, che e' l'unico modo per
   // deciderle. Il catalogo resta la scelta di default: questo e' un parametro
   // per guardare, non una configurazione.
-  const scelta = sceltaGrezza && palette
-    ? { ...sceltaGrezza, colormap: palette }
+  //
+  // Ma la sostituzione vale solo se la tavolozza ha senso per la grandezza: una
+  // scelta fatta sull'altezza d'onda non deve seguirti sul livello del mare,
+  // che ha segno e vuole una divergente. Senza questo controllo il campo si
+  // disegnerebbe con una rampa sequenziale mentre il selettore mostra il nome
+  // di un'altra, cioe' due parti dello schermo che si contraddicono.
+  const ammesse: readonly { id: string }[] =
+    grandezza && grandezza.minimo < 0 ? TAVOLOZZE_CON_SEGNO : TAVOLOZZE;
+  const paletteValida = palette && ammesse.some((t) => t.id === palette) ? palette : null;
+  const scelta = sceltaGrezza && paletteValida
+    ? { ...sceltaGrezza, colormap: paletteValida }
     : sceltaGrezza;
 
   // Se l'URL chiedeva una grandezza che non si sa disegnare, si e' ricaduti
@@ -268,13 +277,15 @@ export function App({
       <div className="fascia-alta">
         <LayerSwitcher variabili={variabili} scelta={grandezza!.id} cambia={setVariabile} />
         <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={grandezza!.unita} variabile={scelta.id} stato={stato} />
-        <Legend palette={scelta.colormap} massimo={grandezza!.massimo} unita={grandezza!.unita}>
+        <Legend palette={scelta.colormap} minimo={grandezza!.minimo}
+          massimo={grandezza!.massimo} unita={grandezza!.unita}>
           {/* Il ref si aggiorna **prima** di chiedere la scrittura dell'URL, non
               solo al render successivo: lo strozzatore consegna subito se la
               finestra e' gia' scaduta, e leggerebbe il valore di prima. Con un
               solo cambio e nessun altro evento a seguire (mappa ferma) quel
               valore sbagliato resterebbe nell'URL per sempre. */}
           <PaletteSwitcher
+            conSegno={grandezza!.minimo < 0}
             scelta={scelta.colormap}
             cambia={(id) => { paletteRef.current = id; setPalette(id); strozzatoreUrl.invia(); }}
           />
