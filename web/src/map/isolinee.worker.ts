@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { isolineeDi, mescola, type GrigliaIsolinee } from "./isolineeGeometria";
+import { Ricordo } from "./ricordoFotogrammi";
 import type { Soglia } from "./soglie";
 
 /**
@@ -18,7 +19,11 @@ import type { Soglia } from "./soglie";
  * lo shader e per il valore sotto il punto.
  */
 
-const TENUTI = 4;   // bastano i due dell'inquadratura, piu' respiro
+// Otto e non quattro: quattro bastano per l'inquadratura ferma, ma chi
+// trascina il cursore avanti e indietro passa continuamente su ore gia' viste,
+// e ogni fotogramma sfrattato e' un giro buttato. Otto sono 11 MB, che stanno
+// in un telefono senza discussioni.
+const TENUTI = 8;
 
 type Richiesta = {
   tipo: "calcola";
@@ -37,22 +42,14 @@ type Messaggio =
   | { tipo: "dimentica" }
   | Richiesta;
 
-const fotogrammi = new Map<string, Int16Array>();
-
-function ricorda(chiave: string, dati: Int16Array) {
-  fotogrammi.delete(chiave);
-  fotogrammi.set(chiave, dati);
-  while (fotogrammi.size > TENUTI) {
-    const piuVecchio = fotogrammi.keys().next().value;
-    if (piuVecchio === undefined) break;
-    fotogrammi.delete(piuVecchio);
-  }
-}
+const fotogrammi = new Ricordo(TENUTI);
 
 function calcola(r: Richiesta) {
-  const a = fotogrammi.get(r.idA);
+  // `prendi` rinfresca la recenza: le due ore che si stanno guardando non
+  // devono essere sfrattate da quelle che scorrono loro accanto.
+  const a = fotogrammi.prendi(r.idA);
   if (!a) return { tipo: "manca" as const, id: r.id, chiave: r.idA };
-  const b = r.idB ? fotogrammi.get(r.idB) ?? null : null;
+  const b = r.idB ? fotogrammi.prendi(r.idB) : null;
   if (r.idB && !b) return { tipo: "manca" as const, id: r.id, chiave: r.idB };
 
   const campo = mescola(a, b, r.frazione, r.scala, r.offset);
@@ -66,12 +63,18 @@ function calcola(r: Richiesta) {
 self.onmessage = (e: MessageEvent<Messaggio>) => {
   const m = e.data;
   if (m.tipo === "fotogramma") {
-    ricorda(m.chiave, m.dati);
+    // Chi butta via un fotogramma lo dice. Senza questo messaggio il thread
+    // principale continua a credere che il worker ce l'abbia, non lo rimanda
+    // mai, e ogni richiesta che lo usa torna "manca": e' cosi' che le isolinee
+    // smettevano di aggiornarsi durante uno scorrimento lungo.
+    for (const buttata of fotogrammi.metti(m.chiave, m.dati)) {
+      (self as unknown as Worker).postMessage({ tipo: "dimenticato", chiave: buttata });
+    }
     (self as unknown as Worker).postMessage({ tipo: "ricevuto", chiave: m.chiave });
     return;
   }
   if (m.tipo === "dimentica") {
-    fotogrammi.clear();
+    fotogrammi.svuota();
     return;
   }
   (self as unknown as Worker).postMessage(calcola(m));

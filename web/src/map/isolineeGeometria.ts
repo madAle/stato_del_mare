@@ -158,6 +158,82 @@ export function semplifica(
   return punti.filter((_, i) => tenuto[i] === 1);
 }
 
+/**
+ * Quanto puo' spostarsi una linea quando la si smussa, in celle.
+ *
+ * Il marching squares restituisce spigoli veri: misurato sul campo del
+ * 20/08/2026, l'angolo fra due segmenti adiacenti arriva a 130 gradi. Sono
+ * spigoli dell'algoritmo, non del mare, ma soprattutto MapLibre rifiuta di
+ * piegare un'etichetta oltre `text-max-angle`, quindi sulle isolinee chiuse
+ * (le "bolle" al largo) il numero non compariva mai: 220 linee con nome, 3
+ * numeri a schermo.
+ *
+ * Mezza cella e' 600 m, sotto la risoluzione del dato: lo smusso non puo'
+ * spostare la linea piu' di quanto il dato sappia dire dove sta.
+ */
+const RAGGIO_SMUSSO_CELLE = 0.5;
+
+/** Quante volte si taglia l'angolo. Ogni passata lo dimezza. */
+const PASSATE_SMUSSO = 3;
+
+function unaPassata(
+  p: [number, number][], chiusa: boolean, raggio: number,
+): [number, number][] {
+  const fuori: [number, number][] = [];
+  const n = p.length;
+  if (!chiusa) fuori.push(p[0]);
+  for (let i = 0; i < (chiusa ? n : n - 1); i++) {
+    const a = p[i];
+    const b = p[(i + 1) % n];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const lung = Math.hypot(dx, dy);
+    // Chaikin taglia sempre a un quarto; qui il taglio si ferma a `raggio`,
+    // se no un segmento lungo verrebbe spostato di meta' della sua lunghezza e
+    // la linea si allontanerebbe dal dato invece di rappresentarlo meglio.
+    const t = lung > 0 ? Math.min(0.25, raggio / lung) : 0;
+    fuori.push([a[0] + dx * t, a[1] + dy * t]);
+    fuori.push([b[0] - dx * t, b[1] - dy * t]);
+  }
+  if (!chiusa) fuori.push(p[n - 1]);
+  return fuori;
+}
+
+/**
+ * Smussa gli spigoli tagliandoli, alla Chaikin ma con il taglio limitato.
+ *
+ * Un anello chiuso si smussa in cerchio: trattarlo come una spezzata aperta
+ * lascerebbe uno spigolo nella cucitura, cioe' esattamente dove non si vede
+ * che c'e' un inizio.
+ */
+export function liscia(
+  punti: [number, number][],
+  passate = PASSATE_SMUSSO,
+  raggio = RAGGIO_SMUSSO_CELLE,
+): [number, number][] {
+  if (punti.length < 3) return punti;
+  const ultimo = punti[punti.length - 1];
+  const chiusa = punti[0][0] === ultimo[0] && punti[0][1] === ultimo[1];
+  let corrente = chiusa ? punti.slice(0, -1) : punti;
+  if (corrente.length < 3) return punti;
+  for (let i = 0; i < passate; i++) corrente = unaPassata(corrente, chiusa, raggio);
+  return chiusa ? [...corrente, corrente[0]] : corrente;
+}
+
+/**
+ * Toglie i punti rimasti allineati dopo lo smusso.
+ *
+ * La tolleranza e' due ordini di grandezza sotto il raggio dello smusso, e
+ * dev'esserlo: sull'arco di un angolo smussato lo scarto fra punti vicini vale
+ * qualche millesimo di cella, quindi una tolleranza generosa **ributterebbe lo
+ * spigolo dentro**, cioe' disferebbe il lavoro appena fatto. Qui si tolgono i
+ * punti in mezzo ai tratti dritti, dove il taglio limitato non ha cambiato
+ * niente ma ha comunque raddoppiato i vertici a ogni passata.
+ */
+function ripulisci(punti: [number, number][]): [number, number][] {
+  return semplifica(punti, 0.001);
+}
+
 function comeLinea(punti: [number, number][], soglia: Soglia): GeoJSON.Feature {
   return {
     type: "Feature",
@@ -166,6 +242,74 @@ function comeLinea(punti: [number, number][], soglia: Soglia): GeoJSON.Feature {
       valore: soglia.valore,
       nome: soglia.nome,
       etichetta: soglia.nome ? etichettaSoglia(soglia.valore) : "",
+    },
+  };
+}
+
+/**
+ * Sotto questa lunghezza (in celle) una linea non porta il numero.
+ *
+ * Misurato sul campo del 20/08/2026 a zoom 7: 201 delle 228 linee con nome
+ * erano piu' corte di 40 pixel, cioe' schegge da pochi punti. Un numero su una
+ * scheggia e' una cifra che galleggia, non un'etichetta.
+ */
+const LUNGHEZZA_MINIMA_CELLE = 20;
+
+/**
+ * Dove mettere il numero su una linea, e con che inclinazione.
+ *
+ * Il punto e' a meta' della lunghezza, non a meta' dei vertici: dopo lo smusso
+ * i vertici sono fitti dove la linea gira e radi dove va dritta, quindi
+ * contarli metterebbe il numero sistematicamente nelle curve.
+ *
+ * L'inclinazione si prende su una finestra larga (un decimo della linea) e non
+ * fra due vertici adiacenti: fra due vertici vicini l'angolo e' rumore.
+ */
+function ancoraggio(
+  punti: [number, number][],
+): { punto: [number, number]; gradi: number; lunghezza: number } | null {
+  const cumulata = [0];
+  for (let i = 1; i < punti.length; i++) {
+    cumulata.push(cumulata[i - 1] + Math.hypot(punti[i][0] - punti[i - 1][0], punti[i][1] - punti[i - 1][1]));
+  }
+  const totale = cumulata[cumulata.length - 1];
+  if (totale <= 0) return null;
+
+  const meta = totale / 2;
+  let i = 1;
+  while (i < cumulata.length - 1 && cumulata[i] < meta) i++;
+  const passo = cumulata[i] - cumulata[i - 1];
+  const f = passo > 0 ? (meta - cumulata[i - 1]) / passo : 0;
+  const punto: [number, number] = [
+    punti[i - 1][0] + (punti[i][0] - punti[i - 1][0]) * f,
+    punti[i - 1][1] + (punti[i][1] - punti[i - 1][1]) * f,
+  ];
+
+  const finestra = Math.max(1, Math.round((punti.length - 1) / 10));
+  const a = punti[Math.max(0, i - 1 - finestra)];
+  const b = punti[Math.min(punti.length - 1, i + finestra)];
+  // y cresce verso sud nelle coordinate di griglia, quindi il segno si ribalta
+  // per ottenere gradi che girano come li vuole MapLibre (orario da nord).
+  let gradi = (Math.atan2(b[0] - a[0], -(b[1] - a[1])) * 180) / Math.PI - 90;
+  gradi = ((gradi % 360) + 360) % 360;
+  // Un numero non si legge a testa in giu': si gira di mezzo giro, la linea
+  // e' la stessa da percorrere in un verso o nell'altro.
+  if (gradi > 90 && gradi < 270) gradi -= 180;
+  return { punto, gradi, lunghezza: totale };
+}
+
+/** L'ancora del numero: un punto con la sua inclinazione. */
+function comeNumero(
+  dove: [number, number], gradi: number, soglia: Soglia,
+): GeoJSON.Feature {
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: dove },
+    properties: {
+      valore: soglia.valore,
+      nome: soglia.nome,
+      etichetta: etichettaSoglia(soglia.valore),
+      gradi,
     },
   };
 }
@@ -190,8 +334,24 @@ export function isolineeDi(
       // tolleranza e' in celle, e li' e' un numero che significa qualcosa.
       const chiudi = (t: [number, number][]) => {
         if (t.length < 2) return;
-        const s = semplifica(t);
-        if (s.length >= 2) linee.push(comeLinea(s.map(([x, y]) => aLonLat(g, x, y)), soglia));
+        // Tre passi, in quest'ordine: si toglie la scaletta (Douglas-Peucker),
+        // si smussano gli spigoli rimasti, e si ributtano via i punti che lo
+        // smusso ha lasciato allineati. L'ultimo passo e' quello che tiene il
+        // conto dei vertici: il taglio limitato aggiunge punti solo vicino agli
+        // angoli, quindi in mezzo ai tratti dritti sono tutti collineari.
+        const s = ripulisci(liscia(semplifica(t)));
+        if (s.length < 2) return;
+        linee.push(comeLinea(s.map(([x, y]) => aLonLat(g, x, y)), soglia));
+        // Il numero non lo lascia piazzare a MapLibre lungo la linea: con
+        // `symbol-placement: line` la libreria ne mette al piu' uno per linea e
+        // solo se le va bene, e sulle isolinee chiuse al largo non ne metteva
+        // nessuno (misurato: 228 linee con nome, 6 numeri a schermo). Qui
+        // l'ancora la scegliamo noi, e ogni linea abbastanza lunga ce l'ha.
+        if (!soglia.nome) return;
+        const a = ancoraggio(s);
+        if (a && a.lunghezza >= LUNGHEZZA_MINIMA_CELLE) {
+          linee.push(comeNumero(aLonLat(g, a.punto[0], a.punto[1]), a.gradi, soglia));
+        }
       };
       let tratto: [number, number][] = [];
       for (const [gx, gy] of anello as [number, number][]) {

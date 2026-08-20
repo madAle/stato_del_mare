@@ -17,6 +17,10 @@ import { SOGLIE } from "./soglie";
  * riproduzione veloce la coda cresce senza fine e le linee arrivano sempre piu'
  * in ritardo rispetto al campo, cioe' mostrano un istante che non e' quello
  * scritto nella barra di stato.
+ *
+ * Sopra a quello c'e' uno strozzamento a INTERVALLO_MINIMO_MS: "vince
+ * l'ultima" limita il lavoro del worker, non quello del thread principale, che
+ * a ogni risultato deve ritilare tutto il GeoJSON.
  */
 
 export const SORGENTE = "isolinee";
@@ -35,6 +39,24 @@ type Richiesta = {
 
 const VUOTO: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 
+/**
+ * Ogni quanto, al massimo, si ricalcolano le isolinee.
+ *
+ * Il campo scorre a 60 fotogrammi al secondo perche' lo disegna la scheda
+ * grafica interpolando due texture; le isolinee no: ogni aggiornamento e' un
+ * marching squares nel worker **piu'** una ritilatura di tutto il GeoJSON da
+ * parte di MapLibre, sul thread principale. Misurato durante un trascinamento
+ * continuo del cursore del tempo: lo stesso gesto dura 5,8 secondi con le
+ * isolinee a schermo e 3,4 senza, cioe' il 70 per cento in piu', e la mano che
+ * trascina lo sente.
+ *
+ * Cinque volte al secondo le linee seguono il campo senza scatti visibili (una
+ * isolinea si sposta di poco in 200 ms) e il costo si dimezza. La coda tiene
+ * comunque l'ultimo stato: quello che si vede quando ci si ferma e' il tempo
+ * su cui ci si e' fermati, non l'ultimo che e' passato dal filtro.
+ */
+const INTERVALLO_MINIMO_MS = 200;
+
 export class Isolinee {
   private worker: Worker;
   private conosciuti = new Set<string>();
@@ -42,17 +64,26 @@ export class Isolinee {
   private inAttesa: Richiesta | null = null;
   private prossimoId = 1;
   private ultimoConsegnato = 0;
+  private ultimoInvio = 0;
+  private sveglia: ReturnType<typeof setTimeout> | null = null;
   private vivo = true;
 
   constructor(private readonly mappa: MappaLibre, private readonly griglia: Griglia, primaDi?: string) {
     this.worker = new Worker(new URL("./isolinee.worker.ts", import.meta.url), { type: "module" });
     this.worker.onmessage = (e) => this.risposta(e.data);
 
-    mappa.addSource(SORGENTE, { type: "geojson", data: VUOTO });
+    // `tolerance: 0` non e' un dettaglio: la sorgente GeoJSON di MapLibre passa
+    // per geojson-vt, che **risemplifica** la geometria mentre la ritila (per
+    // difetto 0,375 unita' di tile). Sulle isolinee quella seconda passata
+    // rimetteva gli spigoli che noi avevamo appena smussato, e i numeri
+    // continuavano a non comparire. La semplificazione la facciamo noi, in
+    // celle di griglia, dove il numero significa qualcosa.
+    mappa.addSource(SORGENTE, { type: "geojson", data: VUOTO, tolerance: 0 });
     mappa.addLayer({
       id: STRATO_LINEE,
       type: "line",
       source: SORGENTE,
+      filter: ["==", ["geometry-type"], "LineString"],
       paint: {
         // Le soglie WMO portano il numero e corrono spesse, le intermedie di
         // ARPAE sottili e mute: il numero compare dove ha un nome, non a ogni
@@ -65,24 +96,24 @@ export class Isolinee {
       id: STRATO_NUMERI,
       type: "symbol",
       source: SORGENTE,
-      filter: ["get", "nome"],
+      // I numeri sono punti calcolati da noi, non simboli piazzati da MapLibre
+      // lungo la linea: vedi `ancoraggio` in isolineeGeometria.ts. Con
+      // `symbol-placement: line` la libreria ne metteva uno per linea e solo
+      // dove le tornava, e sulle isolinee chiuse al largo nessuno.
+      filter: ["==", ["geometry-type"], "Point"],
       layout: {
-        "symbol-placement": "line",
         "text-field": ["get", "etichetta"],
-        // il numero segue la linea e ruota con la mappa, come su una carta
+        // il numero e' inclinato come la linea e ruota con la mappa, come su
+        // una carta nautica
+        "text-rotate": ["get", "gradi"],
         "text-rotation-alignment": "map",
         "text-pitch-alignment": "map",
         "text-font": ["Noto Sans Medium"],
         "text-size": 11,
-        "symbol-spacing": 180,
-        // Un'isolinea gira piu' di una strada: con l'angolo massimo predefinito
-        // MapLibre scarta quasi tutte le posizioni candidate e il numero non
-        // compare (misurato: un solo numero su 102 linee disegnate).
-        "text-max-angle": 60,
         // Le linee sono tante e vicine: senza questo, due numeri di soglie
-        // diverse si rifiutano a vicenda e resta il piu' fortunato.
+        // diverse si sovrappongono e diventano illeggibili entrambi.
         "text-allow-overlap": false,
-        "text-padding": 2,
+        "text-padding": 4,
       },
       paint: {
         "text-color": "rgba(20, 24, 28, 0.9)",
@@ -102,20 +133,43 @@ export class Isolinee {
    */
   aggiorna(r: Richiesta): void {
     if (!this.vivo) return;
+    this.inAttesa = r;
+    this.forse();
+  }
+
+  /**
+   * Manda la richiesta in attesa se si puo': se il worker e' libero e
+   * dall'ultimo invio e' passato abbastanza tempo. Se e' troppo presto mette
+   * una sveglia, che e' la parte che rende onesto lo strozzamento: senza,
+   * l'ultimo stato (quello su cui chi guarda si e' fermato) resterebbe in coda
+   * per sempre e le linee mostrerebbero un istante che nessuno ha chiesto.
+   */
+  private forse(): void {
+    if (!this.vivo || this.inCorso || !this.inAttesa) return;
+    const manca = INTERVALLO_MINIMO_MS - (performance.now() - this.ultimoInvio);
+    if (manca > 0) {
+      if (this.sveglia === null) {
+        this.sveglia = setTimeout(() => { this.sveglia = null; this.forse(); }, manca);
+      }
+      return;
+    }
+    const r = this.inAttesa;
+    this.inAttesa = null;
+    this.spedisci(r);
+  }
+
+  private spedisci(r: Richiesta): void {
+    // I fotogrammi si mandano qui e non appena arrivano: sono 1,4 MB copiati
+    // ognuno, e mandarli per uno stato che lo strozzamento sta per buttare via
+    // sarebbe copiare per niente. Durante un trascinamento veloce era la meta'
+    // del traffico verso il worker.
     for (const [chiave, dati] of [[r.chiaveA, r.datiA], [r.chiaveB, r.datiB]] as const) {
       if (chiave && dati && !this.conosciuti.has(chiave)) {
         this.worker.postMessage({ tipo: "fotogramma", chiave, dati });
         this.conosciuti.add(chiave);
       }
     }
-    if (this.inCorso) {
-      this.inAttesa = r;
-      return;
-    }
-    this.spedisci(r);
-  }
-
-  private spedisci(r: Richiesta): void {
+    this.ultimoInvio = performance.now();
     this.inCorso = true;
     this.worker.postMessage({
       tipo: "calcola",
@@ -143,11 +197,20 @@ export class Isolinee {
 
   private risposta(m: { tipo: string; id?: number; chiave?: string; geojson?: GeoJSON.FeatureCollection }): void {
     if (m.tipo === "ricevuto") return;
+    if (m.tipo === "dimenticato") {
+      // Il worker ha buttato via un fotogramma per far posto: da qui in poi
+      // questo lato sa di doverlo rimandare. E' la meta' che mancava, ed e' il
+      // motivo per cui le isolinee smettevano di aggiornarsi scorrendo il
+      // tempo: i due elenchi divergevano e nessuno se ne accorgeva.
+      if (m.chiave) this.conosciuti.delete(m.chiave);
+      return;
+    }
     this.inCorso = false;
 
     if (m.tipo === "manca" && m.chiave) {
-      // Il worker ha dimenticato un fotogramma (la sua memoria e' piccola):
-      // si toglie dai conosciuti, cosi' la prossima richiesta lo rimanda.
+      // Rete di sicurezza: il worker dovrebbe avvertire quando butta via un
+      // fotogramma (messaggio "dimenticato"), quindi arrivare qui vuol dire che
+      // i due elenchi si sono comunque scollati. Si sfoltisce e si riprova.
       this.conosciuti.delete(m.chiave);
     } else if (m.tipo === "isolinee" && m.geojson && m.id && m.id > this.ultimoConsegnato) {
       // Un risultato piu' vecchio dell'ultimo consegnato si butta: arriverebbe
@@ -161,13 +224,13 @@ export class Isolinee {
       }
     }
 
-    const dopo = this.inAttesa;
-    this.inAttesa = null;
-    if (dopo && this.vivo) this.spedisci(dopo);
+    this.forse();
   }
 
   distruggi(): void {
     this.vivo = false;
+    if (this.sveglia !== null) clearTimeout(this.sveglia);
+    this.sveglia = null;
     this.worker.terminate();
   }
 }
