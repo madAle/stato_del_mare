@@ -526,6 +526,14 @@ più, e che vale la pena riconoscere al volo:
 La domanda che li trova tutti, e che vale la pena farsi in revisione: **questa
 riga sa davvero quello che dice di sapere?**
 
+**`Dwave` e' la direzione DA CUI l'onda viene** (convenzione nautica, gradi orari
+da nord), e il file **non lo dichiara**: l'attributo dice solo `wind-induced wave
+direction - mean` in gradi. Ricavato dal dato il 2026-08-20, con un fatto fisico:
+l'onda cresce mentre viaggia, quindi il gradiente dell'altezza punta nel verso in
+cui si propaga. Su quattro istanti indipendenti lo scarto fra `Dwave` e la rotta
+di crescita e' 150-177 gradi, cioe' mezzo giro. Preso al contrario avrebbe
+capovolto ogni freccia della mappa senza che nulla sembrasse sbagliato.
+
 **Il campo `sealevel` contiene la marea.** Verificato il 2026-08-20 estraendo la
 serie temporale e cercandone le periodicita': il periodo dominante e' **12,03 h**
 (semidiurno) con una seconda componente a 24,06 h, in tutti e tre i punti
