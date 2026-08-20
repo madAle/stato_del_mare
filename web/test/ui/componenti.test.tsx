@@ -11,24 +11,24 @@ const fc: Ora = { istante: Date.parse("2026-08-15T18:00:00Z"), tipo: "fc", rifer
 
 describe("StatusBar", () => {
   it("dice sempre da dove viene il frame a schermo", () => {
-    render(<StatusBar istante={an.istante} ora={an} oraDopo={null} valore={1.23} unita="m" stato="ferma" />);
+    render(<StatusBar istante={an.istante} ora={an} oraDopo={null} valore={1.23} unita="m" variabile="hwave" stato="ferma" />);
     expect(screen.getByText(/analisi/)).toBeDefined();
   });
 
   it("sulla previsione dichiara la scadenza", () => {
     // senza questa riga la mappa mente per omissione: analisi e previsione sono
     // due cose scientificamente diverse e a colpo d'occhio identiche
-    render(<StatusBar istante={fc.istante} ora={fc} oraDopo={null} valore={null} unita="m" stato="ferma" />);
+    render(<StatusBar istante={fc.istante} ora={fc} oraDopo={null} valore={null} unita="m" variabile="hwave" stato="ferma" />);
     expect(screen.getByText(/previsione \+18h/)).toBeDefined();
   });
 
   it("senza valore sotto il mouse non stampa uno zero", () => {
-    render(<StatusBar istante={an.istante} ora={an} oraDopo={null} valore={null} unita="m" stato="ferma" />);
+    render(<StatusBar istante={an.istante} ora={an} oraDopo={null} valore={null} unita="m" variabile="hwave" stato="ferma" />);
     expect(screen.queryByText(/0,00 m/)).toBeNull();
   });
 
   it("mostra l'attesa quando il buffer e' vuoto", () => {
-    render(<StatusBar istante={an.istante} ora={an} oraDopo={null} valore={null} unita="m" stato="in attesa di dati" />);
+    render(<StatusBar istante={an.istante} ora={an} oraDopo={null} valore={null} unita="m" variabile="hwave" stato="in attesa di dati" />);
     expect(screen.getByText(/in attesa di dati/)).toBeDefined();
   });
 });
@@ -75,7 +75,7 @@ describe("l'orologio non promette minuti che il modello non ha", () => {
 
   it("su un'ora esatta mostra quell'ora e basta", () => {
     render(<StatusBar istante={nove.istante} ora={nove} oraDopo={dieci}
-      valore={1.2} unita="m" stato="ferma" />);
+      valore={1.2} unita="m" variabile="hwave" stato="ferma" />);
     expect(screen.getByText(/09:00 UTC/)).toBeDefined();
     expect(screen.queryByText(/->/)).toBeNull();
   });
@@ -84,7 +84,7 @@ describe("l'orologio non promette minuti che il modello non ha", () => {
     // il dato e' orario: le 09:37 non esistono, quello che si vede e' una
     // dissolvenza fra le 09:00 e le 10:00
     render(<StatusBar istante={nove.istante + 37 * 60_000} ora={nove} oraDopo={dieci}
-      valore={1.2} unita="m" stato="in riproduzione" />);
+      valore={1.2} unita="m" variabile="hwave" stato="in riproduzione" />);
     expect(screen.queryByText(/09:37/)).toBeNull();
     expect(screen.getByText(/09:00/)).toBeDefined();
     expect(screen.getByText(/10:00/)).toBeDefined();
@@ -92,7 +92,7 @@ describe("l'orologio non promette minuti che il modello non ha", () => {
 
   it("senza l'ora dopo (fine dell'asse o buco) non inventa una coppia", () => {
     render(<StatusBar istante={nove.istante + 37 * 60_000} ora={nove} oraDopo={null}
-      valore={null} unita="m" stato="in riproduzione" />);
+      valore={null} unita="m" variabile="hwave" stato="in riproduzione" />);
     expect(screen.getByText(/09:00 UTC/)).toBeDefined();
     expect(screen.queryByText(/10:00/)).toBeNull();
   });

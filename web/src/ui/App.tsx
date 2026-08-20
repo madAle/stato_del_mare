@@ -233,7 +233,7 @@ export function App({
           stretto li impila, invece di lasciarli accavallare. */}
       <div className="fascia-alta">
         <LayerSwitcher variabili={variabili} scelta={variabile} cambia={setVariabile} />
-        <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={scelta.unita} stato={stato} />
+        <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={scelta.unita} variabile={scelta.id} stato={stato} />
         <Legend palette={scelta.colormap} massimo={4} unita={scelta.unita}>
           <PaletteSwitcher
             scelta={scelta.colormap}

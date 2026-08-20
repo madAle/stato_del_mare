@@ -39,13 +39,14 @@ test("il campo porta le isolinee, e le soglie sono quelle dichiarate", async ({ 
   console.log(`  soglie disegnate: ${valori.join(", ")}`);
   expect(valori.length).toBeGreaterThan(0);
 
-  // Ogni valore disegnato deve stare nell'elenco unico delle soglie: una linea
-  // a una soglia che nessuno ha dichiarato sarebbe una curva qualsiasi.
-  const AMMESSE = [0.1, 0.5, 0.8, 1.25, 1.8, 2.5, 3.2, 4, 5, 6, 7, 8, 9, 14];
-  for (const v of valori) expect(AMMESSE).toContain(v);
+  // Ogni valore disegnato dev'essere un confine della scala Douglas: una linea
+  // a una soglia che non separa due stati con un nome sarebbe una curva
+  // qualsiasi (decisione del 2026-08-20, che ha tolto le intermedie ARPAE).
+  const CONFINI_DOUGLAS = [0.1, 0.5, 1.25, 2.5, 4, 6, 9, 14];
+  for (const v of valori) expect(CONFINI_DOUGLAS).toContain(v);
 });
 
-test("il numero compare solo dove la soglia ha un nome", async ({ page }) => {
+test("ogni linea e' un confine Douglas e lo scrive col nome dello stato", async ({ page }) => {
   await conLinee(page, "?t=2026-08-16T12:00Z&z=7&c=43.5,14.5");
 
   const coppie = await page.evaluate(() => {
@@ -57,13 +58,14 @@ test("il numero compare solo dove la soglia ha un nome", async ({ page }) => {
     }));
   });
 
-  const WMO = [0.1, 0.5, 1.25, 2.5, 4, 6, 9, 14];
+  const DOUGLAS = [0.1, 0.5, 1.25, 2.5, 4, 6, 9, 14];
   for (const c of coppie) {
-    expect(c.nome, `la soglia ${c.valore} ha il nome sbagliato`).toBe(WMO.includes(c.valore));
-    // il numero c'e' se e solo se la soglia ha un nome: le intermedie di ARPAE
-    // corrono mute, se no la mappa diventa un elenco di cifre
-    expect(c.etichetta === "").toBe(!c.nome);
-    if (c.nome) expect(c.etichetta).toMatch(/^\d+(,\d+)? m$/);
+    expect(DOUGLAS, `la soglia ${c.valore} non e' un confine Douglas`).toContain(c.valore);
+    expect(c.nome, `la soglia ${c.valore} dovrebbe portare il nome`).toBe(true);
+    // L'etichetta dice l'altezza **e lo stato che comincia li'**: e' la
+    // risposta alla domanda per cui la mappa esiste, e attraversare la linea
+    // vuol dire passare da un mare che ha un nome a un altro.
+    expect(c.etichetta).toMatch(/^\d+(,\d+)? m · [a-z ]+$/);
   }
 });
 

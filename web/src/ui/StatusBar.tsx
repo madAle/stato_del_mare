@@ -1,7 +1,7 @@
 import type { Ora } from "../data/indice";
 import { provenienza } from "../data/sorgente";
 import type { StatoRiproduzione } from "../map/animazione";
-import { scriviValore } from "./numeri";
+import { scriviValoreEStato } from "./numeri";
 import { istanteEsteso, soloOra } from "./tempo";
 
 /**
@@ -15,7 +15,7 @@ function momento(istante: number, ora: Ora | null, oraDopo: Ora | null): string 
 }
 
 export function StatusBar({
-  istante, ora, oraDopo, valore, unita, stato,
+  istante, ora, oraDopo, valore, unita, variabile, stato,
 }: {
   /**
    * L'istante disegnato. Serve solo a sapere se si sta esattamente su un'ora o
@@ -33,6 +33,8 @@ export function StatusBar({
   oraDopo: Ora | null;
   valore: number | null;
   unita: string;
+  /** L'id della variabile: decide se accanto al numero ci va lo stato del mare. */
+  variabile: string;
   stato: StatoRiproduzione;
 }) {
   return (
@@ -44,7 +46,7 @@ export function StatusBar({
       <span className="provenienza">{ora ? provenienza(ora) : ""}</span>
       {/* Stessa funzione che scrive l'etichetta accanto al punto fissato: lo
           stesso numero non puo' essere scritto in due modi. */}
-      <span className="valore">{scriviValore(valore, unita)}</span>
+      <span className="valore">{scriviValoreEStato(valore, unita, variabile)}</span>
       {stato === "in attesa di dati" && <span className="attesa">in attesa di dati</span>}
     </div>
   );

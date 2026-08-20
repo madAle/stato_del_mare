@@ -12,7 +12,7 @@ import { valoreCorrente } from "../map/proiezione";
 import { inquadra as inquadraOre } from "../data/sorgente";
 import { Segnaposto } from "../map/segnaposto";
 import { creaStrozzatore } from "../map/strozzatore";
-import { scriviValore } from "./numeri";
+import { scriviValoreEStato } from "./numeri";
 
 /** Centro [lat, lon] e zoom letti dalla mappa vera, non dalla vista con cui e' stata aperta. */
 export type Vista = { centro: [number, number]; zoom: number };
@@ -196,7 +196,7 @@ export function MapView({
           // questa architettura esiste per rispettare. E' lo stesso numero
           // della barra di stato, scritto dalla stessa funzione.
           if (puntoFissato.current) {
-            segnaposto.scrivi(scriviValore(valore, variabileRef.current.unita));
+            segnaposto.scrivi(scriviValoreEStato(valore, variabileRef.current.unita, variabileRef.current.id));
           }
           strozzatore.invia(valore);
         };

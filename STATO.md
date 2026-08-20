@@ -239,13 +239,20 @@ Niente.
    campagna di mezza giornata in barca. Una volta calibrata, la funzionalita'
    prevede la corrente in avanti, che e' la parte utile a chi entra o esce.
    Dettaglio e misure nella sezione 1 della spec.
-10. ~~Isolinee etichettate sull'altezza d'onda~~. **Fatte il 2026-08-19.**
-   Soglie WMO in linea spessa e col numero, intermedie ARPAE sottili e mute,
-   elenco unico in `web/src/map/soglie.ts`. Marching squares in un worker
-   (`isolinee.worker.ts`), calcolo puro in `isolineeGeometria.ts` con dodici
-   test. **La spec e' stata emendata**: il campo resta a rampa continua invece
-   di andare a bande discrete, perche' con i gradini WMO in basso l'Adriatico
-   estivo cadrebbe tutto in una classe. Dettaglio nelle decisioni 57-60.
+10. ~~Isolinee etichettate sull'altezza d'onda~~. **Fatte il 2026-08-19,
+   rifinite il 2026-08-20.** Una linea per ogni confine della scala **Douglas**
+   e nessun'altra (le intermedie ARPAE sono state tolte: col mare d'agosto
+   l'unica visibile era 0,8 m, una linea che non separava niente che si potesse
+   dire a parole). L'etichetta scrive altezza e stato che comincia li'
+   (`0,5 m · mosso`), e lo stesso nome compare accanto al valore misurato nella
+   barra di stato e sul segnaposto, scritto dalla stessa funzione. Elenco unico
+   in `web/src/map/soglie.ts`. Marching squares in un worker
+   (`isolinee.worker.ts`), calcolo puro in `isolineeGeometria.ts`; le linee si
+   smussano con un taglio d'angolo limitato a mezza cella e l'ancora del numero
+   la calcoliamo noi invece di lasciarla piazzare a MapLibre. **La spec e'
+   stata emendata**: il campo resta a rampa continua invece di andare a bande
+   discrete, perche' con i gradini Douglas in basso l'Adriatico estivo cadrebbe
+   tutto in una classe. Dettaglio nelle decisioni 57-60 e 64-70.
 
 **Cosa le correzioni hanno lasciato aperto di proposito** (dettaglio in
 `docs/superpowers/revisioni/2026-08-13-ingestore-correzioni.md`, sezione "Cosa
