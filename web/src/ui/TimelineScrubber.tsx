@@ -29,12 +29,24 @@ type Props = {
  * zona di previsione, e il confine netto fra analisi e previsione.
  */
 /**
- * Quanto spazio vuole un'etichetta della scala perche' non finisca addosso al
- * vicino o mezza fuori dal bordo. Misurato sul carattere piu' lungo che ci
- * finisce ("mer 19/08" a 0,7rem): sono pixel, non frazioni dell'asse, perche'
+ * Quanto deve distare il **centro** di una tacca dal centro di "adesso" perche'
+ * le due scritte non si tocchino. Sono pixel, non frazioni dell'asse, perche'
  * il testo non si restringe quando la finestra si restringe.
+ *
+ * Non e' la larghezza di un'etichetta: e' la **semisomma** delle due, perche'
+ * due scritte centrate sul proprio segno si toccano quando la distanza fra i
+ * centri scende sotto meta' dell'una piu' meta' dell'altra. Misurate:
+ * un'etichetta di giorno sta fra 53,6 px (telefono) e 56,7 px (schermo largo),
+ * "adesso" sta a 39,7. La semisomma peggiore e' 48,2, e 54 lascia sei pixel di
+ * margine.
+ *
+ * Il valore precedente era 44, cioe' la larghezza *di una sola* etichetta e per
+ * giunta sottostimata: bastava che "adesso" cadesse a 45 px da una tacca perche'
+ * le due si accavallassero. E' rimasto invisibile finche' l'asse non si e'
+ * allungato di un giorno (l'ingestione del run nuovo), spostando "adesso" nel
+ * punto che lo rivelava: un difetto che aspettava il dato giusto per uscire.
  */
-const ETICHETTA_PX = 44;
+const ETICHETTA_PX = 54;
 const BORDO_PX = 30;
 /**
  * Quanto spazio si riserva a un'etichetta per decidere quante ne stanno.
