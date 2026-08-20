@@ -24,10 +24,17 @@ on:
     # confrontano le impronte e si finisce (misurato: 18 secondi). Il repository
     # e' pubblico, quindi i minuti di Actions non si pagano, e la guardia di
     # concorrenza qui sotto impedisce a due esecuzioni di accavallarsi.
-    - cron: "0 9-19 * * *"
+    #
+    # Al minuto 17 e non a zero: GitHub accoda le esecuzioni programmate quando
+    # e' sotto carico, e il minuto zero e' di gran lunga il piu' affollato (lo
+    # dice la loro documentazione, che consiglia esplicitamente un altro minuto
+    # dell'ora). Misurato qui: la prima esecuzione oraria, programmata alle
+    # 10:00, e' partita alle 10:38. Trentotto minuti su una cadenza oraria si
+    # mangiano meta' del guadagno per cui la cadenza esiste.
+    - cron: "17 9-19 * * *"
     # Rete di sicurezza per una giornata anomala, cosi' non si aspetta il
     # mattino dopo.
-    - cron: "0 22 * * *"
+    - cron: "17 22 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
