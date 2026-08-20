@@ -13,7 +13,7 @@ describe("prefetch", () => {
   it("carica la finestra davanti nella direzione di riproduzione", async () => {
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 8);
+    const p = new Prefetcher(cache, "hwave", carica, 8);
     await p.assicura(asse, 5, 1);
     // l'ora corrente piu' le otto davanti
     expect(carica).toHaveBeenCalledTimes(9);
@@ -25,7 +25,7 @@ describe("prefetch", () => {
   it("all'indietro guarda indietro", async () => {
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 4);
+    const p = new Prefetcher(cache, "hwave", carica, 4);
     await p.assicura(asse, 20, -1);
     expect(p.pronto(asse[16])).toBe(true);
     expect(p.pronto(asse[24])).toBe(false);
@@ -34,7 +34,7 @@ describe("prefetch", () => {
   it("non richiede due volte lo stesso frame", async () => {
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 3);
+    const p = new Prefetcher(cache, "hwave", carica, 3);
     await p.assicura(asse, 0, 1);
     await p.assicura(asse, 1, 1);
     // 4 la prima volta (0..3), poi solo la 4 che manca
@@ -47,7 +47,7 @@ describe("prefetch", () => {
       if (ora === asse[2]) throw new Error("rete giu'");
       return new Int16Array(10);
     });
-    const p = new Prefetcher(cache, carica, 3);
+    const p = new Prefetcher(cache, "hwave", carica, 3);
     await p.assicura(asse, 0, 1);
     expect(p.pronto(asse[2])).toBe(false);
     expect(p.pronto(asse[3])).toBe(true);
@@ -59,7 +59,7 @@ describe("prefetch", () => {
   it("prefetch si ferma al bordo superiore dell'asse", async () => {
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 5);
+    const p = new Prefetcher(cache, "hwave", carica, 5);
     // Cursore vicino alla fine dell'asse, direzione avanti
     // asse ha lunghezza 40, indice 38, avanti 5: dovrebbe caricare solo 38, 39
     await p.assicura(asse, 38, 1);
@@ -71,7 +71,7 @@ describe("prefetch", () => {
   it("prefetch si ferma al bordo inferiore dell'asse", async () => {
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 5);
+    const p = new Prefetcher(cache, "hwave", carica, 5);
     // Cursore vicino all'inizio dell'asse, direzione indietro
     // indice 1, avanti 5, direzione -1: dovrebbe caricare solo 1, 0
     await p.assicura(asse, 1, -1);
@@ -87,7 +87,7 @@ describe("prefetch", () => {
     // animazione.ts, che aspetta questo prima di ridisegnare.
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 8);
+    const p = new Prefetcher(cache, "hwave", carica, 8);
     await p.assicura(asse, 5, 1, 1);
     expect(carica).toHaveBeenCalledTimes(2); // solo 5 e 6, non fino a 13
     expect(p.pronto(asse[5])).toBe(true);
@@ -98,7 +98,7 @@ describe("prefetch", () => {
   it("senza conteggio esplicito, il comportamento predefinito non cambia", async () => {
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 3);
+    const p = new Prefetcher(cache, "hwave", carica, 3);
     await p.assicura(asse, 5, 1);
     expect(carica).toHaveBeenCalledTimes(4); // 5, 6, 7, 8
   });
@@ -117,7 +117,7 @@ describe("prefetch", () => {
 
     const cache = new CacheFrame(80); // esattamente 4 frame: 4 * 20 byte
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 3);
+    const p = new Prefetcher(cache, "hwave", carica, 3);
 
     // Riempi cache in ordine **inverso** rispetto a quello che assicura tocchera':
     // metti asse[3], asse[2], asse[1], asse[0] in questo ordine.
@@ -153,5 +153,32 @@ describe("prefetch", () => {
     // Con prendi(): asse[0] dovrebbe essere stato sfrattato (il piu' vecchio)
     expect(p.pronto(asse[0])).toBe(true);
     expect(p.pronto(asse[3])).toBe(false); // asse[3] e' stato sfrattato con ha()
+  });
+});
+
+describe("la chiave dei fotogrammi", () => {
+  it("porta la variabile, se no due layer diversi si scambiano i dati", () => {
+    // La cache e' una sola e sopravvive al cambio di variabile (buttarla
+    // farebbe riscaricare tutto tornando indietro). Senza la variabile nella
+    // chiave, passando da altezza d'onda a periodo la cache servirebbe i
+    // fotogrammi dell'onda come se fossero secondi: numeri plausibili e
+    // sbagliati, senza nessun errore da nessuna parte. Finche' si disegnava
+    // una variabile sola il difetto dormiva, ed e' per questo che questo test
+    // esiste prima del secondo layer e non dopo.
+    const cache = new CacheFrame();
+    const ora: Ora = { istante: 1, tipo: "an", riferimento: "20260819" };
+    const onda = new Prefetcher(cache, "hwave", async () => new Int16Array(1));
+    const periodo = new Prefetcher(cache, "pwave", async () => new Int16Array(1));
+    expect(onda.chiave(ora)).not.toBe(periodo.chiave(ora));
+    expect(onda.chiave(ora)).toContain("hwave");
+  });
+
+  it("distingue comunque ora, tipo e run, come prima", () => {
+    const cache = new CacheFrame();
+    const p = new Prefetcher(cache, "hwave", async () => new Int16Array(1));
+    const base: Ora = { istante: 1, tipo: "an", riferimento: "20260819" };
+    expect(p.chiave(base)).not.toBe(p.chiave({ ...base, istante: 2 }));
+    expect(p.chiave(base)).not.toBe(p.chiave({ ...base, tipo: "fc" }));
+    expect(p.chiave(base)).not.toBe(p.chiave({ ...base, riferimento: "20260820" }));
   });
 });

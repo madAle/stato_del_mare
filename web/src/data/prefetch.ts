@@ -15,12 +15,23 @@ export class Prefetcher {
 
   constructor(
     private cache: CacheFrame,
+    /**
+     * La variabile che questo prefetcher scarica. Serve **nella chiave**, non
+     * solo nell'URL: la cache dei fotogrammi e' una sola e sopravvive al cambio
+     * di variabile (e' un `useMemo` senza dipendenze, come dev'essere: buttarla
+     * a ogni cambio farebbe riscaricare tutto tornando indietro). Senza la
+     * variabile nella chiave, passando da altezza d'onda a periodo la cache
+     * servirebbe i fotogrammi dell'onda come se fossero secondi: numeri
+     * plausibili e sbagliati, senza nessun errore da nessuna parte. Finche' si
+     * disegnava una variabile sola il difetto dormiva.
+     */
+    private variabile: string,
     private carica: (ora: Ora) => Promise<Int16Array>,
     private avanti = 10,
   ) {}
 
   chiave(ora: Ora): string {
-    return `${ora.tipo}/${ora.riferimento}/${ora.istante}`;
+    return `${this.variabile}/${ora.tipo}/${ora.riferimento}/${ora.istante}`;
   }
 
   pronto(ora: Ora): boolean {

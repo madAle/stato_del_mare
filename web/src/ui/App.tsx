@@ -156,7 +156,7 @@ export function App({
 
   const cache = useMemo(() => new CacheFrame(), []);
   const prefetcher = useMemo(
-    () => new Prefetcher(cache, (ora: Ora) =>
+    () => new Prefetcher(cache, variabile, (ora: Ora) =>
       leggiFrame(urlFrame(variabile, ora.tipo, ora.riferimento, new Date(ora.istante)),
                  catalogo.data!.griglia)),
     [cache, variabile, catalogo.data],

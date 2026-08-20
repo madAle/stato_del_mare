@@ -49,7 +49,7 @@ function avanza(ms: number) {
 describe("animazione", () => {
   it("riporta il tempo al massimo dieci volte al secondo", async () => {
     const cache = new CacheFrame();
-    const p = new Prefetcher(cache, async () => new Int16Array(10), 12);
+    const p = new Prefetcher(cache, "hwave", async () => new Int16Array(10), 12);
     await p.assicura(asse, 0, 1);
     const livello = livelloFinto();
     const riportati: number[] = [];
@@ -71,7 +71,7 @@ describe("animazione", () => {
   it("si mette in attesa invece di saltare fotogrammi", async () => {
     const cache = new CacheFrame();
     // solo le prime due ore sono caricabili
-    const p = new Prefetcher(cache, async (ora: Ora) => {
+    const p = new Prefetcher(cache, "hwave", async (ora: Ora) => {
       if (ora.istante > asse[1].istante) throw new Error("non disponibile");
       return new Int16Array(10);
     }, 2);
@@ -95,7 +95,7 @@ describe("animazione", () => {
   it("dentro un buco non chiede l'interpolazione", async () => {
     const bucato: Ora[] = [asse[0], asse[1], { ...asse[10] }];
     const cache = new CacheFrame();
-    const p = new Prefetcher(cache, async () => new Int16Array(10), 5);
+    const p = new Prefetcher(cache, "hwave", async () => new Int16Array(10), 5);
     await p.assicura(bucato, 0, 1);
     const livello = livelloFinto();
 
@@ -106,7 +106,7 @@ describe("animazione", () => {
 
   it("il rapporto strozzato in vaiA arriva comunque, in coda", async () => {
     const cache = new CacheFrame();
-    const p = new Prefetcher(cache, async () => new Int16Array(10), 5);
+    const p = new Prefetcher(cache, "hwave", async () => new Int16Array(10), 5);
     await p.assicura(asse, 0, 1);
     const livello = livelloFinto();
     const riportati: number[] = [];
@@ -127,7 +127,7 @@ describe("animazione", () => {
 
   it("pausa() chiamata da dentro alTempo ferma davvero il ciclo", async () => {
     const cache = new CacheFrame();
-    const p = new Prefetcher(cache, async () => new Int16Array(10), 12);
+    const p = new Prefetcher(cache, "hwave", async () => new Int16Array(10), 12);
     await p.assicura(asse, 0, 1);
     const livello = livelloFinto();
     let chiamate = 0;
@@ -168,7 +168,7 @@ describe("animazione", () => {
     // premeva "riproduci").
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 5);
+    const p = new Prefetcher(cache, "hwave", carica, 5);
     const livello = livelloFinto();
 
     const a = new Animazione(livello as never, { asse: { current: asse }, prefetcher: { current: p }, cache });
@@ -191,7 +191,7 @@ describe("animazione", () => {
     // (o un rapporto ridondante) ricalcolerebbe la finestra da capo.
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 5);
+    const p = new Prefetcher(cache, "hwave", carica, 5);
     const assicura = vi.spyOn(p, "assicura");
     const livello = livelloFinto();
 
@@ -214,7 +214,7 @@ describe("animazione", () => {
     // passerebbe in silenzio a quello nuovo.
     const cache = new CacheFrame();
     const carica = vi.fn(async () => new Int16Array(10));
-    const p = new Prefetcher(cache, carica, 5);
+    const p = new Prefetcher(cache, "hwave", carica, 5);
     const livello = livelloFinto();
 
     const asseRef = { current: asse.slice(0, 2) }; // solo le prime due ore
@@ -237,7 +237,7 @@ describe("animazione", () => {
   it("il riavvolgimento controlla la prontezza del fotogramma 0 prima di dichiararsi in riproduzione", async () => {
     const corto: Ora[] = [asse[0], asse[1]];
     const cache = new CacheFrame();
-    const p = new Prefetcher(cache, async (ora: Ora) => {
+    const p = new Prefetcher(cache, "hwave", async (ora: Ora) => {
       if (ora.istante === corto[0].istante) throw new Error("fotogramma 0 non disponibile");
       return new Int16Array(10);
     }, 5);
@@ -262,7 +262,7 @@ describe("animazione", () => {
 describe("fermi si sta sempre su un'ora", () => {
   it("la pausa si aggancia all'ora piu' vicina", async () => {
     const cache = new CacheFrame();
-    const p = new Prefetcher(cache, async () => new Int16Array(10), 12);
+    const p = new Prefetcher(cache, "hwave", async () => new Int16Array(10), 12);
     await p.assicura(asse, 0, 1);
     const livello = livelloFinto();
     const riportati: number[] = [];
@@ -280,7 +280,7 @@ describe("fermi si sta sempre su un'ora", () => {
 
   it("su un'ora esatta la pausa non sposta niente", async () => {
     const cache = new CacheFrame();
-    const p = new Prefetcher(cache, async () => new Int16Array(10), 12);
+    const p = new Prefetcher(cache, "hwave", async () => new Int16Array(10), 12);
     await p.assicura(asse, 0, 1);
     const livello = livelloFinto();
     const riportati: number[] = [];
