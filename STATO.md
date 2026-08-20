@@ -446,6 +446,15 @@ più, e che vale la pena riconoscere al volo:
 La domanda che li trova tutti, e che vale la pena farsi in revisione: **questa
 riga sa davvero quello che dice di sapere?**
 
+**Il selettore universale `*` non raggiunge gli pseudo-elementi.** `* { box-sizing:
+border-box }` lascia `::before` e `::after` a `content-box`, quindi un bordo si
+aggiunge alla larghezza dichiarata invece di starci dentro. L'anello del punto
+osservato e' finito 2 px in basso a destra perche' il suo scarto negativo era
+calcolato sul modello sbagliato. Corollario: **quello che deve essere misurato da
+un test sia un elemento vero**, perche' su uno pseudo-elemento `getComputedStyle`
+da' la larghezza dichiarata e non quella usata, e un test che ricostruisce la
+scatola ripete l'assunzione che ha causato il difetto.
+
 **Un test che passa può passare per il motivo sbagliato.** Il test di resa
 verificava "il campo non copre la terraferma" leggendo un pixel che cadeva fuori
 dal canvas di destinazione (creato senza `width` e `height`, quindi 300x150 per

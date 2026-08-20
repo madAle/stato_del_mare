@@ -16,7 +16,14 @@
   color-scheme: light;
 }
 
-* {
+/* Anche gli pseudo-elementi, che il selettore universale da solo non raggiunge:
+   `*` seleziona elementi, e ::before/::after non lo sono. Senza queste due
+   righe un ::before con un bordo cresce oltre la sua `width` dichiarata, e uno
+   scarto negativo calcolato su quella larghezza lo centra male. E' costato il
+   segno del punto osservato, spostato di 2 px in basso a destra. */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -502,7 +509,9 @@ select[aria-label="variabile"] {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
 }
 
-/* i due tratti si fermano prima dell'anello, se no lo attraversano */
+/* I due tratti attraversano l'anello da parte a parte: il commento diceva il
+   contrario, ma il codice non l'ha mai fatto, e una volta che l'anello e'
+   centrato l'incrocio cade nel suo centro, che e' quello che deve indicare. */
 .segnaposto-croce::before {
   left: 50%;
   top: 0;
@@ -519,8 +528,7 @@ select[aria-label="variabile"] {
   margin-top: -0.5px;
 }
 
-.segnaposto::before {
-  content: "";
+.segnaposto-anello {
   position: absolute;
   left: 50%;
   top: 50%;

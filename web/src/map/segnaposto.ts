@@ -50,6 +50,16 @@ export class Segnaposto {
       croce.className = "segnaposto-croce";
       elemento.appendChild(croce);
 
+      // L'anello e' un elemento vero e non uno pseudo-elemento perche' deve
+      // poter essere misurato: `getBoundingClientRect` da' la scatola davvero
+      // usata, mentre su uno pseudo-elemento si puo' solo ricostruirla dagli
+      // stili dichiarati, cioe' assumendo il modello di scatola invece di
+      // leggerlo. E' assumendolo che il segno e' finito 2 px fuori centro.
+      const anello = document.createElement("div");
+      anello.className = "segnaposto-anello";
+      anello.setAttribute("data-testid", "anello-segnaposto");
+      elemento.appendChild(anello);
+
       this.etichetta = document.createElement("div");
       this.etichetta.className = "segnaposto-valore";
       this.etichetta.setAttribute("data-testid", "valore-segnaposto");

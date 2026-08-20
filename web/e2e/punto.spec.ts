@@ -66,6 +66,23 @@ test("il punto resta sulla sua coordinata quando la mappa si sposta", async ({ p
   expect(Math.abs(dopo.lat - prima.lat)).toBeLessThan(0.02);
 });
 
+test("l'anello del segno cade sul punto toccato, non accanto", async ({ page }) => {
+  await pronta(page, "?z=9&c=44.2,12.6");
+  const tela = page.locator("canvas").first();
+  const tavolo = (await tela.boundingBox())!;
+  await tela.click({ position: { x: 500, y: 300 } });
+  await expect(page.getByTestId("segnaposto")).toBeVisible();
+
+  // Il riquadro dell'elemento puo' essere centrato benissimo e il segno essere
+  // comunque spostato: chi guarda vede l'anello, non il riquadro. Si misura la
+  // scatola davvero usata dall'anello, non quella che i suoi stili dichiarano:
+  // il difetto stava proprio nella differenza fra le due (i 2 px di bordo che
+  // `box-sizing` non applicava agli pseudo-elementi).
+  const a = (await page.getByTestId("anello-segnaposto").boundingBox())!;
+  expect(Math.abs(a.x + a.width / 2 - (tavolo.x + 500)), "l'anello e' spostato in orizzontale").toBeLessThanOrEqual(0.5);
+  expect(Math.abs(a.y + a.height / 2 - (tavolo.y + 300)), "l'anello e' spostato in verticale").toBeLessThanOrEqual(0.5);
+});
+
 test("toccando il segno il punto si toglie", async ({ page }) => {
   await pronta(page);
   await page.locator("canvas").first().click({ position: { x: 500, y: 300 } });
