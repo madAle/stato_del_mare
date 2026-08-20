@@ -226,10 +226,27 @@ Niente.
    `Access-Control-Allow-Origin: *` e autorizza le richieste a intervallo, che
    e' quello che serve al `.pmtiles`: nessuna configurazione CORS da fare.
 
-   **Resta aperto il dominio.** L'origine dei dati e' ancora
-   `pub-*.r2.dev`, che Cloudflare documenta come endpoint di sviluppo con
-   limiti di banda, e adesso da li' passa anche la basemap. Si aggancia un
-   dominio al bucket e si cambia una riga in `web/src/data/urls.ts`.
+   **Il dominio davanti al bucket si resta senza, deliberatamente**
+   (2026-08-20). L'origine dei dati e' `pub-*.r2.dev`, che Cloudflare
+   documenta cosi': *"Public access through r2.dev subdomains is rate-limited
+   and should only be used for development purposes"*, e *"this is an
+   unsupported access path, and we cannot guarantee consistent reliability or
+   performance"*. **Motivo per restarci**: e' un progetto personale con un
+   utente, e un dominio personalizzato su R2 vuole una zona gia' su
+   Cloudflare, che qui non c'e'; comprarne una per questo non vale.
+   **Costo se e' sbagliato**: se il limite scatta, il sintomo e' basemap a
+   chiazze o fotogrammi mancanti, non un danno ai dati; si aggancia un dominio
+   e si cambia **una riga** in `web/src/data/urls.ts`.
+
+   Misurato il 2026-08-20, quanto passa dal bucket per un solo visitatore:
+   aprire la pagina sono 46 richieste e 6,8 MB (4 di fotogrammi, 2,8 di
+   basemap), venti secondi di riproduzione a 2 ore/s altre 40 richieste e
+   7,0 MB.
+
+   **Da rimettere in discussione quando**: il link viene dato a piu' di una
+   manciata di persone, oppure compaiono 429 o basemap a chiazze. Se nel
+   frattempo esiste gia' una zona Cloudflare per un altro motivo, un
+   sottodominio non costa niente e tanto vale agganciarlo.
 
 9. **Stima della corrente nei canali di Comacchio.** Richiesta del 2026-08-18.
    Due problemi diversi. **Il bacino e' bloccato**: nessun idrometro pubblico sta
