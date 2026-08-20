@@ -15,6 +15,12 @@ export type StatoUrl = {
    * guardando manda a vedere una mappa, non una misura.
    */
   punto: [number, number] | null;
+  /**
+   * Se le isolinee sono accese. Viaggia nell'URL come tutto il resto: un link
+   * che dice "guarda qui" deve riaprire la mappa come la si stava guardando,
+   * comprese le linee che uno aveva tolto per vedere il campo pulito.
+   */
+  isolinee: boolean | null;
 };
 
 // Legge lo stato dalla query string dell'URL.
@@ -90,7 +96,16 @@ export function leggiStatoUrl(ricerca: string): StatoUrl {
     }
   }
 
-  return { istante, variabile, palette, zoom, centro, punto };
+  // isolinee: "1" o "0". Qualunque altra cosa (o l'assenza) vale null, cioe'
+  // "non detto", e chi legge decide il suo predefinito. Non si interpreta una
+  // stringa qualsiasi come "vero": un link storto accenderebbe o spegnerebbe
+  // le linee a caso invece di lasciare l'impostazione di casa.
+  let isolinee: boolean | null = null;
+  const isoStr = params.get("iso");
+  if (isoStr === "1") isolinee = true;
+  else if (isoStr === "0") isolinee = false;
+
+  return { istante, variabile, palette, zoom, centro, punto, isolinee };
 }
 
 // Scrive lo stato sulla query string dell'URL.
@@ -122,6 +137,10 @@ export function scriviStatoUrl(stato: StatoUrl): string {
 
   if (stato.punto !== null) {
     params.set("p", `${stato.punto[0]},${stato.punto[1]}`);
+  }
+
+  if (stato.isolinee !== null) {
+    params.set("iso", stato.isolinee ? "1" : "0");
   }
 
   const str = params.toString();

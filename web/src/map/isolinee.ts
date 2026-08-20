@@ -65,6 +65,7 @@ export class Isolinee {
   private prossimoId = 1;
   private ultimoConsegnato = 0;
   private ultimoInvio = 0;
+  private accese = true;
   private sveglia: ReturnType<typeof setTimeout> | null = null;
   private vivo = true;
 
@@ -132,7 +133,7 @@ export class Isolinee {
    * sotto il punto.
    */
   aggiorna(r: Richiesta): void {
-    if (!this.vivo) return;
+    if (!this.vivo || !this.accese) return;
     this.inAttesa = r;
     this.forse();
   }
@@ -145,7 +146,7 @@ export class Isolinee {
    * per sempre e le linee mostrerebbero un istante che nessuno ha chiesto.
    */
   private forse(): void {
-    if (!this.vivo || this.inCorso || !this.inAttesa) return;
+    if (!this.vivo || !this.accese || this.inCorso || !this.inAttesa) return;
     const manca = INTERVALLO_MINIMO_MS - (performance.now() - this.ultimoInvio);
     if (manca > 0) {
       if (this.sveglia === null) {
@@ -225,6 +226,39 @@ export class Isolinee {
     }
 
     this.forse();
+  }
+
+  /**
+   * Accende o spegne le isolinee.
+   *
+   * Spegnerle non e' solo nasconderle: si smette di calcolarle e il worker
+   * butta via gli undici megabyte di fotogrammi che teneva da parte. Un
+   * comando che nasconde una cosa lasciandola calcolare sarebbe un comando
+   * che non fa quello che dice, e chi lo usa lo usa proprio per togliere
+   * lavoro alla macchina.
+   *
+   * `conosciuti` si svuota insieme al ricordo del worker: sono i due lati
+   * della stessa contabilita', e lasciarli scollati e' il difetto per cui le
+   * isolinee smettevano di aggiornarsi (decisione 67).
+   */
+  mostra(accese: boolean): void {
+    if (!this.vivo || accese === this.accese) return;
+    this.accese = accese;
+    for (const strato of [STRATO_LINEE, STRATO_NUMERI]) {
+      if (this.mappa.getLayer(strato)) {
+        this.mappa.setLayoutProperty(strato, "visibility", accese ? "visible" : "none");
+      }
+    }
+    if (accese) return;
+    this.inAttesa = null;
+    if (this.sveglia !== null) clearTimeout(this.sveglia);
+    this.sveglia = null;
+    this.worker.postMessage({ tipo: "dimentica" });
+    this.conosciuti.clear();
+    const sorgente = this.mappa.getSource(SORGENTE);
+    if (sorgente && "setData" in sorgente) {
+      (sorgente as { setData(d: GeoJSON.FeatureCollection): void }).setData(VUOTO);
+    }
   }
 
   distruggi(): void {

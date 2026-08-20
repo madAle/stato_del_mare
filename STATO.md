@@ -243,7 +243,9 @@ Niente.
    rifinite il 2026-08-20.** Una linea per ogni confine della scala **Douglas**
    e nessun'altra (le intermedie ARPAE sono state tolte: col mare d'agosto
    l'unica visibile era 0,8 m, una linea che non separava niente che si potesse
-   dire a parole). Sulla linea va solo l'altezza (`0,5 m`); il nome
+   dire a parole). Si possono **spegnere** dall'interruttore nella
+   legenda, e spegnerle ferma anche il calcolo (la scelta viaggia nell'URL come
+   `iso=0`). Sulla linea va solo l'altezza (`0,5 m`); il nome
    del grado (`mosso`) sta accanto al valore misurato, nella barra di stato e
    sul segnaposto, scritto dalla stessa funzione. Elenco unico
    in `web/src/map/soglie.ts`. Marching squares in un worker

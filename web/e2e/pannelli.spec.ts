@@ -104,3 +104,24 @@ test("la scala del tempo mostra le tacche e il riferimento adesso", async ({ pag
   await expect(page.getByTestId("adesso")).toBeVisible();
   expect(await page.locator(".scrubber-tacca").count()).toBeGreaterThan(2);
 });
+
+test("la tavolozza scelta finisce nell'URL anche se non si tocca piu' niente", async ({ page }) => {
+  // Lo strozzatore dell'URL consegna subito quando la finestra e' gia' scaduta,
+  // quindi legge i ref **prima** che React li aggiorni: con un solo cambio e
+  // la mappa ferma (nessun altro evento a seguire) la scelta restava fuori
+  // dall'URL per sempre, e un link condiviso riapriva la tavolozza di prima.
+  await page.goto("/?t=2026-08-16T12:00Z&z=7&c=43.5,14.5");
+  await page.waitForFunction(() => (window as never as { __primoFrame: boolean }).__primoFrame);
+  await page.waitForTimeout(1500);
+
+  const selettore = page.getByLabel("tavolozza dei colori");
+  const scelte = await selettore.locator("option").evaluateAll(
+    (o) => (o as HTMLOptionElement[]).map((x) => x.value),
+  );
+  const attuale = await selettore.inputValue();
+  const altra = scelte.find((s) => s !== attuale)!;
+  await selettore.selectOption(altra);
+
+  await expect.poll(() => page.evaluate(() => location.search), { timeout: 6000 })
+    .toContain(`palette=${altra}`);
+});

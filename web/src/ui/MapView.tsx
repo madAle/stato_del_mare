@@ -22,7 +22,7 @@ export type ManiglieMappa = { animazione: Animazione; livello: LivelloCampo };
 export function MapView({
   catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera, stile,
   preserveDrawingBuffer, vistaIniziale, puntoIniziale,
-  alTempo, alValore, alPunto, alPronto, alVista, alErrore,
+  alTempo, alValore, alPunto, alPronto, alVista, alErrore, isolinee: isolineeAccese,
 }: {
   catalogo: Catalogo;
   variabile: Variabile;
@@ -65,8 +65,24 @@ export function MapView({
    * su "caricamento" per sempre.
    */
   alErrore: (errore: Error) => void;
+  /**
+   * Se disegnare le isolinee. Spegnerle non le nasconde soltanto: si smette di
+   * calcolarle e il worker butta via i fotogrammi (vedi `Isolinee.mostra`).
+   */
+  isolinee: boolean;
 }) {
   const contenitore = useRef<HTMLDivElement>(null);
+  // L'istanza delle isolinee vive dentro l'effetto di montaggio (a dipendenze
+  // vuote): serve un ref per poterla accendere e spegnere da fuori senza
+  // ricostruire la mappa, cioe' senza buttare via il contesto WebGL.
+  const isolineeRef = useRef<Isolinee | null>(null);
+  const accese = useRef(isolineeAccese);
+  accese.current = isolineeAccese;
+  // La funzione che chiede il ricalcolo vive anche lei dentro l'effetto di
+  // montaggio: serve qui fuori per rifare le linee **subito** quando si
+  // riaccendono, se no restano vuote fino al prossimo avanzamento del tempo,
+  // che a mappa ferma non arriva mai.
+  const chiediIsolinee = useRef<() => void>(() => {});
   // L'ultimo istante disegnato: il gestore di mousemove lo legge per mostrare
   // il valore del fotogramma che si vede a schermo, non quello con cui la
   // mappa e' stata montata. Un ref e non uno stato React, perche' alTempo gia'
@@ -169,6 +185,8 @@ export function MapView({
         const sottoLeEtichette = primoLivelloSimboli(m.getStyle() as never);
         m.addLayer(livello, sottoLeEtichette);
         isolinee = new Isolinee(m, catalogo.griglia, sottoLeEtichette);
+        isolineeRef.current = isolinee;
+        isolinee.mostra(accese.current);
 
         // asseRef e prefetcherRef, non asse e prefetcher: l'animazione vive
         // per tutta la vita della mappa, ma i due ref restano aggiornati a
@@ -242,6 +260,8 @@ export function MapView({
           });
         };
 
+        chiediIsolinee.current = aggiornaIsolinee;
+
         animazione = new Animazione(livello, { asse: asseRef, prefetcher: prefetcherRef, cache });
         animazione.alTempo = (istante, stato) => {
           ultimoIstante.current = istante;
@@ -282,12 +302,18 @@ export function MapView({
     return () => {
       vivo = false;
       isolinee?.distruggi();
+      isolineeRef.current = null;
       animazione?.distruggi();
       mappa?.remove();
       strozzatore.distruggi();
       livelloRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    isolineeRef.current?.mostra(isolineeAccese);
+    if (isolineeAccese) chiediIsolinee.current();
+  }, [isolineeAccese]);
 
   return <div ref={contenitore} className="mappa" />;
 }

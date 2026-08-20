@@ -142,11 +142,19 @@ select[aria-label="variabile"] {
   font-size: 0.75rem;
 }
 
+/* Come la barra di stato: su un telefono la legenda e' piu' larga della
+   finestra (misurato: 417 px in 390 da quando c'e' l'interruttore delle
+   isolinee), e senza andare a capo il pezzo di destra sparisce senza che niente
+   lo sveli, perche' i pannelli non scorrono. `max-width` serve perche' la
+   fascia dispone i pannelli in riga e non li stringe: senza, la legenda resta
+   larga quanto il suo contenuto e va a capo solo dentro se stessa. */
 .legenda {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem 0.5rem;
   padding: 0.5rem 0.75rem;
+  max-width: 100%;
 }
 
 .legenda .scala {
@@ -572,5 +580,33 @@ select[aria-label="variabile"] {
   .segnaposto {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* L'interruttore delle isolinee, dentro la legenda. Il bersaglio e' l'etichetta
+   intera e non il solo quadratino: 13 px sono meta' del minimo che un dito
+   prende, e qui il quadratino non si puo' ingrandire senza sformare la barra. */
+.interruttore {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.interruttore input {
+  margin: 0;
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  .interruttore {
+    min-height: 44px;
+  }
+
+  .interruttore input {
+    width: 20px;
+    height: 20px;
   }
 }

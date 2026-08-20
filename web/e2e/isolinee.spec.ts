@@ -141,3 +141,63 @@ test("scorrendo a lungo il tempo, ogni richiesta di isolinee produce un risultat
   // uno di scarto: l'ultima richiesta puo' essere ancora in volo
   expect(s.risultati).toBeGreaterThanOrEqual(s.calcola - 1);
 });
+
+/**
+ * Le isolinee si possono togliere, e togliere vuol dire smettere di
+ * calcolarle: un comando che nasconde una cosa lasciandola calcolare non fa
+ * quello che dice, e chi lo usa lo usa proprio per togliere lavoro alla
+ * macchina.
+ */
+test("l'interruttore spegne le isolinee, e spegnerle ferma anche il calcolo", async ({ page }) => {
+  await page.addInitScript(() => {
+    const Vero = window.Worker;
+    (window as never as { __calcoli: number }).__calcoli = 0;
+    (window as never as { Worker: unknown }).Worker = class extends Vero {
+      constructor(u: string | URL, o?: WorkerOptions) {
+        super(u, o);
+        if (!String(u).includes("isolinee")) return;
+        const vero = this.postMessage.bind(this);
+        this.postMessage = (m: { tipo?: string }, ...r: never[]) => {
+          if (m?.tipo === "calcola") (window as never as { __calcoli: number }).__calcoli++;
+          return vero(m, ...r);
+        };
+      }
+    };
+  });
+
+  await conLinee(page, "?t=2026-08-16T12:00Z&z=7&c=43.5,14.5");
+  const interruttore = page.getByLabel("isolinee");
+  await expect(interruttore).toBeChecked();
+
+  await interruttore.uncheck();
+  await page.waitForTimeout(1500);
+  expect(await page.evaluate(() => (window as never as { __mappa: Mappa }).__mappa
+    .querySourceFeatures("isolinee").length), "la sorgente non e' stata svuotata").toBe(0);
+
+  // Da qui in poi il tempo scorre e non deve chiedere piu' niente al worker.
+  await page.evaluate(() => (window as never as { __calcoli: number }).__calcoli = 0);
+  await page.getByRole("button", { name: "riproduci" }).click();
+  await page.waitForTimeout(2500);
+  await page.getByRole("button", { name: /pausa|riproduci/ }).first().click();
+  expect(await page.evaluate(() => (window as never as { __calcoli: number }).__calcoli),
+    "spente, le isolinee si calcolano ancora").toBe(0);
+
+  // e riaccendendole tornano subito, senza aspettare che il tempo avanzi
+  await interruttore.check();
+  await expect.poll(
+    () => page.evaluate(() => (window as never as { __mappa: Mappa }).__mappa.querySourceFeatures("isolinee").length),
+    { timeout: 15_000 },
+  ).toBeGreaterThan(0);
+});
+
+test("la scelta viaggia nell'URL e un link con iso=0 apre la mappa senza linee", async ({ page }) => {
+  await page.goto("/?t=2026-08-16T12:00Z&z=7&c=43.5,14.5&iso=0");
+  await page.waitForFunction(() => (window as never as { __primoFrame: boolean }).__primoFrame);
+  await page.waitForTimeout(3000);
+  await expect(page.getByLabel("isolinee")).not.toBeChecked();
+  expect(await page.evaluate(() => (window as never as { __mappa: Mappa }).__mappa
+    .querySourceFeatures("isolinee").length)).toBe(0);
+
+  await page.getByLabel("isolinee").check();
+  await expect.poll(() => page.evaluate(() => location.search), { timeout: 5000 }).toMatch(/[?&]iso=1/);
+});

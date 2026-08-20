@@ -64,6 +64,10 @@ export function App({
   const [stato, setStato] = useState<StatoRiproduzione>("ferma");
   const [inRiproduzione, setInRiproduzione] = useState(false);
   const [valore, setValore] = useState<number | null>(null);
+  // Le isolinee sono accese di casa: sono la lettura quantitativa del campo, e
+  // chi apre la mappa per la prima volta non sa di poterle chiedere. Si possono
+  // togliere per guardare il colore pulito, e la scelta viaggia nell'URL.
+  const [isolinee, setIsolinee] = useState(iniziale.isolinee ?? true);
   // Il punto osservato non e' uno stato che ridisegna: il segno lo tiene
   // MapLibre, il valore lo scrive lo strato mappa. Serve solo a finire
   // nell'URL, quindi vive in un ref come zoom e centro.
@@ -90,6 +94,8 @@ export function App({
   // primo render.
   const paletteRef = useRef<string | null>(palette);
   paletteRef.current = palette;
+  const isolineeRef = useRef(isolinee);
+  isolineeRef.current = isolinee;
   // Zoom e centro veri, riportati da MapView a ogni "moveend" (vedi
   // MapView.tsx): prima di questo ref l'URL non li conosceva mai e
   // scriveva sempre null, cancellando la vista di un link condiviso.
@@ -111,6 +117,7 @@ export function App({
         zoom: vistaRef.current?.zoom ?? null,
         centro: vistaRef.current?.centro ?? null,
         punto: puntoRef.current ? [puntoRef.current.lat, puntoRef.current.lng] : null,
+        isolinee: isolineeRef.current,
       }));
     }, 1000),
     [],
@@ -217,6 +224,7 @@ export function App({
         preserveDrawingBuffer={preserveDrawingBuffer}
         vistaIniziale={{ centro: iniziale.centro, zoom: iniziale.zoom }}
         puntoIniziale={puntoRef.current}
+        isolinee={isolinee}
         alTempo={(i, s) => {
           setIstante(i); setStato(s);
           istanteRef.current = i;
@@ -235,10 +243,31 @@ export function App({
         <LayerSwitcher variabili={variabili} scelta={variabile} cambia={setVariabile} />
         <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={scelta.unita} variabile={scelta.id} stato={stato} />
         <Legend palette={scelta.colormap} massimo={4} unita={scelta.unita}>
+          {/* Il ref si aggiorna **prima** di chiedere la scrittura dell'URL, non
+              solo al render successivo: lo strozzatore consegna subito se la
+              finestra e' gia' scaduta, e leggerebbe il valore di prima. Con un
+              solo cambio e nessun altro evento a seguire (mappa ferma) quel
+              valore sbagliato resterebbe nell'URL per sempre. */}
           <PaletteSwitcher
             scelta={scelta.colormap}
-            cambia={(id) => { setPalette(id); strozzatoreUrl.invia(); }}
+            cambia={(id) => { paletteRef.current = id; setPalette(id); strozzatoreUrl.invia(); }}
           />
+          {/* L'interruttore delle isolinee sta nella legenda, accanto alla
+              scala di colore, perche' e' la stessa domanda: come si legge il
+              campo. Il colore lo legge a occhio, le linee lo leggono in
+              metri. */}
+          <label className="interruttore">
+            <input
+              type="checkbox"
+              checked={isolinee}
+              onChange={(e) => {
+                isolineeRef.current = e.target.checked;
+                setIsolinee(e.target.checked);
+                strozzatoreUrl.invia();
+              }}
+            />
+            isolinee
+          </label>
         </Legend>
       </div>
       {/* Come la fascia alta: il contenitore impila, quindi ne' i comandi ne'
