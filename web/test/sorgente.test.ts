@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Ora } from "../src/data/indice";
-import { inquadra, provenienza, scadenzaOre } from "../src/data/sorgente";
+import { inquadra, oraPiuVicina, provenienza, scadenzaOre } from "../src/data/sorgente";
 
 const an = (iso: string, rif: string): Ora => ({
   istante: Date.parse(iso), tipo: "an", riferimento: rif,
@@ -59,5 +59,30 @@ describe("provenienza", () => {
     expect(scadenzaOre(fc("2026-08-15T18:00:00Z", "20260815"))).toBe(18);
     expect(scadenzaOre(fc("2026-08-16T00:00:00Z", "20260815"))).toBe(24);
     expect(provenienza(fc("2026-08-15T18:00:00Z", "20260815"))).toBe("previsione +18h");
+  });
+});
+
+describe("l'inquadratura senza dissolvenza", () => {
+  const a: Ora = { istante: Date.UTC(2026, 7, 19, 9), tipo: "an", riferimento: "20260819" };
+  const b: Ora = { istante: Date.UTC(2026, 7, 19, 10), tipo: "an", riferimento: "20260819" };
+
+  it("prende l'ora piu' vicina e azzera la frazione", () => {
+    // Nessun valore intermedio: il periodo di picco prende 17 valori in tutto
+    // l'archivio (la griglia delle frequenze di SWAN), e fondere 3,48 con 3,95
+    // darebbe 3,71 s, che il modello non puo' produrre.
+    expect(oraPiuVicina({ prima: a, dopo: b, frazione: 0.1 })).toEqual({ prima: a, dopo: null, frazione: 0 });
+    expect(oraPiuVicina({ prima: a, dopo: b, frazione: 0.9 })).toEqual({ prima: b, dopo: null, frazione: 0 });
+  });
+
+  it("a meta' esatta passa all'ora dopo, senza restare a cavallo", () => {
+    // Il confine va scelto, non lasciato al caso: a 0,5 esatti si e' gia' piu'
+    // vicini all'ora dopo che a quella prima per ogni istante successivo.
+    expect(oraPiuVicina({ prima: a, dopo: b, frazione: 0.5 }).prima).toBe(b);
+    expect(oraPiuVicina({ prima: a, dopo: b, frazione: 0.4999 }).prima).toBe(a);
+  });
+
+  it("dentro un buco non cambia niente: non c'era niente da fondere", () => {
+    const dentroUnBuco = { prima: a, dopo: null, frazione: 0 };
+    expect(oraPiuVicina(dentroUnBuco)).toEqual(dentroUnBuco);
   });
 });

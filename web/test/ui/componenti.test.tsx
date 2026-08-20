@@ -65,7 +65,7 @@ describe("LayerSwitcher", () => {
     // senza una spiegazione visibile, un comando disabilitato sembra un guasto
     render(<LayerSwitcher variabili={variabili} scelta="hwave" cambia={() => {}} />);
     const livello = screen.getByRole("option", { name: "livello del mare" }) as HTMLOptionElement;
-    expect(livello.title).toMatch(/altezza d'onda/);
+    expect(livello.title).toMatch(/scala col segno/);
   });
 
   it("scrive nomi leggibili, non gli identificatori dell'archivio", () => {

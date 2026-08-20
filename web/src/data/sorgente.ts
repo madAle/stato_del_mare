@@ -32,6 +32,28 @@ export function inquadra(asse: Ora[], istante: number): Inquadratura | null {
 }
 
 /**
+ * L'inquadratura riportata all'ora piu' vicina, senza dissolvenza.
+ *
+ * Serve alle grandezze che il modello **non produce continue**. Il periodo di
+ * picco, per esempio, e' l'etichetta della banda di frequenza dove sta il
+ * massimo dello spettro: misurato su tutto l'archivio, prende 17 valori e
+ * basta, in progressione geometrica di rapporto 1,1326 (la griglia delle
+ * frequenze di SWAN). Fondere 3,48 e 3,95 darebbe 3,71 s, un periodo che il
+ * modello non puo' generare, e il numero sotto il dito lo scriverebbe.
+ *
+ * E' la stessa regola dell'orologio, che non scrive mai "09:37" perche' il dato
+ * e' orario: non si promette una risoluzione che non esiste.
+ *
+ * Il costo dichiarato: il campo scatta di ora in ora invece di scorrere liscio,
+ * e lo scatto cade a meta' fra le due ore.
+ */
+export function oraPiuVicina(q: Inquadratura): Inquadratura {
+  if (!q.dopo) return q;
+  const vicina = q.frazione < 0.5 ? q.prima : q.dopo;
+  return { prima: vicina, dopo: null, frazione: 0 };
+}
+
+/**
  * Ore di scadenza di una previsione, null per l'analisi.
  *
  * Misurato sul bucket: la corsa datata D copre da D+1h a D+24h (l'ultima corsa

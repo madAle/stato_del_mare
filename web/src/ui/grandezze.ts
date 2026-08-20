@@ -28,15 +28,62 @@ export type Grandezza = {
   unita: string;
   /** I campi del catalogo che la compongono, nell'ordine in cui servono. */
   campi: string[];
+  /**
+   * Il valore in cima alla scala di colore.
+   *
+   * Non si ricava dal dato: un massimo calcolato sul fotogramma corrente
+   * farebbe cambiare scala alla legenda mentre il tempo scorre, e due istanti
+   * dello stesso mare non sarebbero piu' confrontabili a occhio. E' una scelta
+   * di resa, e sta scritta con il numero misurato che la giustifica.
+   */
+  massimo: number;
+  /**
+   * Se fra un'ora e l'altra si puo' interpolare.
+   *
+   * Falso per le grandezze che il modello non produce continue: interpolarle
+   * inventerebbe valori che non esistono (vedi `oraPiuVicina` in
+   * data/sorgente.ts).
+   */
+  dissolvenza: boolean;
+  /** Se questa versione la sa disegnare. */
+  disegnabile: boolean;
 };
 
 const TABELLA: readonly Grandezza[] = [
-  { id: "hwave", nome: "altezza d'onda", unita: "m", campi: ["hwave"] },
-  { id: "pwave", nome: "periodo dell'onda", unita: "s", campi: ["pwave"] },
+  {
+    id: "hwave", nome: "altezza d'onda", unita: "m", campi: ["hwave"],
+    // Quattro metri e' il confine fra "agitato" e "molto agitato" nella scala
+    // Douglas: sopra, in Adriatico, si va di rado.
+    massimo: 4, dissolvenza: true, disegnabile: true,
+  },
+  {
+    id: "pwave", nome: "periodo dell'onda", unita: "s", campi: ["pwave"],
+    // Misurato su tutto l'archivio (144 fotogrammi, analisi e previsione): il
+    // periodo prende 17 valori, da 1,00 a 7,37 s, e il massimo osservato e'
+    // 7,37. Otto lascia margine senza schiacciare in fondo alla rampa i valori
+    // veri, che stanno fra 2,4 e 5,1 nell'88 per cento del mare. **Sopra gli 8
+    // secondi la scala satura**: da rivedere con un inverno di dati.
+    massimo: 8,
+    // Niente dissolvenza: 17 livelli in progressione geometrica (griglia delle
+    // frequenze di SWAN), interpolarli inventerebbe periodi che non esistono.
+    dissolvenza: false, disegnabile: true,
+  },
   // Le due componenti sono adimensionali (seno e coseno); la grandezza sono gradi.
-  { id: "dwave", nome: "direzione dell'onda", unita: "gradi", campi: ["dwave_sin", "dwave_cos"] },
-  { id: "corrente", nome: "corrente", unita: "m/s", campi: ["ubar", "vbar"] },
-  { id: "sealevel", nome: "livello del mare", unita: "m", campi: ["sealevel"] },
+  {
+    id: "dwave", nome: "direzione dell'onda", unita: "gradi",
+    campi: ["dwave_sin", "dwave_cos"],
+    // Una direzione non si disegna con una rampa: vuole le frecce.
+    massimo: 360, dissolvenza: true, disegnabile: false,
+  },
+  {
+    id: "corrente", nome: "corrente", unita: "m/s", campi: ["ubar", "vbar"],
+    massimo: 1, dissolvenza: true, disegnabile: false,
+  },
+  {
+    id: "sealevel", nome: "livello del mare", unita: "m", campi: ["sealevel"],
+    // Ha segno: vuole una scala centrata sullo zero, che la legenda non sa fare.
+    massimo: 1, dissolvenza: true, disegnabile: false,
+  },
 ];
 
 /**
@@ -64,8 +111,13 @@ export function grandezzeDi(variabili: Variabile[]): Grandezza[] {
       for (const c of campi) gia.add(c);
       fuori.push({ ...nota, campi });
     } else {
+      // Sconosciuta: si mostra ma non si disegna, perche' di lei non sappiamo
+      // ne' la scala della legenda ne' se si puo' interpolare.
       gia.add(v.id);
-      fuori.push({ id: v.id, nome: v.id, unita: v.unita, campi: [v.id] });
+      fuori.push({
+        id: v.id, nome: v.id, unita: v.unita, campi: [v.id],
+        massimo: 1, dissolvenza: true, disegnabile: false,
+      });
     }
   }
   return fuori;

@@ -273,14 +273,25 @@ Niente.
    discrete, perche' con i gradini Douglas in basso l'Adriatico estivo cadrebbe
    tutto in una classe. Dettaglio nelle decisioni 57-60 e 64-70.
 
-11. **Le altre variabili del catalogo non si disegnano ancora.** Il selettore
-   le elenca (altezza d'onda, periodo, direzione, corrente, livello del mare) ma
-   solo l'altezza d'onda e' selezionabile: le altre restano disabilitate con la
-   spiegazione, perche' selezionarne una lascerebbe la legenda su un'unita' e la
-   mappa a disegnarne un'altra. Direzione e corrente non sono campi scalari:
-   vogliono frecce, non una rampa di colore, quindi non e' "accendere un
-   layer". I nomi e l'accorpamento delle componenti (`dwave_sin`+`dwave_cos`,
-   `ubar`+`vbar`) stanno in `web/src/ui/grandezze.ts`.
+11. **Le altre variabili del catalogo, una alla volta.** Fatto il 2026-08-20:
+   **altezza d'onda e periodo**. Cambiando grandezza cambiano scala dei valori
+   grezzi, cima della legenda, unita', presenza dello stato del mare accanto al
+   numero e presenza delle isolinee. Il periodo **non si dissolve** fra un'ora e
+   l'altra: prende 17 valori in tutto l'archivio (griglia delle frequenze di
+   SWAN) e interpolarli inventerebbe periodi che il modello non produce.
+
+   Restano tre, e non sono lo stesso lavoro:
+   - **livello del mare**: scalare ma **con segno**, vuole una legenda centrata
+     sullo zero (la tavolozza `balance` c'e' gia');
+   - **direzione** e **corrente**: non sono campi scalari, vogliono **frecce**,
+     due campi da ricomporre e una densita' per livello di zoom. Non e'
+     "accendere un layer": e' un motore di disegno nuovo.
+
+   Nomi, accorpamento delle componenti e scelte di resa stanno in
+   `web/src/ui/grandezze.ts`. **Vincolo da sciogliere prima della direzione**:
+   oggi le grandezze disegnabili hanno un campo solo, quindi il loro id coincide
+   con quello del campo nel catalogo, ed e' cio' che rende lecito passarlo a
+   `leggiIndice` e a `urlFrame`.
 
 12. **Dati misurati dalle boe ondametriche, accanto al modello.** Richiesta del
    2026-08-20. Oggi la mappa non contiene **nessuna misura**: analisi e

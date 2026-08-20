@@ -3,6 +3,8 @@ import type { StyleSpecification } from "maplibre-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CacheFrame } from "../data/cache";
 import { leggiCatalogo, VARIABILE_DISEGNATA } from "../data/catalogo";
+import { haStatoDelMare } from "../map/soglie";
+import { grandezzeDi } from "./grandezze";
 import { leggiFrame } from "../data/frame";
 import { asseDeiTempi, leggiIndice, type Ora } from "../data/indice";
 import { Prefetcher } from "../data/prefetch";
@@ -57,9 +59,12 @@ export function App({
   // avrebbe montato la mappa gia' incoerente con la legenda fin dal primo
   // render: stessa incoerenza del LayerSwitcher, stesso rimedio, cioe' non
   // accettarla.
-  const [variabile, setVariabile] = useState(
-    iniziale.variabile === VARIABILE_DISEGNATA ? iniziale.variabile : VARIABILE_DISEGNATA,
-  );
+  // Un link con ?var= su una grandezza che questa versione non sa disegnare
+  // monterebbe la mappa gia' incoerente con la legenda fin dal primo render:
+  // stessa incoerenza del selettore, stesso rimedio, cioe' non accettarla. Il
+  // controllo vero (e' disegnabile?) si puo' fare solo col catalogo in mano,
+  // piu' sotto: qui si tiene quello che l'URL dice.
+  const [variabile, setVariabile] = useState(iniziale.variabile ?? VARIABILE_DISEGNATA);
   const [istante, setIstante] = useState(iniziale.istante ?? Date.now());
   const [stato, setStato] = useState<StatoRiproduzione>("ferma");
   const [inRiproduzione, setInRiproduzione] = useState(false);
@@ -126,7 +131,15 @@ export function App({
 
   const catalogo = useQuery({ queryKey: ["catalogo"], queryFn: () => leggiCatalogo() });
   const variabili = catalogo.data?.variabili ?? [];
-  const sceltaGrezza = variabili.find((v) => v.id === variabile);
+  const grandezze = grandezzeDi(variabili);
+  // Le grandezze disegnabili di oggi hanno **un campo solo**, quindi il loro id
+  // coincide con l'id del campo nel catalogo, ed e' cio' che rende lecito
+  // cercarla qui per id e passarla a `leggiIndice` e a `urlFrame`. Il giorno
+  // che diventa disegnabile una grandezza a due campi (direzione, corrente),
+  // questa riga non basta piu' e va sciolta la corrispondenza.
+  const grandezza = grandezze.find((g) => g.id === variabile && g.disegnabile)
+    ?? grandezze.find((g) => g.id === VARIABILE_DISEGNATA);
+  const sceltaGrezza = variabili.find((v) => v.id === grandezza?.id);
   // La tavolozza del catalogo si puo' sostituire con `?palette=dense` per
   // confrontare le alternative sullo stesso dato, che e' l'unico modo per
   // deciderle. Il catalogo resta la scelta di default: questo e' un parametro
@@ -135,12 +148,24 @@ export function App({
     ? { ...sceltaGrezza, colormap: palette }
     : sceltaGrezza;
 
+  // Se l'URL chiedeva una grandezza che non si sa disegnare, si e' ricaduti
+  // sull'altezza d'onda: lo stato va corretto, non solo la resa. Senza, il
+  // selettore mostrerebbe una scelta diversa da quella disegnata e l'URL
+  // continuerebbe a promettere una grandezza che nessuno sta guardando.
+  useEffect(() => {
+    if (grandezza && grandezza.id !== variabile) {
+      variabileRef.current = grandezza.id;
+      setVariabile(grandezza.id);
+      strozzatoreUrl.invia();
+    }
+  }, [grandezza, variabile, strozzatoreUrl]);
+
   const assi = useQuery({
-    queryKey: ["asse", variabile, scelta?.tipi.an.mesi.join()],
+    queryKey: ["asse", scelta?.id, scelta?.tipi.an.mesi.join()],
     enabled: Boolean(scelta),
     queryFn: async () => {
-      const an = await leggiIndice(variabile, "an", scelta!.tipi.an.mesi);
-      const fc = await leggiIndice(variabile, "fc", scelta!.tipi.fc.mesi);
+      const an = await leggiIndice(scelta!.id, "an", scelta!.tipi.an.mesi);
+      const fc = await leggiIndice(scelta!.id, "fc", scelta!.tipi.fc.mesi);
       return asseDeiTempi(an, fc);
     },
   });
@@ -156,10 +181,10 @@ export function App({
 
   const cache = useMemo(() => new CacheFrame(), []);
   const prefetcher = useMemo(
-    () => new Prefetcher(cache, variabile, (ora: Ora) =>
-      leggiFrame(urlFrame(variabile, ora.tipo, ora.riferimento, new Date(ora.istante)),
+    () => new Prefetcher(cache, scelta?.id ?? variabile, (ora: Ora) =>
+      leggiFrame(urlFrame(scelta?.id ?? variabile, ora.tipo, ora.riferimento, new Date(ora.istante)),
                  catalogo.data!.griglia)),
-    [cache, variabile, catalogo.data],
+    [cache, scelta?.id, variabile, catalogo.data],
   );
 
   // Un catalogo o un asse che non arrivano sono la stessa categoria di guasto
@@ -225,6 +250,7 @@ export function App({
         vistaIniziale={{ centro: iniziale.centro, zoom: iniziale.zoom }}
         puntoIniziale={puntoRef.current}
         isolinee={isolinee}
+        grandezza={grandezza!}
         alTempo={(i, s) => {
           setIstante(i); setStato(s);
           istanteRef.current = i;
@@ -240,9 +266,9 @@ export function App({
           fa niente (restano posizionati ognuno per conto suo) e a schermo
           stretto li impila, invece di lasciarli accavallare. */}
       <div className="fascia-alta">
-        <LayerSwitcher variabili={variabili} scelta={variabile} cambia={setVariabile} />
-        <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={scelta.unita} variabile={scelta.id} stato={stato} />
-        <Legend palette={scelta.colormap} massimo={4} unita={scelta.unita}>
+        <LayerSwitcher variabili={variabili} scelta={grandezza!.id} cambia={setVariabile} />
+        <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={grandezza!.unita} variabile={scelta.id} stato={stato} />
+        <Legend palette={scelta.colormap} massimo={grandezza!.massimo} unita={grandezza!.unita}>
           {/* Il ref si aggiorna **prima** di chiedere la scrittura dell'URL, non
               solo al render successivo: lo strozzatore consegna subito se la
               finestra e' gia' scaduta, e leggerebbe il valore di prima. Con un
@@ -256,10 +282,15 @@ export function App({
               scala di colore, perche' e' la stessa domanda: come si legge il
               campo. Il colore lo legge a occhio, le linee lo leggono in
               metri. */}
-          <label className="interruttore">
+          <label
+            className="interruttore"
+            title={haStatoDelMare(scelta.id) ? undefined
+              : "Le isolinee sono i confini della scala Douglas: valgono solo per l'altezza d'onda"}
+          >
             <input
               type="checkbox"
-              checked={isolinee}
+              disabled={!haStatoDelMare(scelta.id)}
+              checked={isolinee && haStatoDelMare(scelta.id)}
               onChange={(e) => {
                 isolineeRef.current = e.target.checked;
                 setIsolinee(e.target.checked);

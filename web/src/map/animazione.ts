@@ -2,7 +2,7 @@ import type { CacheFrame } from "../data/cache";
 import type { Ora } from "../data/indice";
 import { PASSO_MS } from "../data/indice";
 import type { Prefetcher } from "../data/prefetch";
-import { inquadra } from "../data/sorgente";
+import { inquadra, oraPiuVicina } from "../data/sorgente";
 import type { LivelloCampo } from "./campo";
 
 /**
@@ -45,6 +45,14 @@ export type OpzioniAnimazione = {
   asse: Leggibile<Ora[]>;
   prefetcher: Leggibile<Prefetcher>;
   cache: CacheFrame;
+  /**
+   * Se fra un'ora e l'altra si puo' interpolare. Assente vale "si'".
+   *
+   * Falso per le grandezze che il modello non produce continue: il periodo di
+   * picco prende 17 valori in tutto (la griglia delle frequenze di SWAN), e
+   * fonderne due darebbe un periodo che il modello non puo' generare.
+   */
+  dissolvenza?: Leggibile<boolean>;
   /** Ogni quanto, al massimo, si riporta il tempo a chi ascolta. */
   passoRapportoMs?: number;
 };
@@ -257,8 +265,12 @@ export class Animazione {
 
   private disegna(): void {
     const prefetcher = this.opzioni.prefetcher.current;
-    const q = inquadra(this.opzioni.asse.current, this.istante);
-    if (!q) return;
+    const grezza = inquadra(this.opzioni.asse.current, this.istante);
+    if (!grezza) return;
+    // Le grandezze che il modello non produce continue non si fondono: si
+    // mostra l'ora piu' vicina, se no lo shader inventa valori che il modello
+    // non ha calcolato (vedi `oraPiuVicina`).
+    const q = this.opzioni.dissolvenza?.current === false ? oraPiuVicina(grezza) : grezza;
     const chiaveA = prefetcher.chiave(q.prima);
     const a = this.opzioni.cache.prendi(chiaveA);
     if (!a) return;

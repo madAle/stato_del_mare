@@ -9,8 +9,10 @@ import { LivelloCampo } from "../map/campo";
 import { Isolinee } from "../map/isolinee";
 import { creaMappa, primoLivelloSimboli, type VistaIniziale } from "../map/mappa";
 import { valoreCorrente } from "../map/proiezione";
+import type { Grandezza } from "./grandezze";
 import { inquadra as inquadraOre } from "../data/sorgente";
 import { Segnaposto } from "../map/segnaposto";
+import { haStatoDelMare } from "../map/soglie";
 import { creaStrozzatore } from "../map/strozzatore";
 import { scriviValoreEStato } from "./numeri";
 
@@ -22,7 +24,7 @@ export type ManiglieMappa = { animazione: Animazione; livello: LivelloCampo };
 export function MapView({
   catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera, stile,
   preserveDrawingBuffer, vistaIniziale, puntoIniziale,
-  alTempo, alValore, alPunto, alPronto, alVista, alErrore, isolinee: isolineeAccese,
+  alTempo, alValore, alPunto, alPronto, alVista, alErrore, isolinee: isolineeAccese, grandezza,
 }: {
   catalogo: Catalogo;
   variabile: Variabile;
@@ -70,6 +72,12 @@ export function MapView({
    * calcolarle e il worker butta via i fotogrammi (vedi `Isolinee.mostra`).
    */
   isolinee: boolean;
+  /**
+   * Come si rende la grandezza scelta: la cima della scala di colore e se fra
+   * un'ora e l'altra si puo' interpolare. Non viene dal catalogo (che archivia
+   * dati, non scelte di resa) ma dalla tabella in `ui/grandezze.ts`.
+   */
+  grandezza: Grandezza;
 }) {
   const contenitore = useRef<HTMLDivElement>(null);
   // L'istanza delle isolinee vive dentro l'effetto di montaggio (a dipendenze
@@ -78,6 +86,11 @@ export function MapView({
   const isolineeRef = useRef<Isolinee | null>(null);
   const accese = useRef(isolineeAccese);
   accese.current = isolineeAccese;
+  // La grandezza serve dentro l'effetto di montaggio (dipendenze vuote) e
+  // dentro il ciclo di animazione, che vivono entrambi in una chiusura creata
+  // una volta sola: senza il ref vedrebbero per sempre quella del primo render.
+  const grandezzaRef = useRef(grandezza);
+  grandezzaRef.current = grandezza;
   // La funzione che chiede il ricalcolo vive anche lei dentro l'effetto di
   // montaggio: serve qui fuori per rifare le linee **subito** quando si
   // riaccendono, se no restano vuote fino al prossimo avanzamento del tempo,
@@ -132,6 +145,17 @@ export function MapView({
     livelloRef.current?.impostaPalette(variabile.colormap);
   }, [variabile.colormap]);
 
+  // Scala e cima della legenda seguono la grandezza, con la stessa logica della
+  // tavolozza: il livello si costruisce una volta sola, quindi senza questi due
+  // setter cambiare grandezza lascerebbe il campo con la scala di quella prima.
+  // L'altezza d'onda e' archiviata a millesimi di metro, il periodo a centesimi
+  // di secondo: sbagliarla non si vede come un errore, si vede come un mare
+  // diverso.
+  useEffect(() => {
+    livelloRef.current?.impostaScala(variabile.scala);
+    livelloRef.current?.impostaMassimo(grandezza.massimo);
+  }, [variabile.scala, grandezza.massimo]);
+
   // Dipendenze vuote di proposito: la mappa si costruisce una volta sola. Se si
   // ricostruisce a ogni cambio di stato, ogni ora di riproduzione ricreerebbe
   // il contesto WebGL e ricaricherebbe 702 MB di basemap.
@@ -170,7 +194,8 @@ export function MapView({
         const livello = new LivelloCampo({
           griglia: catalogo.griglia, costa, maschera,
           limiteCostaM: metaCosta.limite_m, limiteDatoM: metaMaschera.limite_m,
-          palette: variabile.colormap, massimo: 4, scala: variabile.scala,
+          palette: variabile.colormap, massimo: grandezzaRef.current.massimo,
+          scala: variabile.scala,
         });
         // Il segnale che lo smoke test aspetta invece di dormire un tempo a
         // caso: nasce nel livello, al primo render() che disegna davvero con
@@ -186,7 +211,7 @@ export function MapView({
         m.addLayer(livello, sottoLeEtichette);
         isolinee = new Isolinee(m, catalogo.griglia, sottoLeEtichette);
         isolineeRef.current = isolinee;
-        isolinee.mostra(accese.current);
+        isolinee.mostra(accese.current && haStatoDelMare(variabileRef.current.id));
 
         // asseRef e prefetcherRef, non asse e prefetcher: l'animazione vive
         // per tutta la vita della mappa, ma i due ref restano aggiornati a
@@ -206,6 +231,7 @@ export function MapView({
                 catalogo.griglia, asseRef.current, ultimoIstante.current,
                 (ora) => cache.prendi(prefetcherRef.current.chiave(ora)),
                 dove.lng, dove.lat, variabileRef.current.scala, variabileRef.current.offset,
+                grandezzaRef.current.dissolvenza,
               )
             : null;
           // L'etichetta accanto al segno si scrive qui e non da React: il
@@ -262,7 +288,10 @@ export function MapView({
 
         chiediIsolinee.current = aggiornaIsolinee;
 
-        animazione = new Animazione(livello, { asse: asseRef, prefetcher: prefetcherRef, cache });
+        animazione = new Animazione(livello, {
+          asse: asseRef, prefetcher: prefetcherRef, cache,
+          dissolvenza: { get current() { return grandezzaRef.current.dissolvenza; } },
+        });
         animazione.alTempo = (istante, stato) => {
           ultimoIstante.current = istante;
           aggiornaValore();
@@ -310,10 +339,16 @@ export function MapView({
     };
   }, []);
 
+  // Le isolinee sono i confini della scala Douglas, quindi esistono solo dove
+  // quella scala si applica: su un campo di secondi una linea a 0,5 m
+  // affermerebbe una cosa falsa. Fuori dall'altezza d'onda si spengono, con lo
+  // stesso meccanismo dell'interruttore (che svuota la sorgente e ferma il
+  // worker), invece di lasciarle disegnate su un dato che non le riguarda.
+  const isolineeVive = isolineeAccese && haStatoDelMare(variabile.id);
   useEffect(() => {
-    isolineeRef.current?.mostra(isolineeAccese);
-    if (isolineeAccese) chiediIsolinee.current();
-  }, [isolineeAccese]);
+    isolineeRef.current?.mostra(isolineeVive);
+    if (isolineeVive) chiediIsolinee.current();
+  }, [isolineeVive]);
 
   return <div ref={contenitore} className="mappa" />;
 }

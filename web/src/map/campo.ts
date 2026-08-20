@@ -187,6 +187,20 @@ export class LivelloCampo implements CustomLayerInterface {
     this.mappa?.triggerRepaint();
   }
 
+  /**
+   * Cambia il fattore di scala dei valori grezzi.
+   *
+   * Serve quando cambia la grandezza disegnata: l'altezza d'onda e' archiviata
+   * a millesimi di metro, il periodo a centesimi di secondo. Senza questo, il
+   * livello resterebbe con la scala della grandezza con cui e' stato costruito
+   * e disegnerebbe un campo dieci volte sbagliato: non si vede come un errore,
+   * si vede come un mare diverso.
+   */
+  impostaScala(scala: number): void {
+    this.opzioni = { ...this.opzioni, scala };
+    this.mappa?.triggerRepaint();
+  }
+
   impostaPalette(nome: string): void {
     if (this.gl && this.texPalette) this.gl.deleteTexture(this.texPalette);
     if (this.gl) this.texPalette = this.texturaPalette(this.gl, nome);

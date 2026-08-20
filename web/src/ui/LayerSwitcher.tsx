@@ -1,18 +1,18 @@
-import { VARIABILE_DISEGNATA, type Variabile } from "../data/catalogo";
+import type { Variabile } from "../data/catalogo";
 import { grandezzeDi } from "./grandezze";
 
 /** Spiegazione visibile su ogni grandezza che il catalogo pubblica ma che questa versione non disegna. */
-const NOTA_NON_DISEGNATA = "In questa versione si disegna solo l'altezza d'onda";
+const NOTA_NON_DISEGNATA = "Non ancora disegnabile: direzione e corrente vogliono le frecce, il livello del mare una scala col segno";
 
 /**
  * L'elenco viene dal catalogo, non dal codice.
  *
- * In v1 si disegna solo hwave, ma cablare l'unica variabile qui significherebbe
- * che aggiungere un layer costa una modifica alla UI invece di un run
- * dell'ingestore. Le altre grandezze del catalogo compaiono comunque, per la
- * stessa ragione, ma disabilitate: selezionarne una lascerebbe la legenda su
- * un'unita' e la mappa a disegnarne un'altra, cioe' uno schermo che dice il
- * falso invece di un comando che semplicemente non fa niente.
+ * Cablare qui le variabili significherebbe che aggiungere un layer costa una
+ * modifica alla UI invece di un run dell'ingestore. Le grandezze che questa
+ * versione non sa ancora disegnare compaiono comunque, ma disabilitate:
+ * selezionarne una lascerebbe la legenda su un'unita' e la mappa a disegnarne
+ * un'altra, cioe' uno schermo che dice il falso invece di un comando che
+ * semplicemente non fa niente. Chi sa disegnarsi lo dichiara in `grandezze.ts`.
  *
  * I nomi e l'accorpamento delle componenti stanno in `grandezze.ts`: qui si
  * mostra quello che il catalogo pubblica, li' si decide come si chiama. Il
@@ -28,8 +28,8 @@ export function LayerSwitcher({
         <option
           key={g.id}
           value={g.id}
-          disabled={g.id !== VARIABILE_DISEGNATA}
-          title={g.id === VARIABILE_DISEGNATA ? undefined : NOTA_NON_DISEGNATA}
+          disabled={!g.disegnabile}
+          title={g.disegnabile ? undefined : NOTA_NON_DISEGNATA}
         >
           {g.nome}
         </option>

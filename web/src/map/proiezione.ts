@@ -1,7 +1,7 @@
 import type { Griglia } from "../data/catalogo";
 import { NODATA } from "../data/frame";
 import type { Ora } from "../data/indice";
-import { inquadra } from "../data/sorgente";
+import { inquadra, oraPiuVicina } from "../data/sorgente";
 
 const R = 6378137.0;
 
@@ -88,9 +88,16 @@ export function valoreCorrente(
   lat: number,
   scala: number,
   offset: number,
+  /**
+   * Se fondere le due ore. Falso per le grandezze quantizzate: il numero sotto
+   * il dito non deve scrivere un valore che il modello non puo' produrre, come
+   * l'orologio non scrive mai un minuto che il dato orario non ha.
+   */
+  dissolvenza = true,
 ): number | null {
-  const q = inquadra(asse, istante);
-  if (!q) return null;
+  const grezza = inquadra(asse, istante);
+  if (!grezza) return null;
+  const q = dissolvenza ? grezza : oraPiuVicina(grezza);
 
   // Si fondono le due ore con la stessa frazione con cui le fonde lo shader
   // (vedi `u_frazione` in shader.ts). Prendendo solo l'ora precedente, il
