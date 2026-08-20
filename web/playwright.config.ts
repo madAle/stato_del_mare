@@ -35,12 +35,32 @@ export default defineConfig({
     },
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      testIgnore: "build.spec.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      // Il bundle compilato e' un altro programma: un difetto che vive solo
+      // li' (vedi e2e/build.spec.ts) non lo vede nessun test sul dev server.
+      name: "build",
+      testMatch: "build.spec.ts",
+      use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:5184" },
+    },
   ],
-  webServer: {
-    command: "npm run dev -- --port 5183 --strictPort",
-    url: "http://localhost:5183",
-    reuseExistingServer: !process.env.CI,
-    env: { VITE_E2E: "1" },
-  },
+  webServer: [
+    {
+      command: "npm run dev -- --port 5183 --strictPort",
+      url: "http://localhost:5183",
+      reuseExistingServer: !process.env.CI,
+      env: { VITE_E2E: "1" },
+    },
+    {
+      command: "npx vite build --outDir dist-e2e && npx vite preview --outDir dist-e2e --port 5184 --strictPort",
+      url: "http://localhost:5184",
+      reuseExistingServer: !process.env.CI,
+      env: { VITE_E2E: "1" },
+      timeout: 120_000,
+    },
+  ],
 });

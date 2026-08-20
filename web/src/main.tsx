@@ -42,7 +42,14 @@ function stileMinimoPerITest(): StyleSpecification {
 // preserveDrawingBuffer sotto: sono i due interruttori che questa build ha
 // bisogno di accendere solo quando Playwright avvia il server apposta per i
 // test end to end, mai in produzione.
-const modalitaTest = import.meta.env.DEV && import.meta.env.VITE_E2E === "1";
+// Non piu' condizionato a `import.meta.env.DEV`: serve anche in una build, per
+// i test che girano sul bundle compilato invece che sul dev server (e2e/build.spec.ts).
+// La garanzia che questo ramo non finisca in produzione resta comunque: in una
+// build normale `VITE_E2E` non e' definita, quindi il confronto e' costante e
+// il ramo sparisce per tree shaking. Il workflow di deploy non la definisce, e
+// il test in fondo a build.spec.ts verifica che il bundle pubblicato non
+// contenga lo sfondo di test.
+const modalitaTest = import.meta.env.VITE_E2E === "1";
 
 const stileTest = modalitaTest ? stileMinimoPerITest() : undefined;
 

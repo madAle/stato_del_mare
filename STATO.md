@@ -462,6 +462,16 @@ specifica). Tornava nero, l'asserzione passava, e non stava verificando niente:
 proprio il difetto per cui quel test esiste. Prima di fidarsi di un'asserzione
 verde, **rimettere il difetto e guardarla diventare rossa**.
 
+**Il bundle compilato e' un altro programma.** Le isolinee non si vedevano in
+produzione mentre funzionavano in sviluppo: MapLibre costruisce il proprio worker
+concatenando il *testo sorgente* delle proprie funzioni, e rolldown ne elimina una
+lasciandone in piedi il riferimento, quindi in una build **ogni sorgente GeoJSON
+smette di caricare in silenzio** (`ReferenceError` dentro un worker, niente a
+schermo). Corretto caricando il worker di MapLibre come file vero (`?url`).
+Tutti i test end to end giravano sul dev server e nessuno poteva vederlo: adesso
+`e2e/build.spec.ts` gira su `vite preview`. Prima di dire che una cosa funziona,
+**guardare quello che gli utenti scaricano**, non quello che serve Vite.
+
 **Un contesto WebGL non conserva il buffer di disegno dopo la composizione.**
 Rileggere il canvas con `drawImage` o `getImageData` dà nero, anche quando a
 schermo si vede tutto. Non è una stranezza dell'ambiente di test: serve

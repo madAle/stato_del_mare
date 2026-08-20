@@ -88,4 +88,19 @@ jobs:
               exit 1
             fi
           done
+          # Il worker di MapLibre dev'essere un file a se': se torna a essere
+          # costruito stringificando funzioni dentro il bundle, il bundler ne
+          # elimina una lasciandone il riferimento e **ogni sorgente GeoJSON
+          # smette di caricare in silenzio** (isolinee invisibili, solo un
+          # ReferenceError in console). E' successo, ed e' arrivato online.
+          if ! ls dist/assets/maplibre-gl-csp-worker-*.js >/dev/null 2>&1; then
+            echo "il worker di MapLibre non e' un file a se' nella build" >&2
+            exit 1
+          fi
+          # E lo sfondo dei test end to end non deve finire in produzione: la
+          # sua guardia non e' piu' `import.meta.env.DEV`, quindi va verificata.
+          if grep -rq "#bec3c8" dist/assets/*.js; then
+            echo "lo stile minimo dei test e' finito nel bundle di produzione" >&2
+            exit 1
+          fi
           echo "pubblicati $(find dist -type f | wc -l | tr -d ' ') file"

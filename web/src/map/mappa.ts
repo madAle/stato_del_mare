@@ -5,6 +5,22 @@ import maplibregl, {
   type StyleSpecification,
 } from "maplibre-gl";
 import { Protocol } from "pmtiles";
+// Il worker di MapLibre come file vero, non come stringa.
+//
+// La build normale costruisce il proprio worker concatenando il *testo*
+// sorgente di due funzioni (`"(" + modules.worker + ")(shared)"`) e ne fa un
+// Blob. Rolldown, che compila questo progetto, elimina dal bundle una funzione
+// di quel modulo lasciandone in piedi il riferimento (`constructor(..., s = f)`
+// nella sorgente GeoJSON del worker): sul thread principale non si nota,
+// perche' quella classe vive solo nel worker, ma dentro il worker diventa
+// `ReferenceError: f is not defined` e **ogni sorgente GeoJSON smette di
+// caricare**, in silenzio, solo nelle build di produzione. Le isolinee non si
+// vedevano per questo.
+//
+// `?url` fa copiare il file cosi' com'e', senza passare dal bundler: il worker
+// arriva integro. Viene dallo stesso pacchetto del resto di MapLibre, quindi le
+// due meta' non possono andare fuori versione.
+import urlWorkerMapLibre from "maplibre-gl/dist/maplibre-gl-csp-worker.js?url";
 import { urlGlifi, urlPmtiles, urlSprite } from "../data/urls";
 import type { Griglia } from "../data/catalogo";
 
@@ -18,6 +34,8 @@ import type { Griglia } from "../data/catalogo";
  * com'e' il mare alla propria spiaggia.
  */
 export const ZOOM_MASSIMO = 15;
+
+maplibregl.setWorkerUrl(urlWorkerMapLibre);
 
 /**
  * L'id del primo livello di simboli dello stile.
