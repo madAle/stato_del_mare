@@ -256,6 +256,37 @@ Niente.
    discrete, perche' con i gradini Douglas in basso l'Adriatico estivo cadrebbe
    tutto in una classe. Dettaglio nelle decisioni 57-60 e 64-70.
 
+11. **Dati misurati dalle boe ondametriche, accanto al modello.** Richiesta del
+   2026-08-20. Oggi la mappa non contiene **nessuna misura**: analisi e
+   previsione sono lo stesso modello con due forzanti diverse (lo dice la
+   descrizione del dataset ARPAE: i file `an` sono "forzati da analisi
+   meteorologiche e al contorno"). Chi guarda non ha modo di sapere quanto il
+   modello sbagli.
+
+   Le fonti candidate sono due, ed **e' onda, non marea**:
+   - **RON**, Rete Ondametrica Nazionale di ISPRA, quindici boe accelerometriche
+     lungo le coste italiane, altezza significativa, periodo e direzione;
+   - **Nausicaa 2**, la boa regionale di ARPAE al largo di Cesenatico, in
+     funzione dal 2012 (la prima) e sostituita di recente: oltre all'onda
+     misura corrente superficiale e temperatura di acqua e aria.
+
+   La rete **mareografica** (RMN, sempre ISPRA) e' un'altra cosa e misura il
+   livello del mare: servirebbe semmai per la variabile `sealevel`, che
+   l'ingestore gia' archivia ma la SPA non disegna.
+
+   **Cosa cambia rispetto a tutto il resto**: sono serie temporali **su punti**,
+   non campi. Non sono un livello raster in piu': sono segni sulla mappa con un
+   grafico nel tempo, e il loro uso naturale e' il **confronto** con il modello
+   nella stessa cella e nella stessa ora. L'applicazione ha gia' il punto
+   fissato che mostra il valore del modello: la misura gli si affianca, e la
+   domanda "quanto ci prende" diventa leggibile invece che teorica.
+
+   **Da stabilire prima di progettare, in questo ordine**: (a) esiste un accesso
+   aperto e leggibile da programma (non una pagina da guardare) per RON e per
+   Nausicaa? (b) con che passo e che ritardo pubblicano? (c) la licenza consente
+   la ripubblicazione nel nostro bucket? Se la risposta ad (a) e' no, la
+   funzionalita' e' bloccata su terzi e va in 4b, non qui.
+
 **Cosa le correzioni hanno lasciato aperto di proposito** (dettaglio in
 `docs/superpowers/revisioni/2026-08-13-ingestore-correzioni.md`, sezione "Cosa
 non ho fatto"):
