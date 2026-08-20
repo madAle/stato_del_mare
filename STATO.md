@@ -455,6 +455,15 @@ più, e che vale la pena riconoscere al volo:
 La domanda che li trova tutti, e che vale la pena farsi in revisione: **questa
 riga sa davvero quello che dice di sapere?**
 
+**L'ora di pubblicazione ARPAE oscilla di sei ore, e il file delle onde e' fra
+gli ultimi.** I primi file della giornata escono alle 09:00 in punto tutti i
+giorni, ma `his_HPDwave_fc` e' in fondo alla catena: misurato su sette giorni
+consecutivi, fra le 09:33 e le 15:31. Il commento nel workflow diceva "verso le
+10:30", che e' vero per i primi file e falso per quello che ci serve. ADRIAC
+pubblica **un solo ciclo al giorno** (16 file, sempre gli stessi nomi, con la
+sola data nel nome), quindi ingerire piu' spesso non allunga l'orizzonte: chiude
+la finestra cieca fra pubblicazione e ingestione.
+
 **Il selettore universale `*` non raggiunge gli pseudo-elementi.** `* { box-sizing:
 border-box }` lascia `::before` e `::after` a `content-box`, quindi un bordo si
 aggiunge alla larghezza dichiarata invece di starci dentro. L'anello del punto
