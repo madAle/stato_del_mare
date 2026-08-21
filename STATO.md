@@ -333,16 +333,23 @@ saltato è archivio che non si recupera.
    col periodo dall'archivio), non da un numero scelto.
 
    Resta la **corrente**: stesso motore, ma ha un modulo, quindi puo' essere un
-   layer a se' (colore = velocita', particelle = verso). E resta la voce
-   "direzione dell'onda" nel selettore, che l'utente ha chiesto in aggiunta alla
-   sovrapposizione: **una sola implementazione**, cioe' le stesse particelle su
-   un fondo neutro, se no i due modi divergono.
+   layer a se' (colore = velocita', particelle = verso).
+
+   ~~La voce "direzione dell'onda" nel selettore~~: **chiusa il 2026-08-21
+   togliendola.** Era stata chiesta in aggiunta alla sovrapposizione, con il
+   vincolo "una sola implementazione". Il modo onesto di rispettarlo e' averne
+   una, e quella che c'e' e' migliore: come voce del selettore sarebbero creste
+   su un fondo neutro, cioe' il campo sotto perso e niente in cambio. Nel menu
+   compariva disabilitata con scritto "non ancora disegnabile", a due centimetri
+   dall'interruttore con lo stesso nome che funziona. Dettaglio nella decisione
+   98.
 
    Nomi, accorpamento delle componenti e scelte di resa stanno in
-   `web/src/ui/grandezze.ts`. **Vincolo da sciogliere prima della direzione**:
-   oggi le grandezze disegnabili hanno un campo solo, quindi il loro id coincide
-   con quello del campo nel catalogo, ed e' cio' che rende lecito passarlo a
-   `leggiIndice` e a `urlFrame`.
+   `web/src/ui/grandezze.ts`. **Vincolo da sciogliere prima della corrente**
+   (prima diceva "prima della direzione", che non serve piu'): oggi le grandezze
+   disegnabili hanno un campo solo, quindi il loro id coincide con quello del
+   campo nel catalogo, ed e' cio' che rende lecito passarlo a `leggiIndice` e a
+   `urlFrame`. La corrente ne ha due.
 
 12. **Dire sulla mappa di che onda si tratta.** Deciso il 2026-08-21 di
    **rimandare**, su richiesta ("per ora lasciamo così"). Il difetto resta ed e'
