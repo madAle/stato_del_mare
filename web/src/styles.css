@@ -610,3 +610,52 @@ select[aria-label="variabile"] {
     height: 20px;
   }
 }
+
+/* Le frecce di passo, ai due capi della traccia del tempo. Stanno qui e non
+   fra i comandi di riproduzione perche' spostano il cursore, e un comando va
+   dove sta la cosa che muove. */
+.scrubber-riga {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* La traccia prende tutto lo spazio che resta: senza, le frecce la
+   schiacciano e i segni dei buchi (che sono percentuali della traccia)
+   cadono nel posto sbagliato. */
+.scrubber-riga > .scrubber-traccia {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.scrubber-passo {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+  /* colore e carattere dichiarati, non ereditati: su iOS Safari un <button>
+     senza `color` prende l'accento della piattaforma e diventa azzurro */
+  color: #1f2328;
+  font-family: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.scrubber-passo:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  .scrubber-passo {
+    width: 44px;
+    height: 44px;
+  }
+}

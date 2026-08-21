@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Ora } from "../../src/data/indice";
 import { TimelineScrubber } from "../../src/ui/TimelineScrubber";
@@ -72,5 +72,60 @@ describe("scrubber", () => {
     const primaDellAsse = asse[0].istante - 3_600_000;
     render(<TimelineScrubber asse={asse} istante={primaDellAsse} cambia={vi.fn()} />);
     expect(screen.getByTestId("orologio").textContent).toBe("nessun dato");
+  });
+});
+
+describe("le frecce di passo", () => {
+  const asse: Ora[] = [0, 1, 2].map((k) => ({
+    istante: Date.UTC(2026, 7, 19, 9 + k), tipo: "an", riferimento: "20260819",
+  }));
+
+  it("spostano di un istante dell'asse, non di un'ora", () => {
+    // Sotto c'e' lo stesso indice dello slider, quindi saltano i buchi come lui
+    // e funzionano anche dove il dato non e' orario (il livello del mare e'
+    // archiviato ogni dieci minuti): un passo in ore chiederebbe un istante che
+    // su quell'asse non esiste.
+    const visti: number[] = [];
+    render(<TimelineScrubber asse={asse} istante={asse[1].istante} cambia={(i) => visti.push(i)} />);
+    fireEvent.click(screen.getByLabelText("Istante successivo"));
+    fireEvent.click(screen.getByLabelText("Istante precedente"));
+    expect(visti).toEqual([asse[2].istante, asse[0].istante]);
+  });
+
+  it("ai capi dell'asse si disabilitano invece di non fare niente", () => {
+    // Un comando che si puo' premere e non fa nulla sembra rotto.
+    const { unmount } = render(
+      <TimelineScrubber asse={asse} istante={asse[0].istante} cambia={() => {}} />);
+    expect((screen.getByLabelText("Istante precedente") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Istante successivo") as HTMLButtonElement).disabled).toBe(false);
+    unmount();
+
+    render(<TimelineScrubber asse={asse} istante={asse[2].istante} cambia={() => {}} />);
+    expect((screen.getByLabelText("Istante precedente") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText("Istante successivo") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("con un asse vuoto sono entrambe disabilitate", () => {
+    const vuoto: Ora[] = [];
+    render(<TimelineScrubber asse={vuoto} istante={0} cambia={() => {}} />);
+    expect((screen.getByLabelText("Istante precedente") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Istante successivo") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("un asse con un solo istante, o nessuno", () => {
+  it("non produce uno stile invalido, e il cursore si disabilita", () => {
+    // Radix, con min e max uguali, divide per zero e scrive un calc() con NaN
+    // dentro: uno stile che nemmeno il browser sa leggere. Succede con un asse
+    // di un solo istante (una finestra con una sola ora disponibile) o vuoto
+    // (durante il caricamento), che sono stati veri. Il render qui sotto
+    // fallirebbe con un errore di parsing CSS.
+    const uno = [ora(0, "an")];
+    const { container } = render(
+      <TimelineScrubber asse={uno} istante={uno[0].istante} cambia={() => {}} />);
+    for (const el of container.querySelectorAll("[style]")) {
+      expect(el.getAttribute("style"), "stile con NaN dentro").not.toMatch(/NaN/);
+    }
+    expect(screen.getByLabelText("Ora selezionata").getAttribute("data-disabled")).not.toBeNull();
   });
 });

@@ -195,6 +195,24 @@ export function TimelineScrubber({ asse, istante, cambia }: Props) {
           </div>
         )}
       </div>
+      <div className="scrubber-riga">
+        {/*
+          Le due frecce spostano di **un istante dell'asse**, non di un'ora: sotto
+          c'e' lo stesso indice dello slider, quindi saltano i buchi come lui e
+          funzionano anche dove il dato non e' orario (il livello del mare e'
+          archiviato ogni dieci minuti). Un passo in ore avrebbe chiesto un
+          istante che su quell'asse non esiste.
+        */}
+        <button
+          type="button"
+          className="scrubber-passo"
+          aria-label="Istante precedente"
+          title="Istante precedente"
+          disabled={indiceCorrente <= 0}
+          onClick={() => { const s = asse[indiceCorrente - 1]; if (s) cambia(s.istante); }}
+        >
+          &#x2039;
+        </button>
       <div className="scrubber-traccia">
         {frazioneConfine !== null && (
           <div
@@ -245,7 +263,14 @@ export function TimelineScrubber({ asse, istante, cambia }: Props) {
         <Slider.Root
           className="scrubber-slider"
           min={0}
-          max={Math.max(ultimo, 0)}
+          // Mai zero: con min e max uguali Radix divide per zero e scrive un
+          // `calc()` con NaN dentro, cioe' uno stile che nemmeno il browser sa
+          // leggere. Succede con un asse di un solo istante o vuoto, che e' uno
+          // stato vero (una finestra con una sola ora disponibile, oppure il
+          // caricamento). Con niente da scorrere il cursore si disabilita,
+          // invece di restare trascinabile senza effetto.
+          max={Math.max(ultimo, 1)}
+          disabled={ultimo <= 0}
           step={1}
           value={[indiceCorrente]}
           onValueChange={([indice]) => {
@@ -258,6 +283,17 @@ export function TimelineScrubber({ asse, istante, cambia }: Props) {
           </Slider.Track>
           <Slider.Thumb className="scrubber-slider-cursore" aria-label="Ora selezionata" />
         </Slider.Root>
+      </div>
+        <button
+          type="button"
+          className="scrubber-passo"
+          aria-label="Istante successivo"
+          title="Istante successivo"
+          disabled={ultimo < 0 || indiceCorrente >= ultimo}
+          onClick={() => { const s = asse[indiceCorrente + 1]; if (s) cambia(s.istante); }}
+        >
+          &#x203A;
+        </button>
       </div>
     </div>
   );
