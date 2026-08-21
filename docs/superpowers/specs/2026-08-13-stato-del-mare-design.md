@@ -1,9 +1,15 @@
 # Stato del Mare, design
 
-Data: 2026-08-13
-Stato: approvato. La parte sull'ingestore (sezioni 2, 3, 4, 5, 6, 8.1) è
-implementata e allineata al codice, comprese le correzioni della revisione
-finale. La parte sulla SPA (sezione 7, 8.2) è ancora da tradurre in piano.
+Data: 2026-08-13 · **Testata aggiornata: 2026-08-21**
+Stato: approvato e **interamente implementato**. L'ingestore (sezioni 2, 3, 4, 5,
+6, 8.1) e la SPA (7, 8.2) sono in produzione: <https://stato-del-mare.pages.dev>.
+
+**Questo documento non è più la fonte di verità sullo stato del lavoro**: lo è
+`STATO.md`, che dice a che punto siamo e cosa è aperto. Qui resta il *perché*
+delle scelte di progetto, con gli emendamenti segnati dove i dati veri hanno
+rovesciato una conclusione (sezione 1) o dove l'esecuzione l'ha cambiata. Le
+decisioni prese eseguendo stanno in `docs/superpowers/revisioni/`: 34 per
+l'ingestore, 89 per la SPA.
 
 ## 1. Obiettivo
 
@@ -12,8 +18,12 @@ con navigazione temporale avanti e indietro e riproduzione automatica.
 
 Il sistema è composto da due programmi indipendenti:
 
-- un **ingestore** in Python che gira una volta al giorno, scarica i dati ARPAE,
-  li normalizza e li deposita su object storage;
+- un **ingestore** in Python che scarica i dati ARPAE, li normalizza e li
+  deposita su object storage. Nel disegno originale girava una volta al giorno;
+  dal 2026-08-21 gira **ogni ora dalle 09 alle 19 UTC**, perché l'ora di
+  pubblicazione ARPAE oscilla di sei ore (decisione 34 dell'ingestore). Il
+  ragionamento della sezione 2 non cambia: il dato resta a lotti, di sola
+  lettura, con le interrogazioni note in anticipo;
 - una **SPA** in React che legge quegli artefatti e li disegna su una mappa.
 
 Non esiste un backend applicativo. Il dato è di sola lettura, si aggiorna a lotti
@@ -79,6 +89,15 @@ continua non esistono confini da etichettare.
 in linea spessa e con l'etichetta, le suddivisioni intermedie di ARPAE (0,8, 1,8,
 3,2, 5, 7, 8 m) in linea sottile e senza numero. Il numero compare dove ha un
 nome, non a ogni gradino.
+
+> **Emendamento del 2026-08-20.** Le intermedie di ARPAE sono state **tolte**:
+> ogni isolinea è ora un confine della scala **Douglas** e nient'altro. Il motivo
+> è misurato: col mare d'agosto l'unica intermedia visibile era 0,8 m, cioè una
+> linea senza nome in mezzo al grado "mosso", che non separava niente che si
+> potesse dire a parole. Adesso attraversare una linea vuol dire cambiare stato
+> del mare. Sulla linea va solo l'altezza; il nome del grado sta accanto al
+> valore misurato, dove c'è spazio per scriverlo. Dettaglio nelle decisioni 69,
+> 70 e nella correzione del 2026-08-20.
 
 **Dove si calcola**: marching squares (`d3-contour`) sul campo già decodificato
 nel browser, in `src/map/`, non in ingestione. Le soglie sono una scelta di

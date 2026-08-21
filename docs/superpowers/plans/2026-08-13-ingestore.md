@@ -1,5 +1,11 @@
 # Ingestore ARPAE Implementation Plan
 
+> **Stato al 2026-08-21: eseguito.** I 15 task sono chiusi, l'ingestore e' in
+> produzione e gira ogni ora. Le decisioni prese eseguendolo stanno in
+> `docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md` (34). Lo stato
+> del lavoro sta in `STATO.md`: questo piano e' storia.
+
+
 > **PIANO ESEGUITO E SUPERATO. Non rieseguirlo alla lettera.**
 >
 > L'ingestore e' stato costruito con questo piano fra il 13 e il 14 agosto 2026,
