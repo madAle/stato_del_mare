@@ -34,12 +34,8 @@ import { NODATA } from "../data/frame";
 /** g / 2 pi, in metri al secondo per secondo di periodo. */
 export const VELOCITA_PER_SECONDO_DI_PERIODO = 9.81 / (2 * Math.PI);
 
-export type CampiDirezione = {
-  /** Seno della direzione da cui viene l'onda, gia' in unita' fisiche. */
-  sin: Float32Array;
-  cos: Float32Array;
-  /** Periodo in secondi. */
-  periodo: Float32Array;
+/** La geometria comune, uguale per qualunque campo di moto. */
+export type Geometria = {
   larghezza: number;
   altezza: number;
   /** Metri di Mercatore per cella. */
@@ -48,10 +44,29 @@ export type CampiDirezione = {
   yMax: number;
 };
 
+/**
+ * Un campo da cui ricavare un moto, in due forme.
+ *
+ * **Onda**: seno e coseno della direzione da cui viene, piu' il periodo, da cui
+ * la celerita' `c = g T / 2 pi`. Il verso e' mezzo giro rispetto all'angolo.
+ *
+ * **Corrente**: le due componenti della velocita'. Il verso e' quello delle
+ * componenti, **senza** mezzo giro, e la velocita' e' il loro modulo: qui il
+ * dato e' la velocita', non un periodo da cui ricavarla.
+ *
+ * Sono un'unione discriminata e non due funzioni separate perche' tutto quello
+ * che sta a valle (la cresta, il ricambio delle particelle, la correzione di
+ * Mercatore) e' identico: separarle vorrebbe dire due copie di quella roba, che
+ * e' il modo in cui fra sei mesi divergono.
+ */
+export type CampiMoto =
+  | ({ tipo: "onda"; sin: Float32Array; cos: Float32Array; periodo: Float32Array } & Geometria)
+  | ({ tipo: "corrente"; u: Float32Array; v: Float32Array } & Geometria);
+
 const R = 6378137.0;
 
 /** Latitudine, in radianti, della riga `j` della griglia. */
-export function latitudineDi(campi: CampiDirezione, j: number): number {
+export function latitudineDi(campi: CampiMoto, j: number): number {
   const y = campi.yMax - (j + 0.5) * campi.risoluzioneM;
   return 2 * Math.atan(Math.exp(y / R)) - Math.PI / 2;
 }
@@ -65,30 +80,46 @@ export function latitudineDi(campi: CampiDirezione, j: number): number {
  * non so".
  */
 export function velocitaInCelle(
-  campi: CampiDirezione, i: number, j: number,
+  campi: CampiMoto, i: number, j: number,
 ): { di: number; dj: number } | null {
   const ii = Math.floor(i);
   const jj = Math.floor(j);
   if (ii < 0 || jj < 0 || ii >= campi.larghezza || jj >= campi.altezza) return null;
   const k = jj * campi.larghezza + ii;
-  const s = campi.sin[k];
-  const c = campi.cos[k];
-  const t = campi.periodo[k];
-  if (!Number.isFinite(s) || !Number.isFinite(c) || !Number.isFinite(t) || t <= 0) return null;
-  // Un seno e un coseno che non stanno su un cerchio unitario non sono una
-  // direzione: succede dove l'interpolazione fra due ore ha mescolato una cella
-  // con dato e una senza. Meglio far rinascere la particella che disegnare una
-  // rotta inventata.
-  const modulo = Math.hypot(s, c);
-  if (modulo < 0.5) return null;
 
-  // Dove l'onda **va**: mezzo giro rispetto a dove viene. Con l'angolo in
-  // convenzione nautica, est = sin e nord = cos, quindi il mezzo giro e' un
-  // cambio di segno su entrambe le componenti.
-  const est = -s / modulo;
-  const nord = -c / modulo;
+  let est: number;
+  let nord: number;
+  let metriAlSecondo: number;
 
-  const metriAlSecondo = VELOCITA_PER_SECONDO_DI_PERIODO * t;
+  if (campi.tipo === "onda") {
+    const s = campi.sin[k];
+    const c = campi.cos[k];
+    const t = campi.periodo[k];
+    if (!Number.isFinite(s) || !Number.isFinite(c) || !Number.isFinite(t) || t <= 0) return null;
+    // Un seno e un coseno che non stanno su un cerchio unitario non sono una
+    // direzione: succede dove l'interpolazione fra due ore ha mescolato una
+    // cella con dato e una senza. Meglio far rinascere la particella che
+    // disegnare una rotta inventata.
+    const modulo = Math.hypot(s, c);
+    if (modulo < 0.5) return null;
+    // Dove l'onda **va**: mezzo giro rispetto a dove viene. Con l'angolo in
+    // convenzione nautica, est = sin e nord = cos, quindi il mezzo giro e' un
+    // cambio di segno su entrambe le componenti.
+    est = -s / modulo;
+    nord = -c / modulo;
+    metriAlSecondo = VELOCITA_PER_SECONDO_DI_PERIODO * t;
+  } else {
+    const u = campi.u[k];
+    const v = campi.v[k];
+    if (!Number.isFinite(u) || !Number.isFinite(v)) return null;
+    // La velocita' **e'** il modulo, e il verso e' quello delle componenti:
+    // niente mezzo giro, perche' u e v dicono gia' dove l'acqua va.
+    metriAlSecondo = Math.hypot(u, v);
+    if (metriAlSecondo <= 0) return null;
+    est = u / metriAlSecondo;
+    nord = v / metriAlSecondo;
+  }
+
   // Da metri di mare a metri di Mercatore, e da metri di Mercatore a celle.
   const celleAlSecondo = metriAlSecondo / (Math.cos(latitudineDi(campi, jj)) * campi.risoluzioneM);
   // La riga cresce verso sud, quindi il nord e' meno j.
@@ -123,7 +154,7 @@ export function velocitaInCelle(
  * afferma un verso che non esiste.
  */
 export function cresta(
-  campi: CampiDirezione, i: number, j: number,
+  campi: CampiMoto, i: number, j: number,
   semiCelle: number, bombatura: number, segmenti = 4,
 ): number[] | null {
   const v = velocitaInCelle(campi, i, j);
@@ -165,7 +196,7 @@ export type Particella = {
  * si puo' riprodurre non si puo' nemmeno provare.
  */
 export function nasci(
-  campi: CampiDirezione, caso: () => number, vitaMassima: number,
+  campi: CampiMoto, caso: () => number, vitaMassima: number,
 ): Particella {
   const i = caso() * campi.larghezza;
   const j = caso() * campi.altezza;
@@ -183,7 +214,7 @@ export function nasci(
  */
 export function avanza(
   particelle: Particella[],
-  campi: CampiDirezione,
+  campi: CampiMoto,
   dt: number,
   caso: () => number,
   vitaMassima: number,

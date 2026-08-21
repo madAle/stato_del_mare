@@ -2,7 +2,7 @@ import type { CustomLayerInterface, Map as MappaLibre } from "maplibre-gl";
 import type { Griglia } from "../data/catalogo";
 import {
   avanza, cresta, mescolaCampo, nasci,
-  type CampiDirezione, type Particella,
+  type CampiMoto, type Particella,
 } from "./particelle";
 import { quadroGriglia } from "./proiezione";
 
@@ -142,7 +142,7 @@ export class LivelloParticelle implements CustomLayerInterface {
   private buffer: WebGLBuffer | null = null;
   private mappa: MappaLibre | null = null;
   private particelle: Particella[] = [];
-  private campi: CampiDirezione | null = null;
+  private campi: CampiMoto | null = null;
   private quad = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private ultimoTempo = 0;
   private fotogramma = 0;
@@ -195,6 +195,7 @@ export class LivelloParticelle implements CustomLayerInterface {
     frazione: number, scalaAngolo: number, scalaPeriodo: number,
   ): void {
     this.campi = {
+      tipo: "onda",
       sin: mescolaCampo(sinA, sinB, frazione, scalaAngolo),
       cos: mescolaCampo(cosA, cosB, frazione, scalaAngolo),
       periodo: mescolaCampo(perA, perB, frazione, scalaPeriodo),

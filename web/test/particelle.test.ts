@@ -1,23 +1,88 @@
 import { describe, expect, it } from "vitest";
 import {
   avanza, cresta, latitudineDi, mescolaCampo, nasci, velocitaInCelle,
-  VELOCITA_PER_SECONDO_DI_PERIODO, type CampiDirezione, type Particella,
+  VELOCITA_PER_SECONDO_DI_PERIODO, type CampiMoto, type Particella,
 } from "../src/map/particelle";
 import { NODATA } from "../src/data/frame";
 
 /** Una griglia piccola, con la stessa geometria di quella vera. */
 function campi(
   gradiDaCui: number, periodo = 4, larghezza = 8, altezza = 6,
-): CampiDirezione {
+): CampiMoto {
   const n = larghezza * altezza;
   const r = (gradiDaCui * Math.PI) / 180;
   return {
+    tipo: "onda",
     sin: new Float32Array(n).fill(Math.sin(r)),
     cos: new Float32Array(n).fill(Math.cos(r)),
     periodo: new Float32Array(n).fill(periodo),
     larghezza, altezza, risoluzioneM: 1200, yMax: 5_500_000,
   };
 }
+
+/** Un campo di corrente uniforme, in m/s. */
+function correnteUniforme(
+  est: number, nord: number, larghezza = 8, altezza = 6,
+): CampiMoto {
+  const n = larghezza * altezza;
+  return {
+    tipo: "corrente",
+    u: new Float32Array(n).fill(est),
+    v: new Float32Array(n).fill(nord),
+    larghezza, altezza, risoluzioneM: 1200, yMax: 5_500_000,
+  };
+}
+
+describe("il moto della corrente", () => {
+  it("va dove l'acqua va, senza mezzo giro", () => {
+    // Al contrario di Dwave, che dichiara la direzione **da cui** l'onda viene,
+    // ubar e vbar sono componenti della velocita': dicono gia' dove l'acqua va.
+    // Girarle di mezzo giro qui sarebbe la cosa piu' dannosa che questa mappa
+    // possa fare a chi la usa per uscire in barca.
+    const versoEst = velocitaInCelle(correnteUniforme(0.5, 0), 4, 3)!;
+    expect(versoEst.di).toBeGreaterThan(0);
+    expect(Math.abs(versoEst.dj)).toBeLessThan(1e-9);
+
+    // Il nord e' j che CALA, come per l'onda: la riga 0 e' quella a nord.
+    const versoNord = velocitaInCelle(correnteUniforme(0, 0.5), 4, 3)!;
+    expect(versoNord.dj).toBeLessThan(0);
+    expect(Math.abs(versoNord.di)).toBeLessThan(1e-9);
+  });
+
+  it("la velocita' **e'** il modulo, non viene da una formula", () => {
+    // Per l'onda la velocita' si ricava da c = g T / 2 pi perche' il dato da' il
+    // periodo e non la celerita'. Qui il dato E' la velocita': inventarla
+    // mostrerebbe velocita' relative false, cioe' un gradiente che non c'e'.
+    const lento = velocitaInCelle(correnteUniforme(0.1, 0), 4, 3)!;
+    const veloce = velocitaInCelle(correnteUniforme(0.4, 0), 4, 3)!;
+    expect(veloce.di / lento.di).toBeCloseTo(4, 6);
+  });
+
+  it("corregge la deformazione di Mercatore, come per l'onda", () => {
+    // Un metro di mappa vale cos(latitudine) metri di mare: senza correzione la
+    // stessa corrente correrebbe piu' veloce a nord che a sud, cioe'
+    // l'animazione mostrerebbe un gradiente che nel mare non c'e'.
+    const c = correnteUniforme(0.5, 0);
+    const sud = velocitaInCelle(c, 4, 0)!;
+    const nord = velocitaInCelle(c, 4, 5)!;
+    expect(Math.abs(nord.di)).not.toBeCloseTo(Math.abs(sud.di), 9);
+  });
+
+  it("dove il dato non c'e' non inventa una rotta", () => {
+    const senza = correnteUniforme(0.5, 0);
+    (senza as { u: Float32Array }).u[3 * 8 + 4] = NaN;
+    expect(velocitaInCelle(senza, 4, 3)).toBeNull();
+    expect(velocitaInCelle(correnteUniforme(0.5, 0), -1, 3)).toBeNull();
+    expect(velocitaInCelle(correnteUniforme(0, 0), 4, 3)).toBeNull();
+  });
+
+  it("la cresta funziona anche su una corrente, che e' geometria e non fisica", () => {
+    // `cresta` prende il verso da `velocitaInCelle`, quindi non deve sapere da
+    // che sorgente arriva. Il disegno a scia o a cresta lo decide il livello.
+    const punti = cresta(correnteUniforme(0.5, 0), 4, 3, 2, 0.3)!;
+    expect(punti).toHaveLength(10);
+  });
+});
 
 describe("il verso delle particelle", () => {
   it("vanno dove l'onda va, cioe' mezzo giro rispetto a dove viene", () => {
@@ -73,7 +138,8 @@ describe("la velocita' viene dalla fisica, non da un numero scelto", () => {
 describe("dove il dato non c'e'", () => {
   it("non restituisce una rotta inventata", () => {
     const c = campi(180);
-    c.sin[0] = NaN; c.cos[0] = NaN;
+    (c as { sin: Float32Array; cos: Float32Array }).sin[0] = NaN;
+    (c as { sin: Float32Array; cos: Float32Array }).cos[0] = NaN;
     expect(velocitaInCelle(c, 0, 0)).toBeNull();
     expect(velocitaInCelle(campi(180), -1, 3)).toBeNull();
     expect(velocitaInCelle(campi(180), 99, 3)).toBeNull();
@@ -83,7 +149,8 @@ describe("dove il dato non c'e'", () => {
     // Succede dove l'interpolazione fra due ore ha mescolato una cella con dato
     // e una senza: il risultato non e' una direzione, e' una media di niente.
     const c = campi(180);
-    c.sin[0] = 0.1; c.cos[0] = 0.1;
+    (c as { sin: Float32Array; cos: Float32Array }).sin[0] = 0.1;
+    (c as { sin: Float32Array; cos: Float32Array }).cos[0] = 0.1;
     expect(velocitaInCelle(c, 0, 0)).toBeNull();
   });
 
@@ -91,7 +158,8 @@ describe("dove il dato non c'e'", () => {
     // Una particella immobile disegna un punto fisso, che si legge come "qui il
     // mare sta fermo" invece che come "qui non so".
     const c = campi(180);
-    c.sin.fill(NaN); c.cos.fill(NaN);
+    (c as { sin: Float32Array; cos: Float32Array }).sin.fill(NaN);
+    (c as { sin: Float32Array; cos: Float32Array }).cos.fill(NaN);
     const p: Particella[] = [{ i: 4, j: 3, vita: 100 }];
     let n = 0;
     avanza(p, c, 1, () => ((n = (n + 0.37) % 1), n), 50);
@@ -210,7 +278,7 @@ describe("la cresta, che e' la forma in cui un'onda si disegna", () => {
     // Stessa regola per cui una particella su un buco rinasce invece di restare
     // ferma: un arco su una cella senza dato afferma una direzione che non c'e'.
     const senza = campi(180);
-    senza.sin[3 * 8 + 4] = NaN;
+    (senza as { sin: Float32Array }).sin[3 * 8 + 4] = NaN;
     expect(cresta(senza, 4, 3, 2, 0.3)).toBeNull();
     expect(cresta(campi(180), -1, 3, 2, 0.3)).toBeNull();
     expect(cresta(campi(180), 99, 3, 2, 0.3)).toBeNull();
