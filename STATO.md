@@ -399,6 +399,15 @@ saltato è archivio che non si recupera.
    la ripubblicazione nel nostro bucket? Se la risposta ad (a) e' no, la
    funzionalita' e' bloccata su terzi e va in 4b, non qui.
 
+   **Un candidato per (a) e (b), trovato il 2026-08-21 e non ancora verificato
+   scaricando**: il prodotto in situ del Mediterraneo di Copernicus Marine
+   (`INSITU_MED_PHYBGCWAV_DISCRETE_MYNRT_013_035`) dichiara altezza
+   significativa, periodo, direzione e livello del mare, aggiornati ogni ora con
+   24-48 ore di latenza, controllati di qualita', dal 2020. Resta da guardare
+   **quali boe adriatiche contiene davvero** (Nausicaa e le RON sono contributi
+   nazionali: la loro presenza va vista, non assunta) e la licenza, che e' la
+   domanda (c). Vuole un account, quindi un segreto nuovo nella pipeline.
+
 15. **La sovrapposizione della direzione e' quasi vuota sopra zoom 10, ed e' la
    prossima cosa da guardare.** Misurato il 2026-08-21: a zoom 11, con la mappa
    su Cesenatico, si vedono **due creste**. Non e' una regressione delle creste:
@@ -902,6 +911,40 @@ un pixel noto, non solo che qualcosa sia stato disegnato.
 **Un hook blocca i trattini lunghi.** Scrivere un file che li contiene fallisce con "Contenuto bloccato". Attenzione al caso ricorsivo: anche *citare* il carattere per documentare il divieto fa fallire la scrittura. Costa una riscrittura completa del file se ci si accorge tardi.
 
 **`netCDF4`, `numpy`, `scipy` non sono installati a livello di sistema.** Usare `uv run --with netCDF4 --with numpy python -c ...` per le ispezioni al volo. `ncdump` e `gdalinfo` non esistono su questa macchina.
+
+### Fonti alternative: cercate il 2026-08-21, nessuna adottata
+
+Chiesto se gli stessi dati esistano altrove. Misurato con richieste vere, per non
+rifarlo:
+
+- **gli stessi dati no.** ADRIAC e' il modello di ARPAE e nessuno lo ripubblica:
+  niente THREDDS ne' OPeNDAP (404 su `dati-simc.arpae.it/thredds/`,
+  `.../thredds/catalog.html`, `arpae.it/thredds/`), la radice `opendata/` e' 403
+  e non si elenca, e uno storico di ADRIAC non c'e' sotto nessuno dei nomi
+  plausibili (`adriac/storico/`, `storico/adriac/`, `adriac_storico/`,
+  `adriac/archivio/`: tutti 404). L'unico `storico` di ARPAE e' quello delle
+  **osservazioni**, dal 2006. **Quindi la finestra di otto giorni non ha via di
+  scampo**, e resta la ragione per cui l'ingestore ha la priorita' su tutto;
+- **dati equivalenti si**, ed e' Copernicus Marine
+  (`MEDSEA_ANALYSISFORECAST_WAV_006_017`, letto dal catalogo e non scaricato):
+  orario come il nostro, previsione a **10 giorni** invece di 72 ore, archivio
+  **dal 30/11/2021** invece di otto giorni, aggiornato due volte al giorno.
+  Risoluzione 0,042 gradi, cioe' 3,4 x 4,7 km a 44 gradi, contro **1 km**
+  nostro;
+- **deciso il 2026-08-21: si resta su ADRIAC solo.** Il fattore quattro di
+  risoluzione si sente proprio dove serve, sotto costa e nei canali, che e' il
+  punto 9. E una seconda fonte di campi non e' un'aggiunta ma un secondo
+  archivio: due griglie non si mescolano (`GridMismatch` ferma il run prima di
+  scrivere), quindi vorrebbe griglia, indice e fotogrammi suoi, piu' un modo di
+  dire a schermo quale modello si sta guardando, che e' il punto 12 con due
+  risposte invece di una. **Costo se e' sbagliato**: se ARPAE si fermasse per
+  piu' di otto giorni quella storia e' persa e non la recupereremmo nemmeno
+  dopo; il rimedio, il giorno che servisse, e' Copernicus, che la storia la
+  tiene. **Da rimettere in discussione quando**: serve una previsione oltre le
+  72 ore, o l'ingestione resta rossa per giorni.
+- La cosa utile trovata cercando non e' un campo ma una **misura**: il prodotto
+  in situ di Copernicus, che e' un candidato per il punto 14 (le boe). Sta
+  scritto la'.
 
 ## 7. Stato git
 
