@@ -22,8 +22,32 @@ import { PALETTE } from "../map/colormap";
 import { PaletteSwitcher, TAVOLOZZE, TAVOLOZZE_CON_SEGNO } from "./PaletteSwitcher";
 import { leggiStatoUrl, scriviStatoUrl } from "./statoUrl";
 
-/** Finestra iniziale: 48 ore passate piu' 72 previste, cursore su adesso. */
-const INDIETRO_MS = 48 * 3_600_000;
+/**
+ * Finestra iniziale: **24** ore passate piu' 72 previste, cursore su adesso.
+ *
+ * Il passato era 48 ore, e prendeva il 40 per cento del cursore per lasciarne il
+ * 60 alla previsione. Chiesto il 2026-08-21 di stringerlo a un giorno: con un
+ * giorno il passato scende al 25 per cento e la previsione arriva al 75, che e' la
+ * parte per cui si apre la mappa. Il motivo e' il cursore, non il dato: con la
+ * previsione schiacciata in meta' scala, un'ora di domani vale meta' dei pixel di
+ * un'ora di ieri, e trovarla col dito diventa piu' difficile proprio dove serve.
+ *
+ * **Non toglie niente**: un link con `?t=` apre l'asse intero (vedi `asse` qui
+ * sotto), quindi l'archivio resta raggiungibile e questa e' solo la vista di
+ * partenza.
+ *
+ * Una conseguenza sulle tacche, misurata e non dedotta: **solo quando la
+ * previsione e' al massimo**. Con la previsione fresca a +72 ore l'ampiezza passa
+ * da 120 a 96 ore, e `tacche` scende da un passo di 24 ore a uno di 12, cioe' due
+ * etichette al giorno invece di una. Ma la previsione invecchia fra un run e
+ * l'altro: con +36 ore (misurato il 2026-08-21, quando ARPAE non aveva ancora
+ * pubblicato il file del giorno) l'ampiezza era 84 ore e il passo era **gia'** 12,
+ * e resta 12 a 60 ore. Quindi la scala si infittisce a volte, non sempre.
+ *
+ * "Per ora": se un giorno indietro risultasse troppo poco per confrontare la
+ * previsione con com'e' andata, il numero e' questo.
+ */
+const INDIETRO_MS = 24 * 3_600_000;
 const AVANTI_MS = 72 * 3_600_000;
 
 export function App({
