@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  avanza, cresta, latitudineDi, mescolaCampo, nasci, velocitaInCelle,
-  VELOCITA_PER_SECONDO_DI_PERIODO, type CampiMoto, type Particella,
+  avanza, cresta, FOTOGRAMMI_PER_PUNTO, latitudineDi, mescolaCampo, nasci,
+  PUNTI_SCIA, velocitaInCelle, VELOCITA_PER_SECONDO_DI_PERIODO,
+  type CampiMoto, type Particella,
 } from "../src/map/particelle";
 import { NODATA } from "../src/data/frame";
 
@@ -207,7 +208,7 @@ describe("dove il dato non c'e'", () => {
     const c = campi(180);
     (c as { sin: Float32Array; cos: Float32Array }).sin.fill(NaN);
     (c as { sin: Float32Array; cos: Float32Array }).cos.fill(NaN);
-    const p: Particella[] = [{ i: 4, j: 3, vita: 100 }];
+    const p: Particella[] = [{ i: 4, j: 3, scia: [], vita: 100 }];
     let n = 0;
     avanza(p, c, 1, () => ((n = (n + 0.37) % 1), n), 50);
     expect(p[0].i === 4 && p[0].j === 3).toBe(false);
@@ -217,7 +218,7 @@ describe("dove il dato non c'e'", () => {
     // Senza ricambio le particelle si accumulano dove il campo converge e le
     // zone di uscita restano vuote: la densita' racconterebbe da quanto tempo
     // guardi, non com'e' il mare.
-    const p: Particella[] = [{ i: 4, j: 3, vita: 0 }];
+    const p: Particella[] = [{ i: 4, j: 3, scia: [], vita: 0 }];
     // 0,9 e non 0,5: con 0,5 nasci() cade su (4, 3), cioe' esattamente dov'era,
     // e il test sarebbe verde anche se la particella non fosse rinata affatto.
     avanza(p, campi(180), 1, () => 0.9, 50);
@@ -329,5 +330,37 @@ describe("la cresta, che e' la forma in cui un'onda si disegna", () => {
     expect(cresta(senza, 4, 3, 2, 0.3)).toBeNull();
     expect(cresta(campi(180), -1, 3, 2, 0.3)).toBeNull();
     expect(cresta(campi(180), 99, 3, 2, 0.3)).toBeNull();
+  });
+});
+
+describe("la scia, che serve alla corrente e non all'onda", () => {
+  it("tiene le ultime posizioni e non cresce senza fine", () => {
+    const p = [nasci(correnteUniforme(0.3, 0), () => 0.5, 50)];
+    for (let k = 0; k < 60; k++) {
+      // Il default di registraScia e' false (l'onda non deve pagarla): qui la
+      // corrente la vuole, quindi il sesto argomento e' esplicitamente true.
+      avanza(p, correnteUniforme(0.3, 0), 0.1, () => 0.5, 5000, true);
+    }
+    expect(p[0].scia.length).toBeLessThanOrEqual(PUNTI_SCIA * 2);
+    expect(p[0].scia.length).toBeGreaterThan(2);
+  });
+
+  it("un punto ogni tanto, non uno per fotogramma", () => {
+    // Misurato il 2026-08-20: a una velocita' leggibile un fotogramma vale meno
+    // di un pixel, quindi una scia presa a ogni fotogramma e' lunga sei pixel e
+    // a schermo non e' una striscia ma polvere.
+    const p = [nasci(correnteUniforme(0.3, 0), () => 0.5, 500)];
+    for (let k = 0; k < 12; k++) {
+      avanza(p, correnteUniforme(0.3, 0), 0.1, () => 0.5, 5000, k % FOTOGRAMMI_PER_PUNTO === 0);
+    }
+    expect(p[0].scia.length / 2).toBe(Math.ceil(12 / FOTOGRAMMI_PER_PUNTO));
+  });
+
+  it("chi non registra la scia non la accumula, cosi' l'onda non paga niente", () => {
+    // L'onda si disegna a creste e la scia non le serve: registrarla sarebbe
+    // lavoro e memoria per un dato che nessuno legge.
+    const p = [nasci(campi(180), () => 0.5, 500)];
+    for (let k = 0; k < 12; k++) avanza(p, campi(180), 0.1, () => 0.5, 5000, false);
+    expect(p[0].scia).toEqual([]);
   });
 });

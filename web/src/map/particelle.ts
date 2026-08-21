@@ -34,6 +34,19 @@ import { NODATA } from "../data/frame";
 /** g / 2 pi, in metri al secondo per secondo di periodo. */
 export const VELOCITA_PER_SECONDO_DI_PERIODO = 9.81 / (2 * Math.PI);
 
+/**
+ * Quanti punti di scia si ricordano, e ogni quanti fotogrammi se ne prende uno.
+ *
+ * Non uno per fotogramma: a una velocita' leggibile (una quarantina di pixel al
+ * secondo) un fotogramma vale meno di un pixel, quindi una scia di otto passi e'
+ * lunga sei pixel. Misurato: a schermo non erano strisce ma una **polvere
+ * bianca uniforme**, che invece di mostrare il moto sbiadiva il campo sotto.
+ * Campionando un fotogramma su sei, dodici punti coprono un secondo di moto,
+ * cioe' una quarantina di pixel: quella si legge come una scia.
+ */
+export const PUNTI_SCIA = 12;
+export const FOTOGRAMMI_PER_PUNTO = 6;
+
 /** La geometria comune, uguale per qualunque campo di moto. */
 export type Geometria = {
   larghezza: number;
@@ -204,6 +217,8 @@ export function cresta(
 export type Particella = {
   i: number;
   j: number;
+  /** Le ultime posizioni, dalla piu' vecchia alla piu' recente. */
+  scia: number[];
   /** Fotogrammi rimasti prima di rinascere comunque. */
   vita: number;
 };
@@ -219,7 +234,7 @@ export function nasci(
 ): Particella {
   const i = caso() * campi.larghezza;
   const j = caso() * campi.altezza;
-  return { i, j, vita: 1 + Math.floor(caso() * vitaMassima) };
+  return { i, j, scia: [], vita: 1 + Math.floor(caso() * vitaMassima) };
 }
 
 /**
@@ -237,6 +252,15 @@ export function avanza(
   dt: number,
   caso: () => number,
   vitaMassima: number,
+  /**
+   * Se aggiungere un punto alla scia in questo fotogramma.
+   *
+   * Default `false` e non `true`: l'onda si disegna a creste, non a scie, e
+   * accumulare una scia che nessuno legge sarebbe lavoro e memoria spesi per
+   * niente. L'unico chiamante che vuole la scia (il disegno a corrente) la
+   * chiede esplicitamente.
+   */
+  registraScia = false,
 ): void {
   for (let n = 0; n < particelle.length; n++) {
     const p = particelle[n];
@@ -244,6 +268,10 @@ export function avanza(
     if (!v || p.vita <= 0) {
       particelle[n] = nasci(campi, caso, vitaMassima);
       continue;
+    }
+    if (registraScia) {
+      p.scia.push(p.i, p.j);
+      if (p.scia.length > PUNTI_SCIA * 2) p.scia.splice(0, 2);
     }
     p.i += v.di * dt;
     p.j += v.dj * dt;
