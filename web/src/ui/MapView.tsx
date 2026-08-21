@@ -23,7 +23,7 @@ export type Vista = { centro: [number, number]; zoom: number };
 export type ManiglieMappa = { animazione: Animazione; livello: LivelloCampo };
 
 export function MapView({
-  catalogo, variabile, asse, prefetcher, cache, costa, maschera, metaCosta, metaMaschera, stile,
+  catalogo, variabile, asse, prefetcherCampi, cache, costa, maschera, metaCosta, metaMaschera, stile,
   preserveDrawingBuffer, vistaIniziale, puntoIniziale,
   alTempo, alValore, alPunto, alPronto, alVista, alErrore, isolinee: isolineeAccese, grandezza,
   direzione, asseDirezione, prefetcherDirezione, scaleDirezione,
@@ -31,7 +31,15 @@ export function MapView({
   catalogo: Catalogo;
   variabile: Variabile;
   asse: Ora[];
-  prefetcher: Prefetcher;
+  /**
+   * Un prefetcher per campo della grandezza scelta, nello stesso ordine dei
+   * suoi `campi`. Una voce sola per le grandezze di oggi (altezza d'onda,
+   * periodo, livello del mare); la corrente ne porta due. Qui dentro si legge
+   * solo il **primo campo** (isolinee e valore sotto il mouse: il secondo
+   * arriva col task che accende la corrente); la lista intera passa ad
+   * Animazione, che e' l'unica a comporre il modulo di piu' componenti.
+   */
+  prefetcherCampi: Prefetcher[];
   cache: CacheFrame;
   costa: HTMLImageElement;
   maschera: HTMLImageElement;
@@ -149,8 +157,8 @@ export function MapView({
   // in silenzio a quelli nuovi: due assi diversi, mai riconciliati.
   const asseRef = useRef(asse);
   asseRef.current = asse;
-  const prefetcherRef = useRef(prefetcher);
-  prefetcherRef.current = prefetcher;
+  const prefetcherCampiRef = useRef(prefetcherCampi);
+  prefetcherCampiRef.current = prefetcherCampi;
   const variabileRef = useRef(variabile);
   variabileRef.current = variabile;
   // Il livello vive dentro l'effetto qui sotto (dipendenze vuote): questo ref
@@ -243,10 +251,10 @@ export function MapView({
         isolineeRef.current = isolinee;
         isolinee.mostra(accese.current && haStatoDelMare(variabileRef.current.id));
 
-        // asseRef e prefetcherRef, non asse e prefetcher: l'animazione vive
-        // per tutta la vita della mappa, ma i due ref restano aggiornati a
-        // ogni render di MapView (vedi sopra), quindi legge sempre i valori
-        // correnti invece di quelli del primo montaggio.
+        // asseRef e prefetcherCampiRef, non asse e prefetcherCampi:
+        // l'animazione vive per tutta la vita della mappa, ma i due ref
+        // restano aggiornati a ogni render di MapView (vedi sopra), quindi
+        // legge sempre i valori correnti invece di quelli del primo montaggio.
         // Il valore a schermo e' una funzione di (posizione, istante), quindi va
         // ricalcolato quando cambia l'una O l'altro. Ricalcolarlo solo sul
         // movimento del mouse lasciava a schermo, durante la riproduzione, un
@@ -259,7 +267,10 @@ export function MapView({
           const valore = dove
             ? valoreCorrente(
                 catalogo.griglia, asseRef.current, ultimoIstante.current,
-                (ora) => cache.prendi(prefetcherRef.current.chiave(ora)),
+                // Il primo campo: per una grandezza a un campo solo e' l'unico
+                // che c'e'; per la corrente il valore sotto il mouse composto
+                // dal secondo campo arriva col task che la accende.
+                (ora) => cache.prendi(prefetcherCampiRef.current[0].chiave(ora)),
                 dove.lng, dove.lat, variabileRef.current.scala, variabileRef.current.offset,
                 grandezzaRef.current.dissolvenza,
               )
@@ -269,8 +280,16 @@ export function MapView({
           // farlo passare da un render sarebbe esattamente il vincolo che
           // questa architettura esiste per rispettare. E' lo stesso numero
           // della barra di stato, scritto dalla stessa funzione.
+          //
+          // L'unita' e l'id sono quelli della GRANDEZZA (grandezzaRef), non
+          // del campo del catalogo (variabileRef): per le grandezze a un
+          // campo solo coincidono per caso (m, s, m); per la corrente no (il
+          // catalogo dice "m s-1", la grandezza "m/s"), e i due punti dello
+          // schermo che scrivono lo stesso numero (qui e la barra di stato in
+          // App.tsx) non possono dirlo in due modi diversi.
           if (puntoFissato.current) {
-            segnaposto.scrivi(scriviValoreEStato(valore, variabileRef.current.unita, variabileRef.current.id));
+            segnaposto.scrivi(scriviValoreEStato(
+              valore, grandezzaRef.current.unita, grandezzaRef.current.id));
           }
           strozzatore.invia(valore);
         };
@@ -301,10 +320,13 @@ export function MapView({
           if (!isolinee) return;
           const q = inquadraOre(asseRef.current, ultimoIstante.current);
           if (!q) return;
-          const chiaveA = prefetcherRef.current.chiave(q.prima);
+          // Il primo campo: le isolinee esistono solo per l'altezza d'onda
+          // (haStatoDelMare), che ha un campo solo, quindi non c'e' un secondo
+          // campo da comporre qui.
+          const chiaveA = prefetcherCampiRef.current[0].chiave(q.prima);
           const datiA = cache.prendi(chiaveA);
           if (!datiA) return;
-          const chiaveB = q.dopo ? prefetcherRef.current.chiave(q.dopo) : null;
+          const chiaveB = q.dopo ? prefetcherCampiRef.current[0].chiave(q.dopo) : null;
           const datiB = chiaveB ? cache.prendi(chiaveB) ?? null : null;
           isolinee.aggiorna({
             chiaveA, datiA,
@@ -319,7 +341,7 @@ export function MapView({
         chiediIsolinee.current = aggiornaIsolinee;
 
         animazione = new Animazione(livello, {
-          asse: asseRef, prefetcher: prefetcherRef, cache,
+          asse: asseRef, prefetcherCampi: prefetcherCampiRef, cache,
           dissolvenza: { get current() { return grandezzaRef.current.dissolvenza; } },
         });
         const aggiornaDirezione = (giaRiprovato = false) => {

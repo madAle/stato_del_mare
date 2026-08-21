@@ -215,13 +215,29 @@ export class LivelloCampo implements CustomLayerInterface {
    * fusione fra i due fotogrammi continua a funzionare a ogni chiamata.
    */
   imposta(componenti: ComponenteFrame[], frazione: number): void {
+    // Un elenco vuoto non fa niente in silenzio, a differenza delle voci oltre
+    // la seconda (documentate sopra): il livello resta con l'ultimo
+    // fotogramma buono a schermo. E' il caso di chi chiama con una lista
+    // costruita da zero prefetcher (una grandezza senza campi nel catalogo).
     if (!this.gl || componenti.length === 0) return;
     const [primo, secondo] = componenti;
     if (primo.chiaveA !== this.chiaveA) {
       this.carica(this.gl, this.texA!, primo.a);
       this.chiaveA = primo.chiaveA;
     }
-    this.haB = primo.b !== null;
+    // u_haB e' UNO SOLO per tutte e due le componenti (vedi shader.ts): se la
+    // prima avesse l'ora dopo e la seconda no, la texture B della seconda
+    // conserverebbe il fotogramma vecchio che ci stava gia' dentro, e il ramo
+    // di ripiego per pixel (pesoB2 <= 0.0 ? va2 : ...) lo userebbe: un modulo
+    // costruito su due istanti diversi, valori plausibili e sbagliati ai
+    // bordi del dato. Peggio ancora se quella texture non e' MAI stata
+    // popolata: texelFetch legge zeri, zero non e' NODATA, quindi pesoB2 > 0.0
+    // e nessun guardiano dello shader potrebbe accorgersene. Questa riga rende
+    // impossibile accendere l'interpolazione quando le componenti non
+    // concordano sulla presenza di b, invece di vietarlo solo a parole a chi
+    // chiama; costa un confronto in piu' e nessun effetto sul percorso a una
+    // sola componente (secondo e' undefined, quindi !secondo e' vero).
+    this.haB = primo.b !== null && (!secondo || secondo.b !== null);
     if (primo.b && primo.chiaveB !== this.chiaveB) this.carica(this.gl, this.texB!, primo.b);
     this.chiaveB = primo.b ? primo.chiaveB : null;
 

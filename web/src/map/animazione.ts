@@ -3,7 +3,7 @@ import type { Ora } from "../data/indice";
 import { PASSO_MS } from "../data/indice";
 import type { Prefetcher } from "../data/prefetch";
 import { inquadra, oraPiuVicina } from "../data/sorgente";
-import type { LivelloCampo } from "./campo";
+import type { ComponenteFrame, LivelloCampo } from "./campo";
 
 /**
  * Ore di simulazione per secondo reale, alla prima pressione di "riproduci".
@@ -43,7 +43,19 @@ export type OpzioniAnimazione = {
    * passato in silenzio a quelli nuovi: due assi diversi, mai riconciliati.
    */
   asse: Leggibile<Ora[]>;
-  prefetcher: Leggibile<Prefetcher>;
+  /**
+   * Un prefetcher per campo, nello stesso ordine dei campi della grandezza.
+   * Una sola voce e' il caso di sempre (altezza d'onda, periodo, livello del
+   * mare); la corrente ne porta due. `disegna()` legge un fotogramma da
+   * ognuno e li passa tutti a `LivelloCampo.imposta`, che sa disegnarne il
+   * modulo. Il resto del ciclo (prontezza in `avanza()`, richiesta della
+   * finestra in `assicuraFinestra()`/`chiediAvanti()`) guarda solo il
+   * **primo** campo, come fa gia' MapView per il valore sotto il cursore:
+   * oggi e' l'unico che esiste davvero (la corrente resta spenta), e la
+   * prontezza a piu' campi (aspettare che TUTTI abbiano il fotogramma prima
+   * di dichiararsi pronti) arriva col task che la accende.
+   */
+  prefetcherCampi: Leggibile<Prefetcher[]>;
   cache: CacheFrame;
   /**
    * Se fra un'ora e l'altra si puo' interpolare. Assente vale "si'".
@@ -121,7 +133,8 @@ export class Animazione {
    */
   private assicuraFinestra(): void {
     const asse = this.opzioni.asse.current;
-    const prefetcher = this.opzioni.prefetcher.current;
+    // Il primo campo: vedi il commento su prefetcherCampi in OpzioniAnimazione.
+    const prefetcher = this.opzioni.prefetcherCampi.current[0];
     const q = inquadra(asse, this.istante);
     if (!q) return;
     const i = asse.indexOf(q.prima);
@@ -237,7 +250,7 @@ export class Animazione {
     // Se il frame che servirebbe non c'e' ancora, il tempo NON avanza. Saltare
     // fotogrammi su un'animazione meteorologica falsa la percezione del
     // fenomeno, mentre una pausa breve si legge per quello che e'.
-    if (q && !this.opzioni.prefetcher.current.pronto(q.prima)) {
+    if (q && !this.opzioni.prefetcherCampi.current[0].pronto(q.prima)) {
       this.stato = "in attesa di dati";
       this.riporta(false);
       this.chiediAvanti();
@@ -253,7 +266,7 @@ export class Animazione {
 
   private chiediAvanti(): void {
     const i = this.indiceCorrente();
-    if (i >= 0) void this.opzioni.prefetcher.current.assicura(this.opzioni.asse.current, i, 1);
+    if (i >= 0) void this.opzioni.prefetcherCampi.current[0].assicura(this.opzioni.asse.current, i, 1);
   }
 
   private indiceCorrente(): number {
@@ -264,25 +277,41 @@ export class Animazione {
   }
 
   private disegna(): void {
-    const prefetcher = this.opzioni.prefetcher.current;
     const grezza = inquadra(this.opzioni.asse.current, this.istante);
     if (!grezza) return;
     // Le grandezze che il modello non produce continue non si fondono: si
     // mostra l'ora piu' vicina, se no lo shader inventa valori che il modello
     // non ha calcolato (vedi `oraPiuVicina`).
     const q = this.opzioni.dissolvenza?.current === false ? oraPiuVicina(grezza) : grezza;
-    const chiaveA = prefetcher.chiave(q.prima);
-    const a = this.opzioni.cache.prendi(chiaveA);
-    if (!a) return;
-    const chiaveB = q.dopo ? prefetcher.chiave(q.dopo) : null;
-    const b = chiaveB ? this.opzioni.cache.prendi(chiaveB) ?? null : null;
-    // La chiave di B viaggia solo insieme al dato vero: se b e' null (il
-    // fotogramma dopo non c'e' ancora in cache) il livello deve vedere
-    // "nessun B" e non la chiave di un fotogramma che non ha ricevuto.
-    // Una voce sola: il campo scalare, che e' quello che questo ciclo disegna.
-    // La lista esiste perche' il livello sa disegnare anche il modulo di due
-    // componenti, e chi ne passa due lo accende.
-    this.livello.imposta([{ a, chiaveA, b, chiaveB: b ? chiaveB : null }], b ? q.frazione : 0);
+    // Un fotogramma per campo, tutti sulla STESSA coppia di ore (q.prima,
+    // q.dopo): e' questo che rende lecito passarli insieme a
+    // LivelloCampo.imposta per il modulo. Leggere ogni campo con la sua
+    // finestra propria mescolerebbe componenti di istanti diversi.
+    const componenti = this.opzioni.prefetcherCampi.current.map((prefetcher) => {
+      const chiaveA = prefetcher.chiave(q.prima);
+      const a = this.opzioni.cache.prendi(chiaveA);
+      const chiaveB = q.dopo ? prefetcher.chiave(q.dopo) : null;
+      // La chiave di B viaggia solo insieme al dato vero: se b e' null (il
+      // fotogramma dopo non c'e' ancora in cache) il livello deve vedere
+      // "nessun B" e non la chiave di un fotogramma che non ha ricevuto.
+      const b = chiaveB ? this.opzioni.cache.prendi(chiaveB) ?? null : null;
+      return { a, chiaveA, b, chiaveB: b ? chiaveB : null };
+    });
+    // Se manca il fotogramma di una qualunque componente non si disegna
+    // niente, invece di mescolare un campo pronto con uno vecchio rimasto in
+    // texture: sarebbe un campo perfettamente liscio e sbagliato. Con una sola
+    // voce (il caso di sempre, oggi) e' lo stesso identico controllo "if (!a)
+    // return" di prima.
+    if (componenti.some((c) => !c.a)) return;
+    this.livello.imposta(
+      // Il cast serve perche' .map() non porta con se' il narrowing di "if
+      // (componenti.some((c) => !c.a)) return" sul campo `a` di ogni voce.
+      componenti as ComponenteFrame[],
+      // La dissolvenza vale solo se OGNI componente ha l'ora dopo: un vettore
+      // con una componente ferma su un'ora sola e l'altra a meta' sarebbe
+      // fatto di due istanti diversi (vedi il commento su u_haB in campo.ts).
+      componenti.every((c) => c.b) ? q.frazione : 0,
+    );
   }
 
   private riporta(forza: boolean): void {

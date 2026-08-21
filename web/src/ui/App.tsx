@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CacheFrame } from "../data/cache";
 import { leggiCatalogo, VARIABILE_DISEGNATA } from "../data/catalogo";
 import { haStatoDelMare } from "../map/soglie";
-import { grandezzeDi } from "./grandezze";
+import { grandezzeDi, scaleCoerenti } from "./grandezze";
 import { leggiFrame } from "../data/frame";
 import { asseDeiTempi, leggiIndice, type Ora } from "../data/indice";
 import { Prefetcher } from "../data/prefetch";
@@ -139,14 +139,26 @@ export function App({
   const catalogo = useQuery({ queryKey: ["catalogo"], queryFn: () => leggiCatalogo() });
   const variabili = catalogo.data?.variabili ?? [];
   const grandezze = grandezzeDi(variabili);
-  // Le grandezze disegnabili di oggi hanno **un campo solo**, quindi il loro id
-  // coincide con l'id del campo nel catalogo, ed e' cio' che rende lecito
-  // cercarla qui per id e passarla a `leggiIndice` e a `urlFrame`. Il giorno
-  // che diventa disegnabile una grandezza a due campi (direzione, corrente),
-  // questa riga non basta piu' e va sciolta la corrispondenza.
-  const grandezza = grandezze.find((g) => g.id === variabile && g.disegnabile)
+  // Una grandezza disegnabile con le scale delle sue componenti divergenti non
+  // e' selezionabile: stesso guardiano di `disegnabile`, stesso ripiego (si
+  // torna a VARIABILE_DISEGNATA tramite l'effetto qui sotto, come per qualunque
+  // altra grandezza non disegnabile). Un campo che sparisce dal selettore e' il
+  // verso giusto in cui sbagliare: disegnarlo con la scala di un'altra
+  // componente darebbe un numero plausibile e falso (vedi `scaleCoerenti` in
+  // grandezze.ts). Oggi non scatta mai, perche' la corrente resta
+  // `disegnabile: false`; e' la rete di sicurezza per il giorno in cui non lo
+  // sara' piu' e il catalogo vero avesse nel frattempo divaricato le scale.
+  const grandezza = grandezze.find((g) => g.id === variabile && g.disegnabile && scaleCoerenti(g, variabili))
     ?? grandezze.find((g) => g.id === VARIABILE_DISEGNATA);
-  const sceltaGrezza = variabili.find((v) => v.id === grandezza?.id);
+  // **L'id nell'URL e' quello della grandezza, gli id verso il bucket sono
+  // quelli dei campi.** Per le grandezze a un campo solo i due coincidono; per
+  // la corrente no, e cercare qui per id della grandezza darebbe undefined,
+  // cioe' l'app ferma sul ramo di caricamento con un catalogo perfetto. Scala e
+  // offset vengono dal **primo** campo, ed e' lecito perche' le componenti di
+  // una stessa grandezza li hanno identici: verificato nel catalogo vero, e da
+  // qui in poi anche controllato a runtime (scaleCoerenti sopra), non solo da
+  // un test su un campione.
+  const sceltaGrezza = variabili.find((v) => v.id === grandezza?.campi[0]);
   // La tavolozza del catalogo si puo' sostituire con `?palette=dense` per
   // confrontare le alternative sullo stesso dato, che e' l'unico modo per
   // deciderle. Il catalogo resta la scelta di default: questo e' un parametro
@@ -211,11 +223,27 @@ export function App({
   });
 
   const cache = useMemo(() => new CacheFrame(), []);
-  const prefetcher = useMemo(
-    () => new Prefetcher(cache, scelta?.id ?? variabile, (ora: Ora) =>
-      leggiFrame(urlFrame(scelta?.id ?? variabile, ora.tipo, ora.riferimento, new Date(ora.istante)),
-                 catalogo.data!.griglia)),
-    [cache, scelta?.id, variabile, catalogo.data],
+  // Un prefetcher per campo, sullo stesso schema che la direzione usa gia' per
+  // i suoi tre campi (poco sotto): la chiave della cache porta gia' la
+  // variabile, quindi due prefetcher non possono confondersi, e "l'ora e'
+  // pronta" diventa "tutti i campi sono pronti" (per ora, decide dove leggerla
+  // Animazione.disegna: vedi map/animazione.ts).
+  //
+  // Dipendenza su `grandezza?.campi.join()` e non su `grandezza`: `grandezze`
+  // e' ricalcolato a ogni render (grandezzeDi non e' memoizzato), quindi
+  // l'oggetto cambia identita' anche quando i campi sono gli stessi.
+  // `alTempo` arriva da Animazione fino a dieci volte al secondo durante la
+  // riproduzione, e ogni rapporto rirenderizza App: con l'oggetto come
+  // dipendenza questo useMemo ricreerebbe un Prefetcher nuovo dieci volte al
+  // secondo per QUALUNQUE grandezza, non solo per la corrente, perdendo le
+  // richieste in volo del prefetcher scartato.
+  const prefetcherCampi = useMemo(
+    () => (catalogo.data && grandezza
+      ? grandezza.campi.map((campo) => new Prefetcher(cache, campo, (ora: Ora) =>
+          leggiFrame(urlFrame(campo, ora.tipo, ora.riferimento, new Date(ora.istante)),
+                     catalogo.data!.griglia)))
+      : []),
+    [cache, catalogo.data, grandezza?.campi.join()],
   );
 
   const prefetcherDirezione = useMemo(
@@ -282,7 +310,7 @@ export function App({
     <main>
       <MapView
         catalogo={catalogo.data} variabile={scelta} asse={asse}
-        prefetcher={prefetcher} cache={cache}
+        prefetcherCampi={prefetcherCampi} cache={cache}
         costa={costa} maschera={maschera}
         metaCosta={metaCosta} metaMaschera={metaMaschera}
         stile={stile}
@@ -311,7 +339,14 @@ export function App({
           stretto li impila, invece di lasciarli accavallare. */}
       <div className="fascia-alta">
         <LayerSwitcher variabili={variabili} scelta={grandezza!.id} cambia={setVariabile} />
-        <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={grandezza!.unita} variabile={scelta.id} stato={stato} />
+        {/* variabile={grandezza!.id} e non {scelta.id}: passoDi() e
+            haStatoDelMare() dentro scriviValoreEStato() sono chiavi sulla
+            GRANDEZZA (vedi ui/grandezze.ts), non sul campo del catalogo. Per
+            le grandezze a un campo solo coincidono per caso; per la corrente
+            no ("ubar" non e' "corrente"), e con l'id del campo la barra di
+            stato leggerebbe un passo e uno stato del mare inesistenti invece
+            di quelli veri. */}
+        <StatusBar istante={istante} ora={oraCorrente} oraDopo={oraDopo} valore={valore} unita={grandezza!.unita} variabile={grandezza!.id} stato={stato} />
         <Legend palette={scelta.colormap} minimo={grandezza!.minimo}
           massimo={grandezza!.massimo} unita={grandezza!.unita}>
           {/* Il ref si aggiorna **prima** di chiedere la scrittura dell'URL, non

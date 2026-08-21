@@ -196,6 +196,30 @@ export function grandezzeDi(variabili: Variabile[]): Grandezza[] {
 }
 
 /**
+ * Se le componenti di una grandezza condividono la stessa scala di
+ * archiviazione.
+ *
+ * Lo shader (`map/shader.ts`) prende il modulo di un campo vettoriale sui
+ * valori GREZZI e lo scala con un solo fattore: e' lecito soltanto perche' le
+ * due componenti della corrente hanno la stessa scala nel catalogo (0,001 per
+ * entrambe, verificato il 2026-08-21). Il test sulla fabbrica dei test in
+ * `grandezze.test.ts` prova che l'ipotesi vale su un campione: non protegge
+ * dal catalogo VERO che cambiasse, perche' quel campione non arriva mai da
+ * rete. Questo controllo si chiama su `variabili` come arrivano davvero (vedi
+ * `App.tsx`), e se le scale divergono chi chiama deve trattare la grandezza
+ * come non disegnabile.
+ *
+ * Costo se e' sbagliato: un campo disegnato con la scala di un altro da' un
+ * numero plausibile e falso, non un errore visibile. Una grandezza a un campo
+ * solo (o senza nessun campo trovato nel catalogo) e' sempre coerente per
+ * definizione, perche' non c'e' una seconda scala con cui confrontarsi.
+ */
+export function scaleCoerenti(grandezza: Grandezza, variabili: Variabile[]): boolean {
+  const scale = grandezza.campi.map((id) => variabili.find((v) => v.id === id)?.scala);
+  return new Set(scale).size <= 1;
+}
+
+/**
  * Il passo di scrittura di una grandezza, dal suo id.
  *
  * Esiste perche' chi scrive il numero a schermo (`ui/numeri.ts`) ha in mano

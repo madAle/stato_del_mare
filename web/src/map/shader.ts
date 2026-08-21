@@ -111,6 +111,15 @@ void main() {
     // Se una delle due ore non ha dato qui, si usa l'altra invece di mediare
     // con zero, che sarebbe un campo che sprofonda e risale a ogni ora.
     c1 = pesoA <= 0.0 ? vb : (pesoB <= 0.0 ? va : mix(va, vb, u_frazione));
+    // Lo stesso ripiego, per PIXEL, sulla seconda componente. Se pesoA2/pesoB2
+    // divergessero da pesoA/pesoB (un pixel dove una componente ha dato e
+    // l'altra no) le due meta' del vettore userebbero un'ora diversa, cioe' un
+    // modulo costruito su due istanti. Per la corrente non succede: ubar e
+    // vbar vengono dallo stesso file (his_2dcur) e condividono la maschera
+    // nodata, quindi per ogni pixel hanno dato (o non hanno dato) alla stessa
+    // ora. E' un'assunzione sul dato, non una garanzia di questo shader: se un
+    // giorno una grandezza vettoriale avesse componenti con maschere diverse,
+    // questo ramo mescolerebbe istanti senza che nessun guardiano se ne accorga.
     c2 = !u_modulo ? 0.0
        : (pesoA2 <= 0.0 ? vb2 : (pesoB2 <= 0.0 ? va2 : mix(va2, vb2, u_frazione)));
   } else {
@@ -124,8 +133,9 @@ void main() {
   // scala di archiviazione, verificata nel catalogo vero (0,001 per entrambe le
   // componenti della corrente). Chi accende u_modulo su due campi con scale
   // diverse ottiene un numero plausibile e falso: il controllo di quella
-  // condizione sta a chi mette insieme le due componenti (arriva col task che
-  // accende la corrente), e questo shader ci conta.
+  // condizione sta a chi mette insieme le due componenti, cioe' scaleCoerenti
+  // in ui/grandezze.ts, chiamata da App.tsx prima di scegliere la grandezza da
+  // disegnare; questo shader si fida e non lo riverifica.
   float valore = u_modulo ? length(vec2(c1, c2)) : c1;
 
   // Fra minimo e massimo, non fra zero e massimo: il livello del mare ha segno,

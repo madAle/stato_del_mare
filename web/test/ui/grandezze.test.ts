@@ -1,17 +1,27 @@
 import { describe, expect, it } from "vitest";
 import type { Variabile } from "../../src/data/catalogo";
-import { grandezzeDi } from "../../src/ui/grandezze";
+import { grandezzeDi, scaleCoerenti } from "../../src/ui/grandezze";
 
-const campo = (id: string, unita: string): Variabile => ({
-  id, unita, scala: 1, offset: 0, colormap: "deep",
+/**
+ * Scala di default 1: fedele al catalogo solo per i campi a cui non importa
+ * (le altre asserzioni guardano id e unita', non la scala). Dove la scala
+ * conta davvero (ubar/vbar, sotto) si passa quella vera.
+ */
+const campo = (id: string, unita: string, scala = 1): Variabile => ({
+  id, unita, scala, offset: 0, colormap: "deep",
   tipi: { an: { mesi: [] }, fc: { mesi: [] } },
 });
 
-/** I sette campi che il catalogo pubblica davvero, nel loro ordine. */
+/**
+ * I sette campi che il catalogo pubblica davvero, nel loro ordine, con le
+ * scale vere di ubar e vbar (0,001, verificato nel catalogo il 2026-08-21):
+ * un test sulla coerenza delle due scale non direbbe niente su una fabbrica
+ * che le inventa uguali per comodo.
+ */
 const CATALOGO = [
   campo("hwave", "m"), campo("pwave", "s"),
   campo("dwave_sin", "1"), campo("dwave_cos", "1"),
-  campo("ubar", "m s-1"), campo("vbar", "m s-1"),
+  campo("ubar", "m s-1", 0.001), campo("vbar", "m s-1", 0.001),
   campo("sealevel", "m"),
 ];
 
@@ -76,5 +86,59 @@ describe("le grandezze da mettere in un menu", () => {
 
   it("un catalogo vuoto non produce voci inventate", () => {
     expect(grandezzeDi([])).toEqual([]);
+  });
+});
+
+describe("il nodo dell'id verso il bucket", () => {
+  it("la variabile del catalogo si cerca col **primo campo**, non con l'id della grandezza", () => {
+    // E' il vincolo che STATO.md chiamava "da sciogliere prima della corrente":
+    // per le grandezze a un campo solo i due id coincidono, per la corrente no,
+    // e cercare per id della grandezza darebbe undefined, cioe' l'app ferma sul
+    // ramo di caricamento con un catalogo perfetto.
+    const g = grandezzeDi(CATALOGO);
+    const corrente = g.find((x) => x.id === "corrente")!;
+    expect(corrente.id).not.toBe(corrente.campi[0]);
+    expect(CATALOGO.some((v) => v.id === corrente.id)).toBe(false);
+    expect(CATALOGO.some((v) => v.id === corrente.campi[0])).toBe(true);
+  });
+
+  it("le due componenti della corrente hanno la stessa scala, che il modulo grezzo richiede", () => {
+    // Lo shader prende il modulo sui valori grezzi e scala dopo: con due scale
+    // diverse darebbe una velocita' sbagliata di un fattore, cioe' un numero
+    // plausibile e falso. Verificato nel catalogo vero il 2026-08-21 (0,001 e
+    // 0,001), fissato qui perche' il giorno che ARPAE ne cambiasse una lo si
+    // sappia da un test e non da uno screenshot.
+    const g = grandezzeDi(CATALOGO);
+    const corrente = g.find((x) => x.id === "corrente")!;
+    const scale = corrente.campi.map((c) => CATALOGO.find((v) => v.id === c)!.scala);
+    expect(new Set(scale).size).toBe(1);
+  });
+});
+
+describe("scaleCoerenti", () => {
+  it("e' vera per una grandezza a un campo solo: non c'e' una seconda scala da confrontare", () => {
+    const g = grandezzeDi(CATALOGO).find((x) => x.id === "hwave")!;
+    expect(scaleCoerenti(g, CATALOGO)).toBe(true);
+  });
+
+  it("e' vera quando le componenti condividono la scala (il catalogo vero, oggi)", () => {
+    const g = grandezzeDi(CATALOGO).find((x) => x.id === "corrente")!;
+    expect(scaleCoerenti(g, CATALOGO)).toBe(true);
+  });
+
+  it("e' falsa quando le scale divergono: il modulo grezzo le mischierebbe di un fattore", () => {
+    // Questo e' il controllo a runtime richiesto in App.tsx (non solo un test
+    // sulla fabbrica dei test qui sopra): deve accorgersi di un catalogo VERO
+    // che cambia, non solo di un campione che lo simula. Se ARPAE pubblicasse
+    // ubar e vbar con scale diverse, un modulo preso sui valori grezzi e
+    // scalato con un solo fattore darebbe una velocita' plausibile e falsa:
+    // il costo di sbagliare qui e' un numero che sembra una misura e non lo e'.
+    const divergente = [
+      ...CATALOGO.filter((v) => v.id !== "ubar" && v.id !== "vbar"),
+      { ...CATALOGO.find((v) => v.id === "ubar")!, scala: 0.001 },
+      { ...CATALOGO.find((v) => v.id === "vbar")!, scala: 0.002 },
+    ];
+    const g = grandezzeDi(divergente).find((x) => x.id === "corrente")!;
+    expect(scaleCoerenti(g, divergente)).toBe(false);
   });
 });
