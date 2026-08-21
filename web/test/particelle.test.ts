@@ -49,13 +49,60 @@ describe("il moto della corrente", () => {
     expect(Math.abs(versoNord.di)).toBeLessThan(1e-9);
   });
 
-  it("la velocita' **e'** il modulo, non viene da una formula", () => {
-    // Per l'onda la velocita' si ricava da c = g T / 2 pi perche' il dato da' il
-    // periodo e non la celerita'. Qui il dato E' la velocita': inventarla
-    // mostrerebbe velocita' relative false, cioe' un gradiente che non c'e'.
+  it("raddoppiando la corrente su un solo asse raddoppia lo spostamento", () => {
+    // Non prova che la velocita' sia il modulo (per quello vedi il test sulla
+    // corrente diagonale, sotto): su un solo asse un rapporto di 4 esce identico
+    // da qualunque norma o costante non nulla, perche' qui la normalizzazione e
+    // la riscalatura geografica usano lo stesso fattore e si elidono a vicenda.
+    // Prova solo che il codice non stia leggendo un valore sbagliato dalla
+    // griglia (indice fuori posto, scala dimenticata) su quell'asse.
     const lento = velocitaInCelle(correnteUniforme(0.1, 0), 4, 3)!;
     const veloce = velocitaInCelle(correnteUniforme(0.4, 0), 4, 3)!;
     expect(veloce.di / lento.di).toBeCloseTo(4, 6);
+  });
+
+  it("compone u e v come un vettore unico, e non porta un fattore spurio", () => {
+    // I test sopra usano sempre un asse a zero: non si accorgerebbero se il
+    // codice scambiasse u e v, o applicasse la correzione di Mercatore a una
+    // sola componente. Qui entrambe sono diverse da zero, e si ricostruisce la
+    // velocita' in metri al secondo invertendo la correzione geografica su
+    // (di, dj), confrontandola con hypot(0.3, 0.4) = 0,5.
+    //
+    // Cosa prova, con la misura che lo dice: il difetto vero per questo ramo
+    // non e' "quale norma", e' un fattore spurio che entra quando la stessa
+    // grandezza viene usata due volte senza essere la stessa variabile, per
+    // esempio copiando dal ramo onda la riga che moltiplica per la costante
+    // dell'acqua profonda (`VELOCITA_PER_SECONDO_DI_PERIODO`) prima di
+    // scalare in celle. Misurato spegnendo il codice buono e rimettendolo a
+    // mano cosi': il modulo ricostruito esce 0,780655 m/s invece di 0,5, cioe'
+    // esattamente 0,5 volte quella costante. Questo test **rompe** con quel
+    // difetto, l'ho verificato eseguendolo.
+    //
+    // Cosa NON prova, e perche': non distingue Math.hypot(u, v) da un'altra
+    // formula per il modulo (somma dei valori assoluti, una costante fissa,
+    // il doppio del vero) usata **coerentemente** sia per normalizzare
+    // (est = u / metriAlSecondo) sia per riscalare in celle
+    // (celleAlSecondo = metriAlSecondo / ...): quella stessa variabile si
+    // elide nel prodotto finale, qualunque valore assuma, purche' non nullo.
+    // Verificato sostituendo a mano tutte e tre le formule: nessuna fa
+    // fallire questo test ne' nessun altro della suite. L'unico punto in cui
+    // il valore di quella variabile e' osservabile dall'esterno e' la
+    // guardia "e' zero" (`metriAlSecondo <= 0`), gia' coperta dal test
+    // "dove il dato non c'e' non inventa una rotta": una costante fissa non
+    // nulla rompe quella guardia su una corrente a riposo, non questo test.
+    const c = correnteUniforme(0.3, 0.4);
+    const v = velocitaInCelle(c, 4, 3)!;
+    // Precisione 6 e non 9: u e v passano per un Float32Array, come altrove in
+    // questo file (vedi il test sopra), quindi 0,3 e 0,4 portano gia' un
+    // arrotondamento dell'ordine di 1e-7 prima ancora di entrare nel calcolo.
+    const metriAlSecondo =
+      Math.hypot(v.di, v.dj) * Math.cos(latitudineDi(c, 3)) * c.risoluzioneM;
+    expect(metriAlSecondo).toBeCloseTo(0.5, 6);
+    // Il verso, non solo il modulo: uno scambio di u e v, o un segno sbagliato
+    // su un solo asse, sposterebbe l'angolo lasciando il modulo quasi
+    // invariato, e un test che guardasse solo la lunghezza non se ne
+    // accorgerebbe.
+    expect(v.di / v.dj).toBeCloseTo(0.3 / -0.4, 6);
   });
 
   it("corregge la deformazione di Mercatore, come per l'onda", () => {

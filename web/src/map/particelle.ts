@@ -114,6 +114,25 @@ export function velocitaInCelle(
     if (!Number.isFinite(u) || !Number.isFinite(v)) return null;
     // La velocita' **e'** il modulo, e il verso e' quello delle componenti:
     // niente mezzo giro, perche' u e v dicono gia' dove l'acqua va.
+    //
+    // Math.hypot(u, v) qui e' un'affermazione di fisica, non un calcolo con
+    // conseguenze osservabili fuori da questa riga: viene diviso in est/nord
+    // e ri-moltiplicato in celleAlSecondo qui sotto, quindi si elide sempre
+    // dal risultato finale, qualunque formula non negativa ci si scriva
+    // (somma dei valori assoluti, una costante, il doppio del vero), purche'
+    // sia la STESSA usata in entrambi i passaggi. Misurato sostituendo a mano
+    // tre formule diverse: nessuna cambia (di, dj), ne' su una corrente
+    // diagonale. L'unico effetto osservabile e' sulla guardia qui sotto (zero
+    // solo se u = v = 0), gia' provata da "dove il dato non c'e'". Non
+    // semplificare in `est = u; nord = v` pensando che sia equivalente: lo e'
+    // nel risultato, ma smette di dire che la velocita' di una corrente **e'**
+    // il modulo delle sue componenti, che e' il motivo per cui questo ramo
+    // esiste. Il difetto vero che questa forma previene e' un fattore spurio:
+    // se una riga come quella dell'onda (`* VELOCITA_PER_SECONDO_DI_PERIODO`)
+    // finisse per sbaglio solo su un lato della divisione, la cancellazione si
+    // rompe e il modulo esce sbagliato di quel fattore (misurato: 0,780655
+    // invece di 0,5 su una corrente 0,3/0,4). Vedi il test
+    // "compone u e v come un vettore unico" in particelle.test.ts.
     metriAlSecondo = Math.hypot(u, v);
     if (metriAlSecondo <= 0) return null;
     est = u / metriAlSecondo;
