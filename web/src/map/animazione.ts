@@ -279,7 +279,10 @@ export class Animazione {
     // La chiave di B viaggia solo insieme al dato vero: se b e' null (il
     // fotogramma dopo non c'e' ancora in cache) il livello deve vedere
     // "nessun B" e non la chiave di un fotogramma che non ha ricevuto.
-    this.livello.imposta(a, chiaveA, b, b ? chiaveB : null, b ? q.frazione : 0);
+    // Una voce sola: il campo scalare, che e' quello che questo ciclo disegna.
+    // La lista esiste perche' il livello sa disegnare anche il modulo di due
+    // componenti, e chi ne passa due lo accende.
+    this.livello.imposta([{ a, chiaveA, b, chiaveB: b ? chiaveB : null }], b ? q.frazione : 0);
   }
 
   private riporta(forza: boolean): void {

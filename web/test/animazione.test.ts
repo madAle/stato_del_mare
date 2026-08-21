@@ -3,6 +3,7 @@ import { CacheFrame } from "../src/data/cache";
 import type { Ora } from "../src/data/indice";
 import { Prefetcher } from "../src/data/prefetch";
 import { Animazione } from "../src/map/animazione";
+import type { ComponenteFrame } from "../src/map/campo";
 
 const asse: Ora[] = Array.from({ length: 24 }, (_, i) => ({
   istante: Date.UTC(2026, 7, 15, i),
@@ -15,8 +16,8 @@ function livelloFinto() {
   const chiamate: { frazione: number; haB: boolean }[] = [];
   return {
     chiamate,
-    imposta(_a: Int16Array, _chiaveA: string, b: Int16Array | null, _chiaveB: string | null, frazione: number) {
-      chiamate.push({ frazione, haB: b !== null });
+    imposta(componenti: ComponenteFrame[], frazione: number) {
+      chiamate.push({ frazione, haB: componenti[0].b !== null });
     },
   };
 }

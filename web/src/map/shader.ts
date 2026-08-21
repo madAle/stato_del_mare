@@ -17,6 +17,9 @@ out vec4 fragColor;
 
 uniform isampler2D u_a;        // frame all'ora t
 uniform isampler2D u_b;        // frame all'ora t+1
+uniform isampler2D u_a2;       // seconda componente all'ora t, letta solo se u_modulo
+uniform isampler2D u_b2;       // seconda componente all'ora t+1
+uniform bool u_modulo;         // true: il valore e' il modulo delle due componenti
 uniform float u_frazione;      // quanto si e' dentro l'ora
 uniform bool u_haB;            // false dentro un buco: non si interpola
 uniform sampler2D u_costa;     // distanza con segno dalla costa, positiva in mare
@@ -84,22 +87,46 @@ void main() {
   float dissolvenza = clamp((dDato + 1800.0) / 1200.0, 0.0, 1.0);
   if (dissolvenza <= 0.0) { fragColor = vec4(0.0); return; }
 
+  // Si interpolano nel tempo le COMPONENTI, e solo dopo si prende il modulo.
+  // Nell'ordine opposto la corrente non si annullerebbe mai: all'inversione di
+  // marea una componente passa da +0,3 a -0,3 e il valore vero a meta' e' zero,
+  // mentre la media dei moduli da' 0,3. Non si vede come un errore, si vede
+  // come un mare che non sta mai fermo.
   float pesoA;
   float va = media(u_a, p, pesoA);
-  float valore;
+  float pesoA2 = pesoA;
+  float va2 = u_modulo ? media(u_a2, p, pesoA2) : 0.0;
+  float c1;
+  float c2;
   if (u_haB) {
     float pesoB;
     float vb = media(u_b, p, pesoB);
-    // Se una delle due ore non ha dato qui, si usa l'altra invece di mediare
-    // con zero, che sarebbe un'onda che sprofonda e risale a ogni ora.
+    float pesoB2 = pesoB;
+    float vb2 = u_modulo ? media(u_b2, p, pesoB2) : 0.0;
     if (pesoA <= 0.0 && pesoB <= 0.0) { fragColor = vec4(0.0); return; }
-    if (pesoA <= 0.0) valore = vb;
-    else if (pesoB <= 0.0) valore = va;
-    else valore = mix(va, vb, u_frazione);
+    // Meta' di un vettore non e' un vettore: se la seconda componente non ha
+    // dato qui si lascia trasparente, invece di dare zero all'altra, che
+    // darebbe una corrente piu' lenta del vero, cioe' plausibile e falsa.
+    if (u_modulo && pesoA2 <= 0.0 && pesoB2 <= 0.0) { fragColor = vec4(0.0); return; }
+    // Se una delle due ore non ha dato qui, si usa l'altra invece di mediare
+    // con zero, che sarebbe un campo che sprofonda e risale a ogni ora.
+    c1 = pesoA <= 0.0 ? vb : (pesoB <= 0.0 ? va : mix(va, vb, u_frazione));
+    c2 = !u_modulo ? 0.0
+       : (pesoA2 <= 0.0 ? vb2 : (pesoB2 <= 0.0 ? va2 : mix(va2, vb2, u_frazione)));
   } else {
     if (pesoA <= 0.0) { fragColor = vec4(0.0); return; }
-    valore = va;
+    if (u_modulo && pesoA2 <= 0.0) { fragColor = vec4(0.0); return; }
+    c1 = va;
+    c2 = va2;
   }
+  // Il modulo si prende sui valori GREZZI e si scala dopo (u_scala qui sotto e'
+  // uno solo): e' lecito unicamente perche' le due componenti hanno la stessa
+  // scala di archiviazione, verificata nel catalogo vero (0,001 per entrambe le
+  // componenti della corrente). Chi accende u_modulo su due campi con scale
+  // diverse ottiene un numero plausibile e falso: il controllo di quella
+  // condizione sta a chi mette insieme le due componenti (arriva col task che
+  // accende la corrente), e questo shader ci conta.
+  float valore = u_modulo ? length(vec2(c1, c2)) : c1;
 
   // Fra minimo e massimo, non fra zero e massimo: il livello del mare ha segno,
   // e con la scala ancorata a zero tutti i valori negativi finivano schiacciati

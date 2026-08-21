@@ -14,6 +14,22 @@ import { FRAMMENTO, VERTICE } from "./shader";
  */
 export const MARGINE_COSTA_M = 250;
 
+/**
+ * Un fotogramma di UNA componente: l'ora t, l'ora t+1 se c'e', e le chiavi con
+ * cui riconoscere che sono ancora gli stessi.
+ *
+ * Esiste come tipo a se' perche' un campo vettoriale ne vuole due: raggruppare
+ * qui i quattro valori che viaggiano sempre insieme evita una `imposta` a otto
+ * parametri, dove scambiare due `Int16Array` adiacenti compila e disegna un
+ * campo sbagliato senza dire niente.
+ */
+export type ComponenteFrame = {
+  a: Int16Array;
+  chiaveA: string;
+  b: Int16Array | null;
+  chiaveB: string | null;
+};
+
 export type OpzioniCampo = {
   griglia: Griglia;
   costa: HTMLImageElement;
@@ -80,6 +96,14 @@ export class LivelloCampo implements CustomLayerInterface {
   private buffer: WebGLBuffer | null = null;
   private texA: WebGLTexture | null = null;
   private texB: WebGLTexture | null = null;
+  // La seconda componente, cioe' le due texture in piu' che servono solo a un
+  // campo vettoriale. Si allocano sempre, anche per l'altezza d'onda che non le
+  // usa: sono vuote finche' non arriva un dato (vedi texturaDato, che non chiama
+  // texImage2D), quindi costano una `createTexture` e nessuna memoria di
+  // immagine, mentre allocarle solo al bisogno vorrebbe dire creare texture
+  // dentro imposta(), che gira dentro il ciclo di disegno.
+  private texA2: WebGLTexture | null = null;
+  private texB2: WebGLTexture | null = null;
   private texCosta: WebGLTexture | null = null;
   private texMaschera: WebGLTexture | null = null;
   private texPalette: WebGLTexture | null = null;
@@ -97,6 +121,13 @@ export class LivelloCampo implements CustomLayerInterface {
   // cambia quattro volte al secondo.
   private chiaveA: string | null = null;
   private chiaveB: string | null = null;
+  private chiaveA2: string | null = null;
+  private chiaveB2: string | null = null;
+  // Lo decide quante componenti ha ricevuto imposta(), non un comando da fuori:
+  // un interruttore separato si potrebbe accendere con una sola texture
+  // caricata, e lo shader leggerebbe come seconda componente una texture vuota,
+  // cioe' un modulo calcolato su meta' vettore.
+  private modulo = false;
   private quad = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private mappa: MappaLibre | null = null;
   // Salvato da onAdd, che e' l'unico modo pubblico di avere il contesto: MapLibre
@@ -133,6 +164,8 @@ export class LivelloCampo implements CustomLayerInterface {
 
     this.texA = this.texturaDato(gl);
     this.texB = this.texturaDato(gl);
+    this.texA2 = this.texturaDato(gl);
+    this.texB2 = this.texturaDato(gl);
     this.texCosta = texturaR8(gl, this.opzioni.costa);
     this.texMaschera = texturaR8(gl, this.opzioni.maschera);
     this.texPalette = this.texturaPalette(gl, this.opzioni.palette);
@@ -144,7 +177,8 @@ export class LivelloCampo implements CustomLayerInterface {
   }
 
   onRemove(_mappa: MappaLibre, gl: WebGL2RenderingContext): void {
-    for (const t of [this.texA, this.texB, this.texCosta, this.texMaschera, this.texPalette]) {
+    for (const t of [this.texA, this.texB, this.texA2, this.texB2,
+                     this.texCosta, this.texMaschera, this.texPalette]) {
       if (t) gl.deleteTexture(t);
     }
     if (this.buffer) gl.deleteBuffer(this.buffer);
@@ -153,8 +187,25 @@ export class LivelloCampo implements CustomLayerInterface {
   }
 
   /**
-   * Il campo da disegnare: l'ora t (chiave chiaveA), l'ora t+1 se c'e' (chiave
-   * chiaveB), e quanto si e' dentro.
+   * I fotogrammi da disegnare, una voce per componente, e quanto si e' dentro
+   * l'ora.
+   *
+   * Una sola componente e' il caso di sempre (altezza d'onda, periodo, livello
+   * del mare). Due sono un campo vettoriale: la corrente, dove il valore
+   * disegnato e' il modulo. Il numero di voci decide u_modulo, quindi non c'e'
+   * un interruttore da tenere allineato a mano con quante texture sono state
+   * davvero caricate. Le voci oltre la seconda si ignorano: le texture per
+   * tenerle non esistono, e prenderne solo due in silenzio e' meno peggio che
+   * disegnare le prime due chiamandole per intero.
+   *
+   * **Le componenti vanno passate con la stessa presenza di `b`**: l'ora t+1
+   * c'e' per tutte o per nessuna. u_haB nello shader e' uno solo per tutte e
+   * due, quindi una componente con l'ora dopo e l'altra senza farebbe
+   * interpolare la seconda verso la texture che le era rimasta dentro, cioe' un
+   * vettore fatto di due istanti diversi: un modulo continuo e sbagliato, che
+   * non si vede come un errore. Chi legge da due cache indipendenti passa
+   * `b: null` a entrambe se a una manca (e' quello che `MapView` fa gia' per le
+   * particelle della direzione).
    *
    * Le chiavi sono quelle che Prefetcher.chiave() gia' costruisce per
    * indicizzare la cache: chi chiama (Animazione.disegna) le ha gia' in mano,
@@ -163,17 +214,27 @@ export class LivelloCampo implements CustomLayerInterface {
    * ricarica se la chiave non e' cambiata, u_frazione resta un uniform e la
    * fusione fra i due fotogrammi continua a funzionare a ogni chiamata.
    */
-  imposta(a: Int16Array, chiaveA: string, b: Int16Array | null, chiaveB: string | null, frazione: number): void {
-    if (!this.gl) return;
-    if (chiaveA !== this.chiaveA) {
-      this.carica(this.gl, this.texA!, a);
-      this.chiaveA = chiaveA;
+  imposta(componenti: ComponenteFrame[], frazione: number): void {
+    if (!this.gl || componenti.length === 0) return;
+    const [primo, secondo] = componenti;
+    if (primo.chiaveA !== this.chiaveA) {
+      this.carica(this.gl, this.texA!, primo.a);
+      this.chiaveA = primo.chiaveA;
     }
-    this.haB = b !== null;
-    if (b && chiaveB !== this.chiaveB) {
-      this.carica(this.gl, this.texB!, b);
+    this.haB = primo.b !== null;
+    if (primo.b && primo.chiaveB !== this.chiaveB) this.carica(this.gl, this.texB!, primo.b);
+    this.chiaveB = primo.b ? primo.chiaveB : null;
+
+    this.modulo = componenti.length > 1;
+    if (secondo) {
+      if (secondo.chiaveA !== this.chiaveA2) {
+        this.carica(this.gl, this.texA2!, secondo.a);
+        this.chiaveA2 = secondo.chiaveA;
+      }
+      if (secondo.b && secondo.chiaveB !== this.chiaveB2) this.carica(this.gl, this.texB2!, secondo.b);
+      this.chiaveB2 = secondo.b ? secondo.chiaveB : null;
     }
-    this.chiaveB = b ? chiaveB : null;
+
     this.frazione = frazione;
     // Da qui in poi le texture contengono un fotogramma vero: il prossimo
     // render() e' quello che alPrimoDisegno aspetta.
@@ -242,11 +303,17 @@ export class LivelloCampo implements CustomLayerInterface {
     gl.uniform1f(u("u_margine"), MARGINE_COSTA_M);
     gl.uniform1f(u("u_frazione"), this.frazione);
     gl.uniform1i(u("u_haB"), this.haB ? 1 : 0);
+    gl.uniform1i(u("u_modulo"), this.modulo ? 1 : 0);
     gl.uniform1f(u("u_opacita"), this.opzioni.opacita ?? 0.88);
 
+    // L'indice nell'array E' l'unita' di texture. Le due della seconda
+    // componente si accodano (unita' 5 e 6) invece di infilarsi accanto a
+    // u_a e u_b: cosi' nessuna delle cinque che c'erano cambia unita', e un
+    // errore qui non potrebbe presentarsi come costa e palette scambiate.
     const unita: [WebGLTexture | null, string][] = [
       [this.texA, "u_a"], [this.texB, "u_b"], [this.texCosta, "u_costa"],
       [this.texMaschera, "u_maschera"], [this.texPalette, "u_palette"],
+      [this.texA2, "u_a2"], [this.texB2, "u_b2"],
     ];
     unita.forEach(([tex, nome], i) => {
       gl.activeTexture(gl.TEXTURE0 + i);
