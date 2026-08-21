@@ -361,7 +361,12 @@ export function App({
                 strozzatoreUrl.invia();
               }}
             />
-            direzione
+            {/* Il nome per intero, non "direzione": e' lo stesso della grandezza
+                nel selettore, e su un campo che non e' l'onda (il livello del
+                mare, domani la corrente) "direzione" da sola fa pensare alla
+                direzione di quello che si sta guardando. Il title dice la
+                convenzione, ma su un telefono il title non esiste. */}
+            direzione dell'onda
           </label>
         </Legend>
       </div>

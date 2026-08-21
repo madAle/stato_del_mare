@@ -177,7 +177,7 @@ test("spegnendo la direzione le particelle spariscono e non si calcolano piu'", 
   });
   await expect.poll(vertici, { timeout: 25_000 }).toBeGreaterThan(1000);
 
-  await page.getByLabel("direzione").uncheck();
+  await page.getByLabel("direzione dell'onda").uncheck();
   await page.waitForTimeout(1500);
   expect(await vertici(), "le particelle continuano a girare da spente").toBe(0);
   await expect.poll(() => page.evaluate(() => location.search), { timeout: 5000 }).toMatch(/dir=0/);
