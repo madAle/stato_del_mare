@@ -16,6 +16,23 @@ const CATALOGO = [
 ];
 
 describe("le grandezze da mettere in un menu", () => {
+  it("una sola ha un comando suo, e non e' 'disegnabile' con un altro nome", () => {
+    // `disegnabile` vuol dire "la mappa la sa disegnare **come campo
+    // selezionato**", e per la direzione resta falso: le creste sono una
+    // sovrapposizione sopra un altro campo, non un campo. E' anche cio' che fa
+    // ricadere `?var=dwave` sull'altezza d'onda invece di lasciare la legenda
+    // su un'unita' e la mappa su un'altra.
+    //
+    // `comandoSuo` dice un'altra cosa: "si raggiunge da un comando proprio,
+    // quindi nel selettore non ci va". Tenerli separati e' il punto: la
+    // corrente non si disegna e **resta** nel menu, perche' senza di esso non
+    // avrebbe nessun modo di comparire.
+    const g = grandezzeDi(CATALOGO);
+    expect(g.filter((x) => x.comandoSuo).map((x) => x.id)).toEqual(["dwave"]);
+    expect(g.find((x) => x.id === "corrente")!.disegnabile).toBe(false);
+    expect(g.find((x) => x.id === "corrente")!.comandoSuo).toBe(false);
+  });
+
   it("uniscono le componenti in una voce sola", () => {
     // Nessuno vuole vedere il seno di una direzione: le componenti esistono
     // perche' un angolo non si interpola, che e' una scelta di archiviazione.

@@ -51,8 +51,36 @@ export type Grandezza = {
    * data/sorgente.ts).
    */
   dissolvenza: boolean;
-  /** Se questa versione la sa disegnare. */
+  /**
+   * Se questa versione la sa disegnare **come campo selezionato**.
+   *
+   * Non e' "si vede da qualche parte": la direzione dell'onda si vede (le
+   * creste) e qui resta falsa, perche' le creste sono una sovrapposizione sopra
+   * un altro campo e non un campo. E' anche cio' che fa ricadere `?var=dwave`
+   * sull'altezza d'onda, invece di lasciare la legenda su un'unita' e la mappa
+   * su un'altra.
+   */
   disegnabile: boolean;
+  /**
+   * Se si raggiunge da un comando proprio, e quindi nel selettore non ci va.
+   *
+   * Vero solo per la direzione dell'onda, che ha il suo interruttore accanto a
+   * quello delle isolinee. Prima del 2026-08-21 compariva anche nel selettore,
+   * disabilitata, e a due centimetri di distanza c'era l'interruttore con lo
+   * stesso nome che funziona: lo schermo diceva "non ancora disegnabile" di una
+   * cosa che disegna. Come voce del selettore sarebbe peggio che uguale, non
+   * meglio: creste su un fondo neutro, cioe' il campo sotto perso e niente in
+   * cambio.
+   *
+   * **Non e' `disegnabile` con un altro nome, e la differenza va tenuta.** Il
+   * selettore filtra su questo campo e non su quello: filtrando su
+   * `disegnabile` spariscono la corrente e ogni campo che il catalogo pubblica
+   * e questa tabella non conosce, cioe' esattamente cio' che la regola in testa
+   * al file vieta, perche' nessuno cerca quello che non sa che c'e'. Togliere
+   * la direzione dal menu invece non nasconde niente: e' raggiungibile, ha un
+   * nome, e il nome e' lo stesso.
+   */
+  comandoSuo: boolean;
   /**
    * Il passo con cui il valore si scrive a schermo, nelle unita' della
    * grandezza, e da cui vengono anche i decimali.
@@ -71,7 +99,7 @@ const TABELLA: readonly Grandezza[] = [
     id: "hwave", nome: "altezza d'onda", unita: "m", campi: ["hwave"],
     // Quattro metri e' il confine fra "agitato" e "molto agitato" nella scala
     // Douglas: sopra, in Adriatico, si va di rado.
-    minimo: 0, massimo: 4, dissolvenza: true, disegnabile: true,
+    minimo: 0, massimo: 4, dissolvenza: true, disegnabile: true, comandoSuo: false,
     // Cinque centimetri, e non il decimo di metro: tutti i confini Douglas
     // sono multipli esatti di 5 cm (0,10 0,50 1,25 2,50 4 6 9 14), quindi il
     // numero a schermo e il nome del grado non possono contraddirsi. Con 0,1 m
@@ -88,7 +116,7 @@ const TABELLA: readonly Grandezza[] = [
     minimo: 0, massimo: 8,
     // Niente dissolvenza: 17 livelli in progressione geometrica (griglia delle
     // frequenze di SWAN), interpolarli inventerebbe periodi che non esistono.
-    dissolvenza: false, disegnabile: true,
+    dissolvenza: false, disegnabile: true, comandoSuo: false,
     // Mezzo secondo. Il prezzo e' misurato e accettato: dei 17 livelli che il
     // modello produce ne restano 12 distinti (1,00 e 1,13 si leggono uguali,
     // 1,28 1,45 e 1,65 pure, e cosi' 1,87 con 2,11 e 2,40 con 2,71), quindi in
@@ -102,10 +130,13 @@ const TABELLA: readonly Grandezza[] = [
     campi: ["dwave_sin", "dwave_cos"],
     // Una direzione non si disegna con una rampa: vuole le frecce.
     minimo: 0, massimo: 360, dissolvenza: true, disegnabile: false, passo: 0,
+    // L'unica con un comando suo: l'interruttore delle creste.
+    comandoSuo: true,
   },
   {
     id: "corrente", nome: "corrente", unita: "m/s", campi: ["ubar", "vbar"],
     minimo: 0, massimo: 1, dissolvenza: true, disegnabile: false, passo: 0,
+    comandoSuo: false,
   },
   {
     id: "sealevel", nome: "livello del mare", unita: "m", campi: ["sealevel"],
@@ -116,7 +147,7 @@ const TABELLA: readonly Grandezza[] = [
     // mare fra -0,06 e +0,09. Zero virgola otto copre il misurato con margine;
     // **sopra satura**, e un'acqua alta vera lo supera, quindi va rivisto con
     // un inverno di dati.
-    minimo: -0.8, massimo: 0.8, dissolvenza: true, disegnabile: true,
+    minimo: -0.8, massimo: 0.8, dissolvenza: true, disegnabile: true, comandoSuo: false,
     // Nessun passo: l'arrotondamento e' stato chiesto per onda e periodo, e
     // qui i centimetri di marea sono il dato, non rumore attorno al dato.
     passo: 0,
@@ -153,7 +184,11 @@ export function grandezzeDi(variabili: Variabile[]): Grandezza[] {
       gia.add(v.id);
       fuori.push({
         id: v.id, nome: v.id, unita: v.unita, campi: [v.id],
+        // `comandoSuo` falso: un campo che questa tabella non conosce non ha
+        // nessun comando suo, quindi il menu e' l'unico posto in cui puo'
+        // comparire, e deve comparire.
         minimo: 0, massimo: 1, dissolvenza: true, disegnabile: false, passo: 0,
+        comandoSuo: false,
       });
     }
   }

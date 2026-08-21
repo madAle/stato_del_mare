@@ -61,6 +61,13 @@ describe("LayerSwitcher", () => {
     },
   ];
 
+  const componente = (id: string): Variabile => ({
+    id, unita: "1", scala: 1e-4, offset: 0, colormap: "phase",
+    tipi: { an: { mesi: [] }, fc: { mesi: [] } },
+  });
+  const conDirezione: Variabile[] = [...variabili, componente("dwave_sin"), componente("dwave_cos")];
+  const conCorrente: Variabile[] = [...variabili, componente("ubar"), componente("vbar")];
+
   it("lascia selezionabile solo la variabile che la mappa disegna davvero", () => {
     render(<LayerSwitcher variabili={variabili} scelta="hwave" cambia={() => {}} />);
     const onda = screen.getByRole("option", { name: "altezza d'onda" }) as HTMLOptionElement;
@@ -71,31 +78,46 @@ describe("LayerSwitcher", () => {
 
   it("spiega perche' le altre variabili sono disabilitate", () => {
     // senza una spiegazione visibile, un comando disabilitato sembra un guasto
-    const conDirezione: Variabile[] = [
-      ...variabili,
-      { id: "dwave_sin", unita: "1", scala: 1e-4, offset: 0, colormap: "phase", tipi: { an: { mesi: [] }, fc: { mesi: [] } } },
-      { id: "dwave_cos", unita: "1", scala: 1e-4, offset: 0, colormap: "phase", tipi: { an: { mesi: [] }, fc: { mesi: [] } } },
-    ];
-    render(<LayerSwitcher variabili={conDirezione} scelta="hwave" cambia={() => {}} />);
-    const direzione = screen.getByRole("option", { name: "direzione dell'onda" }) as HTMLOptionElement;
-    expect(direzione.disabled).toBe(true);
-    expect(direzione.title).toMatch(/frecce/);
+    render(<LayerSwitcher variabili={conCorrente} scelta="hwave" cambia={() => {}} />);
+    const corrente = screen.getByRole("option", { name: "corrente" }) as HTMLOptionElement;
+    expect(corrente.disabled).toBe(true);
+    expect(corrente.title).toMatch(/legenda/);
   });
 
   it("scrive nomi leggibili, non gli identificatori dell'archivio", () => {
     // "hwave" in un menu di un sito pubblico non vuol dire niente a nessuno, e
-    // "dwave_sin" e' peggio: e' il seno di un angolo, cioe' come il dato e'
+    // "ubar" e' peggio: e' una componente cartesiana, cioe' come il dato e'
     // conservato, non una grandezza che qualcuno voglia guardare.
-    const conComponenti: Variabile[] = [
-      ...variabili,
-      { id: "dwave_sin", unita: "1", scala: 1e-4, offset: 0, colormap: "phase", tipi: { an: { mesi: [] }, fc: { mesi: [] } } },
-      { id: "dwave_cos", unita: "1", scala: 1e-4, offset: 0, colormap: "phase", tipi: { an: { mesi: [] }, fc: { mesi: [] } } },
-    ];
-    render(<LayerSwitcher variabili={conComponenti} scelta="hwave" cambia={() => {}} />);
+    render(<LayerSwitcher variabili={conCorrente} scelta="hwave" cambia={() => {}} />);
     expect(screen.queryByRole("option", { name: "hwave" })).toBeNull();
-    expect(screen.queryByRole("option", { name: /dwave/ })).toBeNull();
+    expect(screen.queryByRole("option", { name: /bar$/ })).toBeNull();
     // e le due componenti sono una voce sola
-    expect(screen.getAllByRole("option", { name: "direzione dell'onda" })).toHaveLength(1);
+    expect(screen.getAllByRole("option", { name: "corrente" })).toHaveLength(1);
+  });
+
+  it("la direzione dell'onda **non** sta nel selettore: ha un comando suo", () => {
+    // Dal 2026-08-21. Prima compariva disabilitata, e a due centimetri di
+    // distanza c'era l'interruttore con lo stesso nome che funziona: lo schermo
+    // diceva "non ancora disegnabile" di una cosa che disegna. Come voce del
+    // selettore sarebbe anche peggio che uguale: creste su un fondo neutro,
+    // cioe' il campo sotto perso e niente in cambio.
+    render(<LayerSwitcher variabili={conDirezione} scelta="hwave" cambia={() => {}} />);
+    expect(screen.queryByRole("option", { name: "direzione dell'onda" })).toBeNull();
+  });
+
+  it("ma la corrente resta, perche' non ha nessun altro modo di comparire", () => {
+    // Il filtro e' su "ha un comando suo", non su "si disegna": se fosse sul
+    // secondo spariscono la corrente e ogni campo che il catalogo pubblica e la
+    // tabella non conosce, cioe' esattamente cio' che quella regola vieta,
+    // perche' nessuno cerca quello che non sa che c'e'.
+    render(<LayerSwitcher variabili={conCorrente} scelta="hwave" cambia={() => {}} />);
+    expect(screen.getByRole("option", { name: "corrente" })).toBeDefined();
+    const ignota: Variabile[] = [
+      ...variabili,
+      { id: "temperatura", unita: "degC", scala: 0.01, offset: 0, colormap: "thermal", tipi: { an: { mesi: [] }, fc: { mesi: [] } } },
+    ];
+    render(<LayerSwitcher variabili={ignota} scelta="hwave" cambia={() => {}} />);
+    expect(screen.getByRole("option", { name: "temperatura" })).toBeDefined();
   });
 });
 
