@@ -1,6 +1,6 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-21 · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione, cinque grandezze su sette disegnate
+**Aggiornato:** 2026-08-21 · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 13 della sezione 4c** (arrotondamento dei valori a schermo)
 
 **Leggi questo per primo.** Poi, se serve il dettaglio:
 `docs/superpowers/specs/2026-08-13-stato-del-mare-design.md` è il design
@@ -172,11 +172,15 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-**Se riprendi da zero, i punti ancora aperti sono solo quattro**, e sono 7
-(giudicare la palette a occhio, vuole te), 9 (Comacchio, ferma su mezza giornata
-in barca), 11 (gli ultimi due layer: direzione come voce del selettore, e la
-corrente), 12 (dire di che onda si tratta) e 13 (le boe, bloccata sull'accesso ai
-dati). Tutto il resto qui sotto è barrato e sta solo come storia.
+**La prima cosa da fare al riavvio è il punto 13**, l'arrotondamento dei valori
+a schermo: è chiesto, è piccolo, e porta con sé una decisione da non prendere in
+silenzio (il nome del grado Douglas al confine).
+
+Gli altri punti aperti sono 7 (giudicare la palette a occhio, vuole te), 9
+(Comacchio, ferma su mezza giornata in barca), 11 (gli ultimi due layer:
+direzione come voce del selettore, e la corrente), 12 (dire di che onda si
+tratta) e 14 (le boe, bloccata sull'accesso ai dati). Tutto il resto qui sotto è
+barrato e sta solo come storia.
 
 **La cosa che continua a lavorare mentre nessuno guarda è l'ingestione.** ADRIAC
 conserva otto giorni: se il workflow `Ingestione ADRIAC` è rosso, quella è la
@@ -323,7 +327,37 @@ saltato è archivio che non si recupera.
    omissione che la provenienza analisi/previsione esiste per evitare. Costa
    dieci minuti: una riga nel selettore o accanto alla legenda.
 
-13. **Dati misurati dalle boe ondametriche, accanto al modello.** Richiesta del
+13. **Arrotondare i valori a schermo.** Chiesto il 2026-08-21, **da fare per
+   primo al riavvio**: il periodo dell'onda al **mezzo secondo** più vicino,
+   l'altezza d'onda al **decimo di metro**. Oggi entrambi hanno due decimali
+   (`ui/numeri.ts`, `scriviValore`), che è una precisione che il dato non ha.
+
+   Due cose misurate prima di scrivere una riga, perché prese alla lettera
+   creano una contraddizione a schermo:
+
+   - **il periodo perde cinque livelli su diciassette.** I valori possibili sono
+     i diciassette della griglia SWAN, e arrotondati al mezzo secondo diventano
+     dodici: `1,00` e `1,13` collassano su `1,0`; `1,28`, `1,45` e `1,65` su
+     `1,5`; `1,87` e `2,11` su `2,0`; `2,40` e `2,71` su `2,5`. Nella parte
+     bassa della scala, dove sta il mare d'agosto, due stati diversi del mare
+     mostreranno lo stesso numero. Non è un errore, è il prezzo: va deciso
+     sapendolo. (Un quarto di secondo li terrebbe tutti distinti sopra i 2 s.)
+   - **l'altezza può mostrare il numero di un confine Douglas con il nome del
+     grado sotto.** Con 0,46 m arrotondato si scriverebbe `0,5 m · poco mosso`,
+     mentre la linea a 0,5 m è dove **comincia** "mosso": il numero e il nome si
+     contraddirebbero nello stesso riquadro, ed è precisamente l'invariante che
+     `test/ui/numeri.test.ts` sorveglia. **Serve una decisione**: o il nome si
+     calcola dal valore arrotondato (e allora al confine sbaglia di 5 cm), o dal
+     valore vero (e allora la coppia numero-nome può stonare), o l'altezza si
+     arrotonda ma i confini si trattano come casi a parte. Non risolverla in
+     silenzio.
+
+   Da toccare: `web/src/ui/numeri.ts` (l'unico posto che scrive un valore
+   misurato) e i test che fissano il formato a due decimali
+   (`test/ui/numeri.test.ts`, `e2e/punto.spec.ts`, `e2e/variabili.spec.ts`,
+   `e2e/tocco.spec.ts`).
+
+14. **Dati misurati dalle boe ondametriche, accanto al modello.** Richiesta del
    2026-08-20. Oggi la mappa non contiene **nessuna misura**: analisi e
    previsione sono lo stesso modello con due forzanti diverse (lo dice la
    descrizione del dataset ARPAE: i file `an` sono "forzati da analisi
