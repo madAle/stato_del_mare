@@ -54,8 +54,10 @@ uniform float u_opacita;
 void main() {
   // La scia sbiadisce verso la coda: e' quello che da' il verso al movimento
   // senza bisogno di una punta di freccia, che a questa scala sarebbe un
-  // pixel e mezzo.
-  fragColor = vec4(u_colore, u_opacita * v_eta * v_eta);
+  // pixel e mezzo. Il quadrato spegneva troppo (con dodici punti, meta' della
+  // scia stava sotto il 25 per cento di opacita' e a schermo restava un
+  // trattino chiarissimo): la sbiadita parte da meta' e arriva a uno.
+  fragColor = vec4(u_colore, u_opacita * (0.35 + 0.65 * v_eta));
 }`;
 
 function compila(gl: WebGL2RenderingContext, tipo: number, sorgente: string): WebGLShader {
@@ -80,7 +82,7 @@ export class LivelloParticelle implements CustomLayerInterface {
   private quad = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private ultimoTempo = 0;
   private fotogramma = 0;
-  private vertici = new Float32Array(QUANTE * PUNTI_SCIA * 2 * 3);
+  private vertici = new Float32Array(QUANTE * (PUNTI_SCIA + 1) * 2 * 3);
   private caso = Math.random;
   /**
    * Quello che l'ultimo fotogramma ha davvero disegnato.
@@ -198,13 +200,18 @@ export class LivelloParticelle implements CustomLayerInterface {
     };
     let n = 0;
     for (const p of this.particelle) {
-      const punti = p.scia.length / 2;
+      // La testa e' la posizione **di adesso**, non l'ultimo punto registrato:
+      // la scia si campiona un fotogramma su sei, quindi disegnando solo i punti
+      // registrati la striscia avanzava a salti di sei fotogrammi mentre la
+      // particella si muoveva a sessanta. Sono gli scatti che si vedevano.
+      const punti = p.scia.length / 2 + 1;
+      if (punti < 2) continue;
+      const dove = (k: number): [number, number] => (k < punti - 1
+        ? [p.scia[k * 2], p.scia[k * 2 + 1]]
+        : [p.i, p.j]);
       for (let k = 1; k < punti; k++) {
-        const eta = k / punti;
-        for (const [ii, jj, e] of [
-          [p.scia[(k - 1) * 2], p.scia[(k - 1) * 2 + 1], (k - 1) / punti],
-          [p.scia[k * 2], p.scia[k * 2 + 1], eta],
-        ] as const) {
+        for (const [indice, e] of [[k - 1, (k - 1) / (punti - 1)], [k, k / (punti - 1)]] as const) {
+          const [ii, jj] = dove(indice);
           const [x, y] = this.aMappa(ii, jj);
           this.vertici[n++] = x;
           this.vertici[n++] = y;
@@ -230,7 +237,7 @@ export class LivelloParticelle implements CustomLayerInterface {
     // strisce bianche sopra un giallo pallido non si leggono come movimento ma
     // come una foschia che sbiadisce il colore sotto.
     gl.uniform3f(u("u_colore"), 0.08, 0.09, 0.11);
-    gl.uniform1f(u("u_opacita"), 0.6);
+    gl.uniform1f(u("u_opacita"), 0.95);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.disable(gl.DEPTH_TEST);

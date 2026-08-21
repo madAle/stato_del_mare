@@ -348,7 +348,10 @@ export function App({
           {/* L'animazione della direzione: le particelle vanno dove l'onda va,
               e la loro velocita' viene dal periodo (c = g T / 2 pi), non da un
               numero scelto a mano. */}
-          <label className="interruttore">
+          <label
+            className="interruttore"
+            title="Le scie mostrano dove l'onda va. Il dato ARPAE dichiara la direzione da cui viene, come si fa col vento: qui e' girata di mezzo giro perche' su una mappa la punta indica dove finisce l'energia."
+          >
             <input
               type="checkbox"
               checked={direzione}
