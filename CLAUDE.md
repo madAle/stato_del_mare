@@ -49,15 +49,28 @@ unici da stubbare nei test.
 
 ## Comandi
 
-L'ingestore Python esiste ed è completo, in `ingest/`. La SPA non è ancora
-iniziata.
+L'ingestore Python (`ingest/`) e la SPA (`web/`) esistono entrambi e sono in
+produzione: <https://stato-del-mare.pages.dev>.
 
 ```bash
+# ingestore
 uv run ruff check .
 uv run pytest            # suite predefinita: i test di rete restano esclusi
 uv run pytest -m rete    # coerenza contro l'archivio ARPAE, scarica circa 23 MB per test
 uv run python -m ingest --help
+
+# SPA (dentro web/)
+npm --prefix web run typecheck && npm --prefix web test
+cd web && npm run dev              # sviluppo, legge da R2
+cd web && npm run build && npm run preview   # guarda quello che scaricano gli utenti
+cd web && npx playwright test      # due progetti: dev server e bundle compilato
 ```
+
+**Pubblicare è `git push origin develop:main`**, che fa scattare il workflow
+`Deploy`. Va confermato con l'utente ogni volta, come ogni scrittura verso il
+mondo. E la verifica si fa **aprendo il sito**, non guardando il workflow verde:
+in produzione le isolinee sono state assenti per un giorno con tutti i workflow
+verdi.
 
 I comandi di ispezione delle fonti dati stanno in `STATO.md`, sezione 5. Per
 ispezionare un NetCDF senza installare nulla a livello di sistema:
@@ -76,3 +89,17 @@ uv run --quiet --with netCDF4 --with numpy python -c "..."
   `ocean_time`, mai sul nome del file.
 - La griglia sorgente è curvilinea e va ricampionata in Web Mercator in
   ingestione, una volta sola.
+- **Il bundle compilato è un altro programma.** Un difetto può vivere solo lì (è
+  già successo: in produzione nessuna sorgente GeoJSON caricava, con il dev
+  server perfetto). Per questo `web/e2e/` ha due progetti Playwright, e uno gira
+  su `vite preview`.
+- **Il file NetCDF non dichiara le convenzioni che contano.** `Dwave` è la
+  direzione *da cui* l'onda viene, ricavata dal dato e non dai metadati; il
+  periodo di picco prende **17 valori** e basta (griglia delle frequenze di
+  SWAN); `sealevel` contiene la marea. Le misure che lo stabiliscono stanno in
+  `STATO.md`, sezione 6: non rifarle.
+- **Le scelte di resa non stanno nel catalogo**, che archivia dati: nomi, scala
+  della legenda, se si può interpolare nel tempo e se una grandezza è
+  disegnabile stanno in `web/src/ui/grandezze.ts`. Quella tabella decide i nomi,
+  **non l'esistenza**: un campo che il catalogo pubblica e la tabella non
+  conosce compare comunque.

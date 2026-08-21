@@ -1,47 +1,30 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-19 · **Branch:** `develop`, release su `main` · **Fase:** ingestore in produzione, SPA online su https://stato-del-mare.pages.dev
+**Aggiornato:** 2026-08-21 · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione, cinque grandezze su sette disegnate
 
-**L'ingestore gira.** Primo run reale il 2026-08-17: 72 file su 72, zero errori,
-70 minuti, l'intera finestra ARPAE di otto giorni in archivio. Il cron delle 18
-è passato da solo la sera stessa. Il bucket è leggibile da browser, verificato
-per misura (vedi la tabella in 5).
+**Leggi questo per primo.** Poi, se serve il dettaglio:
+`docs/superpowers/specs/2026-08-13-stato-del-mare-design.md` è il design
+approvato (emendato due volte, le modifiche sono citate qui);
+`docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md` sono le 34
+decisioni dell'ingestore con il motivo e il costo se sbagliate;
+`docs/superpowers/revisioni/2026-08-18-spa-decisioni.md` sono le 89 della SPA,
+scritte con la stessa regola. **Le decisioni si leggono, non si rifanno**: ognuna
+porta il motivo e cosa costa se è sbagliata, ed è quello che le rende
+riesaminabili invece che da riaprire.
 
-**La SPA esiste.** Piano scritto e eseguito il 2026-08-18: 16 task, un subagente
-per task e una revisione dopo ognuno, 51 commit su `feat/spa`. Oggi la suite
-e' di 140 test unitari e 11 end to end, typecheck pulito. Le 43 decisioni stanno in
-`docs/superpowers/revisioni/2026-08-18-spa-decisioni.md`, e **la maggior parte
-corregge il piano, non l'esecuzione**: quel documento va letto prima di riusare
-il piano come riferimento.
+**L'ingestore gira, e ora gira ogni ora.** Primo run reale il 2026-08-17: 72 file
+su 72, 70 minuti, l'intera finestra ARPAE di otto giorni in archivio. Dal
+2026-08-21 il cron è **ogni ora dalle 09 alle 19 UTC** (più una rete alle 22, al
+minuto 17 e non a zero): l'ora di pubblicazione ARPAE oscilla di sei ore, e con
+due soli cron su tre giorni su sette il dato del giorno si vedeva solo dalle 20
+di sera. Misurato il 2026-08-20: file pubblicato alle 12:24, ingerito alle 13:12.
 
-**Il punto esatto in cui riprendere:** aprire l'applicazione e **guardarla**
-(sezione 5 per il comando). Due cose la aspettano, ed entrambe vogliono occhi
-umani: il foglio di stile è nato in emergenza nell'ultima onda di correzioni e la
-sua palette è provvisoria e va giudicata a occhio, adesso che sotto c'è la
-basemap vera.
-
-**Cosa manca perché sia pubblicabile**, in ordine: sostituire l'origine `r2.dev`
-con un dominio vero, e aggiungere un workflow di deploy per `web/`. La basemap è
-sul bucket dal 2026-08-19 (736 MB, build Protomaps `20260819`, 773 oggetti),
-caricata dal workflow `Basemap` a mano.
-
-Questo file va letto per primo. Poi:
-
-- [docs/superpowers/specs/2026-08-13-stato-del-mare-design.md](docs/superpowers/specs/2026-08-13-stato-del-mare-design.md), il design approvato: modello dati, formato del pacchetto, pipeline, architettura SPA, test. È la fonte di verità **su cosa costruire**, ed è allineato al codice per la parte sull'ingestore. Da leggere prima di scrivere codice nuovo, non per riprendere il lavoro in corso: per quello vale la riga qui sopra.
-- [docs/superpowers/plans/2026-08-13-ingestore.md](docs/superpowers/plans/2026-08-13-ingestore.md), il piano eseguito: 15 task in TDD. Storico, non più da eseguire. Attenzione: i frammenti di codice al suo interno sono anteriori alle correzioni della revisione finale, quindi non vanno ricopiati alla lettera.
-- `CLAUDE.md`, contesto stabile e divieti.
-
-- [docs/superpowers/revisioni/](docs/superpowers/revisioni/), i documenti della
-  revisione, portati dentro il repo il 2026-08-13 perché nascevano in
-  `.superpowers/`, che è in `.gitignore` e quindi non arriva a chi clona:
-  - `2026-08-13-ingestore-rilievi.md`, i rilievi della revisione finale (3
-    critici, 7 importanti, 3 minori) con la riproduzione di ciascuno;
-  - `2026-08-13-ingestore-correzioni.md`, cosa è stato corretto e come, con
-    l'elenco di **ciò che resta aperto**;
-  - `2026-08-13-ingestore-decisioni.md`, le **33 decisioni** prese durante
-    l'esecuzione, ognuna col motivo e col costo se è sbagliata. Serve a non
-    riaprirle da zero: se una va cambiata, si cambia sapendo cosa si sta
-    scambiando.
+**La SPA è online e disegna cinque grandezze.** <https://stato-del-mare.pages.dev>
+Altezza d'onda, periodo, livello del mare sono selezionabili; direzione e corrente
+no (vogliono le frecce, vedi 4). Sopra il campo ci sono due sovrapposizioni
+indipendenti: le **isolinee** sui confini della scala Douglas e l'**animazione a
+particelle** della direzione dell'onda, con la velocità presa dalla fisica.
+La suite è di **209 test unitari e 38 end to end**, typecheck pulito.
 
 ## 1. Cos'è il progetto
 
@@ -49,7 +32,8 @@ Mappa interattiva dello stato del mare in Adriatico dai dati pubblici ARPAE, con
 
 ## 2. Dove sta il codice e cosa fa ogni pezzo
 
-**L'ingestore esiste ed è completo. La SPA anche**, ed è su `feat/spa`.
+**L'ingestore e la SPA esistono entrambi e sono in produzione**, su `develop`
+(release su `main`, che è ciò che pubblica).
 
 ```
 ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
@@ -70,7 +54,9 @@ ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
 tests/            147 test nella suite predefinita, più 4 dietro il marcatore `rete`
 .github/workflows/
   ci.yml          ruff e pytest su push e pull request
-  ingest.yml      ingestione giornaliera, due cron
+  ingest.yml      ingestione oraria 09-19 UTC + rete alle 22, al minuto 17
+  deploy.yml      pubblica la SPA su Cloudflare Pages a ogni push su main
+  basemap.yml     pubblica la basemap sul bucket (a mano, workflow_dispatch)
 web/              la SPA: Vite, React 19, MapLibre 5, TypeScript
   src/data/       TS puro, non conosce React
     urls.ts       l'unico modulo che sa come è fatto un URL del bucket
@@ -88,14 +74,27 @@ web/              la SPA: Vite, React 19, MapLibre 5, TypeScript
     mappa.ts      MapLibre, basemap pmtiles, campo sotto le etichette, zoom max 15
     animazione.ts ciclo rAF, interpolazione temporale, rapporto a 10 Hz
     strozzatore.ts strozza in entrata e in uscita: l'ultimo valore arriva sempre
+    soglie.ts     la scala Douglas: gradi, confini, nome dello stato del mare
+    isolineeGeometria.ts  marching squares, taglio del bordo, smusso, ancore (puro)
+    isolinee.worker.ts    solo la posta: il calcolo sta nel modulo puro
+    isolinee.ts   i due strati MapLibre, strozzamento a 5/s, vince l'ultima
+    ricordoFotogrammi.ts  il ricordo LRU del worker: avverte quando sfratta
+    particelle.ts il moto delle particelle (puro): convenzione, Mercatore, fisica
+    livelloParticelle.ts  custom layer WebGL delle scie, con cinque numeri di diagnosi
+    segnaposto.ts il punto fissato, ancorato a lon/lat e non ai pixel
   src/ui/         React, e solo qui
     App.tsx       composizione, stato, URL con replaceState al massimo 1 volta/s
     MapView.tsx   confine imperativo verso src/map, ref per non congelare i dati
     TimelineScrubber.tsx  asse a indici, buchi visibili, confine analisi/previsione
     PlaybackControls.tsx  play e pausa, tre velocità
-    Legend.tsx, StatusBar.tsx, LayerSwitcher.tsx, statoUrl.ts
-  test/           140 test; test/vincoli.test.ts è il cancello dei tre strati
-  e2e/            11 test Playwright: resa, coerenza, valore nel tempo, pannelli
+    grandezze.ts  i nomi leggibili e la resa per grandezza: decide i nomi, non
+                  l'esistenza (un campo sconosciuto compare comunque)
+    numeri.ts     l'unico posto che scrive un valore misurato, con lo stato del mare
+    Legend.tsx, StatusBar.tsx, LayerSwitcher.tsx, PaletteSwitcher.tsx, statoUrl.ts
+  test/           209 test; test/vincoli.test.ts è il cancello dei tre strati
+  e2e/            38 test Playwright su due progetti: `chromium` sul dev server e
+                  `build` su `vite preview`, perché il bundle compilato è un
+                  altro programma (vedi 6)
   public/         asset generati dagli strumenti, versionati (690 KB, vedi 43)
 strumenti/        si eseguono a mano, una volta sola
   costa_sdf.py    campo di distanza dalla costa OSM (75 s, serve GSHHG o OSM)
@@ -173,6 +172,17 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
+**Se riprendi da zero, i punti ancora aperti sono solo quattro**, e sono 7
+(giudicare la palette a occhio, vuole te), 9 (Comacchio, ferma su mezza giornata
+in barca), 11 (gli ultimi due layer: direzione come voce del selettore, e la
+corrente), 12 (dire di che onda si tratta) e 13 (le boe, bloccata sull'accesso ai
+dati). Tutto il resto qui sotto è barrato e sta solo come storia.
+
+**La cosa che continua a lavorare mentre nessuno guarda è l'ingestione.** ADRIAC
+conserva otto giorni: se il workflow `Ingestione ADRIAC` è rosso, quella è la
+prima cosa da sistemare, prima di qualunque funzionalità, perché ogni giorno
+saltato è archivio che non si recupera.
+
 1. ~~Eseguire il piano dell'ingestore~~. **Fatto**: 15 task, 147 test nella suite di default (erano 134 alla fine del piano) più i 4 test di coerenza contro i dati reali (`uv run pytest -m rete`), che confrontano il valore letto da ADRIAC sulla cella di Nausicaa 2 con quello che il client leggerebbe dal frame pubblicato.
 2. ~~Allineare la spec alle correzioni~~. **Fatto**: le correzioni emerse eseguendo il piano e quelle della revisione finale (sezioni 4.2, 4.5, 4.6, 4.7 e 6.1) sono state applicate alla spec.
 3. ~~Ri-revisione mirata delle 14 correzioni~~. **Fatto il 2026-08-14**: 13
@@ -210,7 +220,7 @@ Niente.
    - **basemap `.pmtiles` di Protomaps nello stesso bucket**, fino a zoom 13,
      702 MB misurati, cosi' le etichette stanno sopra il campo e non serve
      nessun servizio di terzi.
-7. **Da guardare sulla SPA, e vuole occhi umani.** Il foglio di stile e' nato
+7. **Da guardare sulla SPA, e vuole occhi umani** (ancora aperto al 2026-08-21). Il foglio di stile e' nato
    nell'ultima onda di correzioni, non era nel piano, e la sua palette e'
    dichiaratamente provvisoria. Le sovrapposizioni sugli schermi stretti sono
    chiuse dal 2026-08-19: la fascia alta e' un flex che va a capo invece di una
@@ -305,7 +315,15 @@ Niente.
    con quello del campo nel catalogo, ed e' cio' che rende lecito passarlo a
    `leggiIndice` e a `urlFrame`.
 
-12. **Dati misurati dalle boe ondametriche, accanto al modello.** Richiesta del
+12. **Dire sulla mappa di che onda si tratta.** Deciso il 2026-08-21 di
+   **rimandare**, su richiesta ("per ora lasciamo così"). Il difetto resta ed e'
+   reale: la mappa scrive "0,54 m, mosso" senza dire che quello e' il campo
+   d'onda di ADRIAC, di cui **non sappiamo** se contenga il mare lungo (vedi 6).
+   Chi guarda non ha modo di sapere cosa non sta vedendo, ed e' la stessa
+   omissione che la provenienza analisi/previsione esiste per evitare. Costa
+   dieci minuti: una riga nel selettore o accanto alla legenda.
+
+13. **Dati misurati dalle boe ondametriche, accanto al modello.** Richiesta del
    2026-08-20. Oggi la mappa non contiene **nessuna misura**: analisi e
    previsione sono lo stesso modello con due forzanti diverse (lo dice la
    descrizione del dataset ARPAE: i file `an` sono "forzati da analisi
@@ -408,9 +426,20 @@ uv run strumenti/maschera_dato.py --uscita web/public \
 
 npm --prefix web install
 npm --prefix web run dev          # apre in locale, legge da R2
-npm --prefix web test             # 140 test unitari
+npm --prefix web test             # 209 test unitari
 npm --prefix web run typecheck    # NON usare `npm --prefix web exec tsc`: exec non cambia cartella
-cd web && npx playwright test     # 11 test end to end, servono un browser e la rete
+cd web && npx playwright test     # 38 test end to end su due progetti, servono un browser e la rete
+cd web && npx playwright test --project=chromium   # solo quelli sul dev server (piu' rapidi)
+```
+
+**Guardare la produzione senza pubblicarla.** `npm run preview` serve i file
+compilati, non i moduli del dev server: e' l'unico modo di vedere quello che gli
+utenti scaricano, ed e' cosi' che si e' scoperto che in produzione nessuna
+sorgente GeoJSON caricava (vedi 6). **`preview` non ricompila**: senza `build`
+prima, serve la build vecchia, e sembra che le modifiche non abbiano effetto.
+
+```bash
+cd web && npm run build && npm run preview   # http://localhost:4173
 ```
 
 **La basemap.** È sul bucket dal 2026-08-19: 736 MB di tile fino a zoom 13,
@@ -534,6 +563,61 @@ più, e che vale la pena riconoscere al volo:
 
 La domanda che li trova tutti, e che vale la pena farsi in revisione: **questa
 riga sa davvero quello che dice di sapere?**
+
+**Aggiornamento al 2026-08-21: la famiglia si è allargata a diciotto casi, e i
+sei nuovi sono i più istruttivi**, perché nessuno di loro faceva fallire un test:
+
+- **la chiave della cache dei fotogrammi non conteneva la variabile.** Finché si
+  disegnava solo `hwave` dormiva; al primo secondo layer avrebbe servito i
+  fotogrammi dell'onda come se fossero secondi. Chiusa **prima** di abilitare
+  qualunque layer;
+- **una funzione eliminata dal bundle con il riferimento lasciato in piedi**:
+  MapLibre costruisce il proprio worker concatenando il *testo sorgente* delle
+  proprie funzioni, e rolldown ne ha tolta una. In produzione **ogni sorgente
+  GeoJSON smetteva di caricare**, con un solo `ReferenceError` in console;
+- **`querySourceFeatures` legge la geometria dopo la ritilatura**, non quella
+  passata a `setData`: geojson-vt risemplifica per conto suo, e per un po' ha
+  fatto sembrare che lo smusso delle isolinee non funzionasse;
+- **il selettore della tavolozza mostrava un nome e la mappa disegnava un'altra
+  rampa**: il valore non era nell'elenco e il browser ricadeva sulla prima voce;
+- **la diagnosi di un livello continuava a dichiarare i vertici dell'ultimo
+  fotogramma** dopo che il livello aveva smesso di disegnare, perché `svuota()`
+  non la azzerava. Il test dello spegnimento è fallito per questo;
+- **una soglia in pixel che era la larghezza di *una* etichetta** invece della
+  semisomma di due: due scritte centrate si toccano sotto la semisomma, e il test
+  è diventato rosso da solo il giorno che l'asse si è allungato di un giorno.
+
+**Il bundle compilato è un altro programma.** Tutti i test end to end girano sul
+dev server, che serve i moduli non trasformati: un difetto che vive solo nella
+build non lo vede nessuno di loro. Per questo esiste il progetto Playwright
+`build`, su `vite preview`. Prima di dire che una cosa funziona, **guardare
+quello che gli utenti scaricano**.
+
+**Un'animazione che non si vede può essere spenta per cinque ragioni, e a schermo
+sono tutte identiche, cioè niente.** Le particelle della direzione hanno cinque
+numeri di diagnosi per questo: la prima volta la ragione vera (le scie erano
+lunghe **0,27 pixel**) da uno screenshot non si sarebbe vista mai. Quando una
+cosa grafica non appare, misurare i vertici prima di guardare i pixel.
+
+**Radix, con `min` uguale a `max`, scrive `NaN` dentro un `calc()`.** Succede con
+un asse di un solo istante o vuoto, che sono stati veri (una finestra con una sola
+ora, oppure il caricamento). In jsdom il render fallisce con un errore di parsing
+CSS; **in un browser passa in silenzio**.
+
+**Il selettore universale `*` non raggiunge gli pseudo-elementi**, quindi
+`* { box-sizing: border-box }` lascia `::before` e `::after` a `content-box`:
+l'anello del punto osservato è finito 2 px fuori centro. Corollario: **quello che
+deve essere misurato da un test sia un elemento vero**, perché su uno
+pseudo-elemento `getComputedStyle` restituisce la larghezza dichiarata e non
+quella usata, e un test che ricostruisce la scatola ripete l'assunzione che ha
+causato il difetto.
+
+**Lo strozzatore dell'URL consegna subito se la finestra è già scaduta**, quindi
+legge i ref *prima* che React li aggiorni: un comando che finisce nell'URL deve
+aggiornare il proprio ref **nel gestore dell'evento**, non solo al render dopo.
+Con un solo cambio e la mappa ferma, il valore sbagliato resta nell'URL per
+sempre. Riguardava l'interruttore delle isolinee **e la tavolozza**, che nessun
+test copriva.
 
 **Se l'onda di ADRIAC contenga il mare lungo NON LO SAPPIAMO, e la prova e'
 scritta qui sotto.** (Il 2026-08-21 questa voce diceva "e' solo mare di vento":
@@ -761,7 +845,9 @@ un pixel noto, non solo che qualcosa sia stato disegnato.
 - Repo unico: `/Users/ale/source/personal/stato_del_mare`
 - Branch corrente: `develop` (nessun `main` locale)
 - Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`
-- **`develop` è allineato a `origin/develop`** (verificato il 2026-08-14: nessun commit locale in più), albero pulito
+- **`develop` è allineato a `origin/develop`**, albero pulito (verificato il 2026-08-21)
+- **`main` è alla pubblicazione del 2026-08-21** (commit `18ee36f`), verificata aprendo il sito: cinque grandezze nel selettore, 269 isolinee, 2000 particelle, zero errori in console. I commit di sola documentazione fatti dopo **non hanno bisogno di essere pubblicati**: `main` resta indietro di quelli, ed è corretto
+- **La pubblicazione è `git push origin develop:main`**, che fa scattare il workflow `Deploy`. `main` non esiste in locale: si spinge `develop` sul suo posto
 - `feat/ingestore` è stato unito con un merge non fast-forward e cancellato in locale. Resta su `origin` come `origin/feat/ingestore`: se servisse rileggere la storia dell'esecuzione commit per commit, è lì.
 - Lo spazio di lavoro `.superpowers/sdd/2026-08-13-ingestore/` è stato cancellato a lavoro concluso. I documenti che contavano erano già stati copiati in `docs/superpowers/revisioni/`.
 
@@ -771,4 +857,15 @@ Comandi di verifica:
 uv run ruff check .
 uv run pytest            # suite predefinita, i test di rete restano esclusi
 uv run pytest -m rete    # coerenza contro l'archivio ARPAE, scarica circa 23 MB per test
+npm --prefix web run typecheck && npm --prefix web test
+cd web && npx playwright test
 ```
+
+**Verificare una pubblicazione guardando il sito, non il workflow.** Che il
+Deploy esca verde dice che il caricamento non ha fallito, non che online ci sia
+un'applicazione che funziona: in produzione le isolinee sono state assenti per un
+giorno con tutti i workflow verdi. La verifica si fa aprendo
+<https://stato-del-mare.pages.dev> in un browser vero e contando le cose
+(isolinee, particelle, errori in console). Attenzione anche alla propagazione:
+subito dopo un deploy un nodo di rete può servire ancora la versione precedente,
+e si riconosce dai sintomi della versione vecchia.
