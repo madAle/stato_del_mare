@@ -1,13 +1,13 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-21 · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 13 della sezione 4c** (arrotondamento dei valori a schermo)
+**Aggiornato:** 2026-08-21 (secondo giro) · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 15 della sezione 4c** (la sovrapposizione della direzione e' quasi vuota sopra zoom 10). Ci sono **quattro commit su `develop` non ancora pubblicati**: `git push origin develop:main` va confermato con l'utente.
 
 **Leggi questo per primo.** Poi, se serve il dettaglio:
 `docs/superpowers/specs/2026-08-13-stato-del-mare-design.md` è il design
 approvato (emendato due volte, le modifiche sono citate qui);
 `docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md` sono le 34
 decisioni dell'ingestore con il motivo e il costo se sbagliate;
-`docs/superpowers/revisioni/2026-08-18-spa-decisioni.md` sono le 89 della SPA,
+`docs/superpowers/revisioni/2026-08-18-spa-decisioni.md` sono le 95 della SPA,
 scritte con la stessa regola. **Le decisioni si leggono, non si rifanno**: ognuna
 porta il motivo e cosa costa se è sbagliata, ed è quello che le rende
 riesaminabili invece che da riaprire.
@@ -24,7 +24,16 @@ Altezza d'onda, periodo, livello del mare sono selezionabili; direzione e corren
 no (vogliono le frecce, vedi 4). Sopra il campo ci sono due sovrapposizioni
 indipendenti: le **isolinee** sui confini della scala Douglas e l'**animazione a
 particelle** della direzione dell'onda, con la velocità presa dalla fisica.
-La suite è di **209 test unitari e 38 end to end**, typecheck pulito.
+La suite è di **227 test unitari e 38 end to end**, typecheck pulito.
+
+**Il 2026-08-21, secondo giro, sono cambiate quattro cose a schermo** (decisioni
+90-95): i valori si scrivono con la precisione che il dato ha (altezza d'onda a
+5 cm, periodo al mezzo secondo, e il nome del grado Douglas calcolato sul valore
+arrotondato); le ore sono quelle dell'**Adriatico** e non piu' UTC, con la sigla
+CEST/CET e le tacche su ore tonde locali; l'interruttore si chiama "direzione
+dell'onda" e non "direzione"; e la direzione si disegna come **creste
+trasversali al moto** invece che come scie, perche' in un'onda non viaggia
+l'acqua, viaggia la cresta, e la scia era l'idioma del vento.
 
 ## 1. Cos'è il progetto
 
@@ -172,15 +181,28 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-**La prima cosa da fare al riavvio è il punto 13**, l'arrotondamento dei valori
-a schermo: è chiesto, è piccolo, e porta con sé una decisione da non prendere in
-silenzio (il nome del grado Douglas al confine).
+**La prima cosa da fare al riavvio è il punto 15**, la sovrapposizione della
+direzione che sopra zoom 10 è quasi vuota: è misurata, non è una regressione, e
+vuole una decisione (dove nascono le particelle) prima di una correzione.
 
 Gli altri punti aperti sono 7 (giudicare la palette a occhio, vuole te), 9
 (Comacchio, ferma su mezza giornata in barca), 11 (gli ultimi due layer:
 direzione come voce del selettore, e la corrente), 12 (dire di che onda si
-tratta) e 14 (le boe, bloccata sull'accesso ai dati). Tutto il resto qui sotto è
+tratta, e adesso ne resta meno da dire: l'interruttore lo dichiara, la legenda
+no) e 14 (le boe, bloccata sull'accesso ai dati). Tutto il resto qui sotto è
 barrato e sta solo come storia.
+
+**Due cose che si potrebbero fare subito e non sono state fatte**, dette qui
+perché sono state viste, non cercate:
+
+- **la cresta potrebbe portare l'altezza d'onda** in lunghezza e opacità, così
+  con mare piatto non si vedrebbe quasi niente. Una mappa di vento non è mai
+  vuota, quindi sarebbe il secondo segno che dice "non è vento", e in più
+  informa. Costa un campo in più: oggi la sovrapposizione carica `dwave_sin`,
+  `dwave_cos` e `pwave`, e servirebbe anche `hwave` col suo asse;
+- **`-0,00 m`**. Il livello del mare non è arrotondato (non era chiesto) e un
+  valore fra -0,005 e 0 si scrive `-0,00 m`. Difetto preesistente, di una riga,
+  visibile solo su quel campo.
 
 **La cosa che continua a lavorare mentre nessuno guarda è l'ingestione.** ADRIAC
 conserva otto giorni: se il workflow `Ingestione ADRIAC` è rosso, quella è la
@@ -300,9 +322,12 @@ saltato è archivio che non si recupera.
    divergente, perche' con una sequenziale lo zero non avrebbe un colore suo.
 
    La **direzione dell'onda** e' fatta il 2026-08-20, ma non come layer: e' una
-   **sovrapposizione animata a particelle** (interruttore "direzione" accanto a
+   **sovrapposizione animata** (interruttore "direzione dell'onda" accanto a
    "isolinee", `dir=1` nell'URL), perche' una direzione non ha grandezza da
-   colorare e le frecce statiche dicono meta' della cosa. Il moto sta in
+   colorare e le frecce statiche dicono meta' della cosa. Dal 2026-08-21 si
+   disegna come **creste trasversali al moto** e non come scie: la scia e'
+   l'idioma del vento, e in un'onda non viaggia l'acqua, viaggia la cresta
+   (decisione 94). Il moto sta in
    `web/src/map/particelle.ts` (puro, dodici test), il disegno in
    `livelloParticelle.ts`. La velocita' viene dalla fisica (`c = g T / 2 pi`,
    col periodo dall'archivio), non da un numero scelto.
@@ -327,44 +352,21 @@ saltato è archivio che non si recupera.
    omissione che la provenienza analisi/previsione esiste per evitare. Costa
    dieci minuti: una riga nel selettore o accanto alla legenda.
 
-13. **Arrotondare i valori a schermo.** Chiesto il 2026-08-21, **da fare per
-   primo al riavvio**: il periodo dell'onda al **mezzo secondo** più vicino,
-   l'altezza d'onda ai **5 cm**. Oggi entrambi hanno due decimali
-   (`ui/numeri.ts`, `scriviValore`), che è una precisione che il dato non ha.
+13. ~~Arrotondare i valori a schermo~~. **Fatto il 2026-08-21**: altezza d'onda
+   a 5 cm, periodo al mezzo secondo, decimali dal passo (`ui/grandezze.ts` porta
+   il passo, `ui/numeri.ts` lo applica). Il nome del grado Douglas si calcola sul
+   valore **arrotondato**, e regge perche' tutti i confini Douglas sono multipli
+   esatti di 5 cm: numero e nome non possono contraddirsi. Dettaglio e residui
+   nella decisione 90.
 
-   Due cose misurate prima di scrivere una riga. La seconda è già risolta dalla
-   scelta dei 5 cm, ma il perché va tenuto scritto: con il decimo di metro non
-   avrebbe funzionato.
-
-   - **il periodo perde cinque livelli su diciassette.** I valori possibili sono
-     i diciassette della griglia SWAN, e arrotondati al mezzo secondo diventano
-     dodici: `1,00` e `1,13` collassano su `1,0`; `1,28`, `1,45` e `1,65` su
-     `1,5`; `1,87` e `2,11` su `2,0`; `2,40` e `2,71` su `2,5`. Nella parte
-     bassa della scala, dove sta il mare d'agosto, due stati diversi del mare
-     mostreranno lo stesso numero. Non è un errore, è il prezzo: va deciso
-     sapendolo. (Un quarto di secondo li terrebbe tutti distinti sopra i 2 s.)
-   - **l'altezza si arrotonda a 5 cm** (deciso il 2026-08-21, dopo che il decimo
-     di metro aveva mostrato il problema), **e il nome del grado si calcola dal
-     valore arrotondato.** Il perché è una proprietà verificata: **tutti i
-     confini Douglas sono multipli esatti di 5 cm** (0,10 = 2, 0,50 = 10,
-     1,25 = 25, 2,50 = 50, 4 = 80, 6 = 120, 9 = 180, 14 = 280). Quindi numero e
-     nome a schermo **non possono contraddirsi**: se si legge `0,50 m`, il valore
-     arrotondato è ≥ 0,50 e il nome è "mosso". Con il decimo di metro non
-     funzionava, perché 1,25 non è multiplo di 0,1.
-     Il residuo, dichiarato: la classificazione al confine può sbagliare di al
-     più **2,5 cm** (un vero 0,475 si legge `0,50 m · mosso` mentre sarebbe
-     ancora "poco mosso"). È metà del passo che il display dichiara, cioè un
-     errore invisibile e limitato, e va preferito a una coppia numero-nome che si
-     contraddice, perché quella si **vede**.
-     Attenzione all'implementazione: arrotondare in **centimetri interi**
-     (`Math.round(v * 100 / 5) * 5 / 100`), se no 1,25 esce
-     `1.2500000000000002`. Il formato resta a due decimali, così `0,45` e `0,50`
-     si leggono uguali: cambia solo quali valori possono comparire.
-
-   Da toccare: `web/src/ui/numeri.ts` (l'unico posto che scrive un valore
-   misurato) e i test che fissano il formato a due decimali
-   (`test/ui/numeri.test.ts`, `e2e/punto.spec.ts`, `e2e/variabili.spec.ts`,
-   `e2e/tocco.spec.ts`).
+   **Due cose lasciate in eredita', che valgono piu' del punto**:
+   - il periodo perde **cinque livelli su diciassette** (misurato: i 17 valori
+     SWAN diventano 12 distinti). E' il prezzo, accettato sapendolo;
+   - il test end to end che provava che il periodo non si interpola e'
+     **diventato cieco** e non ce n'e' un altro che lo faccia end to end. La
+     prova esatta e' stata scritta al livello unitario, dove non c'e'
+     arrotondamento in mezzo (decisione 91). Chi guardera' quel test sappia che
+     il commento sopra dice il vero: rimettendo `dissolvenza: true` passa.
 
 14. **Dati misurati dalle boe ondametriche, accanto al modello.** Richiesta del
    2026-08-20. Oggi la mappa non contiene **nessuna misura**: analisi e
@@ -396,6 +398,24 @@ saltato è archivio che non si recupera.
    Nausicaa? (b) con che passo e che ritardo pubblicano? (c) la licenza consente
    la ripubblicazione nel nostro bucket? Se la risposta ad (a) e' no, la
    funzionalita' e' bloccata su terzi e va in 4b, non qui.
+
+15. **La sovrapposizione della direzione e' quasi vuota sopra zoom 10, ed e' la
+   prossima cosa da guardare.** Misurato il 2026-08-21: a zoom 11, con la mappa
+   su Cesenatico, si vedono **due creste**. Non e' una regressione delle creste:
+   la versione a scie, alla stessa inquadratura, mostrava due scie. La causa e'
+   che le particelle nascono su **tutta la griglia** e a zoom 11 il riquadro ne
+   vede lo 0,12 per cento (858 x 844 celle, e lo schermo ne inquadra 35 x 24):
+   con 1800 particelle, in vista se ne aspetta **due**. Alzare il numero non
+   basta, perche' servirebbero centinaia di migliaia di particelle.
+
+   **Vuole una decisione, non una correzione**: far nascere le particelle nel
+   riquadro visibile le fa comparire e sparire quando si sposta la mappa, e la
+   densita' diventerebbe uniforme a ogni zoom (che e' quello che si vuole) al
+   prezzo di un ricambio visibile durante il trascinamento. L'alternativa e'
+   dichiarare che la sovrapposizione serve alla scala di bacino e spegnerla
+   sopra un certo zoom, come si fa con le isolinee su un campo che non le
+   riguarda: onesto, ma toglie una cosa che a zoom alto sarebbe utile (dire da
+   che parte arriva l'onda dentro un porto).
 
 **Cosa le correzioni hanno lasciato aperto di proposito** (dettaglio in
 `docs/superpowers/revisioni/2026-08-13-ingestore-correzioni.md`, sezione "Cosa
