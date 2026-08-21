@@ -53,12 +53,14 @@ describe("scrubber", () => {
     // Come avanza() in animazione.ts: l'istante cresce con continuita' in
     // millisecondi, quindi quasi mai coincide con una delle ore dell'asse.
     // Un confronto di uguaglianza stretta ricadrebbe sempre sull'indice 0
-    // (le 00:00): qui l'ora giusta e' le 02:00, terza dell'asse, apposta per
-    // distinguere il comportamento corretto dal fallback silenzioso.
+    // (le 00:00 UTC): qui l'ora giusta e' la terza dell'asse, apposta per
+    // distinguere il comportamento corretto dal fallback silenzioso. A schermo
+    // si legge 04:00, perche' le ore dell'asse sono UTC e l'orologio scrive
+    // nell'ora dell'Adriatico.
     const asse = [ora(0, "an"), ora(1, "an"), ora(2, "an"), ora(3, "an")];
-    const aMeta = asse[2].istante + 30 * 60_000; // mezz'ora dopo le 02:00
+    const aMeta = asse[2].istante + 30 * 60_000; // mezz'ora dopo la terza ora
     render(<TimelineScrubber asse={asse} istante={aMeta} cambia={vi.fn()} />);
-    expect(screen.getByTestId("orologio").textContent).toMatch(/02:00/);
+    expect(screen.getByTestId("orologio").textContent).toMatch(/04:00/);
   });
 
   it("un istante fuori dall'asse dice 'nessun dato', come la barra di stato", () => {

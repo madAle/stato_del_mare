@@ -100,30 +100,32 @@ describe("LayerSwitcher", () => {
 });
 
 describe("l'orologio non promette minuti che il modello non ha", () => {
+  // Le ore dell'asse sono UTC, che e' come il dato arriva; a schermo si leggono
+  // nell'ora dell'Adriatico, quindi le 09:00 di ocean_time si scrivono 11:00.
   const nove: Ora = { istante: Date.UTC(2026, 7, 19, 9), tipo: "an", riferimento: "20260819" };
   const dieci: Ora = { istante: Date.UTC(2026, 7, 19, 10), tipo: "an", riferimento: "20260819" };
 
   it("su un'ora esatta mostra quell'ora e basta", () => {
     render(<StatusBar istante={nove.istante} ora={nove} oraDopo={dieci}
       valore={1.2} unita="m" variabile="hwave" stato="ferma" />);
-    expect(screen.getByText(/09:00 UTC/)).toBeDefined();
+    expect(screen.getByText(/11:00 CEST/)).toBeDefined();
     expect(screen.queryByText(/->/)).toBeNull();
   });
 
   it("fra due ore mostra la coppia, non un istante al minuto", () => {
-    // il dato e' orario: le 09:37 non esistono, quello che si vede e' una
-    // dissolvenza fra le 09:00 e le 10:00
+    // il dato e' orario: le 11:37 non esistono, quello che si vede e' una
+    // dissolvenza fra le 11:00 e le 12:00
     render(<StatusBar istante={nove.istante + 37 * 60_000} ora={nove} oraDopo={dieci}
       valore={1.2} unita="m" variabile="hwave" stato="in riproduzione" />);
-    expect(screen.queryByText(/09:37/)).toBeNull();
-    expect(screen.getByText(/09:00/)).toBeDefined();
-    expect(screen.getByText(/10:00/)).toBeDefined();
+    expect(screen.queryByText(/11:37/)).toBeNull();
+    expect(screen.getByText(/11:00/)).toBeDefined();
+    expect(screen.getByText(/12:00/)).toBeDefined();
   });
 
   it("senza l'ora dopo (fine dell'asse o buco) non inventa una coppia", () => {
     render(<StatusBar istante={nove.istante + 37 * 60_000} ora={nove} oraDopo={null}
       valore={null} unita="m" variabile="hwave" stato="in riproduzione" />);
-    expect(screen.getByText(/09:00 UTC/)).toBeDefined();
-    expect(screen.queryByText(/10:00/)).toBeNull();
+    expect(screen.getByText(/11:00 CEST/)).toBeDefined();
+    expect(screen.queryByText(/12:00/)).toBeNull();
   });
 });

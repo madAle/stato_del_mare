@@ -330,7 +330,7 @@ select[aria-label="variabile"] {
   outline-offset: 2px;
 }
 
-/* La scala del tempo sopra la traccia: tacche su ore tonde UTC, etichettate col
+/* La scala del tempo sopra la traccia: tacche su ore tonde locali, etichettate col
    giorno a mezzanotte e con l'ora altrimenti. Serve a rispondere a "che momento
    sto guardando" senza dover leggere l'orologio e ricostruire dove cade. */
 .scrubber-scala {

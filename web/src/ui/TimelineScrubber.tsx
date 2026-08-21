@@ -11,9 +11,11 @@ type Props = {
 };
 
 /**
- * Il dato e' orario e riferito a un istante UTC fisso (ocean_time, non l'ora
- * del file): mostrarlo nel fuso del browser farebbe leggere ore diverse a chi
- * guarda lo stesso frame da fusi diversi, quindi si formatta sempre in UTC.
+ * Il dato e' orario e riferito a un istante assoluto (ocean_time, non l'ora del
+ * file), e si scrive nell'ora dell'Adriatico: fissa a Europe/Rome e non presa
+ * dal browser, se no chi guarda lo stesso fotogramma da fusi diversi leggerebbe
+ * ore diverse. Le tacche e le etichette vengono dallo stesso posto
+ * (`ui/tempo.ts`), dov'e' scritto il perche'.
  */
 
 /**
