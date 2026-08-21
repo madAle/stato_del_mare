@@ -35,7 +35,9 @@ test("passando al periodo cambiano scala, unita', numero e isolinee", async ({ p
   await expect(page.locator(".legenda")).toContainText("8 s");
   // Il numero non porta piu' lo stato del mare: un periodo in secondi non e'
   // "poco mosso", e appiccicarglielo sarebbe una cosa falsa accanto a una vera.
-  await expect(page.locator(".valore")).toHaveText(/^\d+,\d\d s$/);
+  // Un decimale solo: il passo e' mezzo secondo, e "4,50 s" prometterebbe
+  // centesimi che il modello non produce.
+  await expect(page.locator(".valore")).toHaveText(/^\d+,\d s$/);
   // Le isolinee sono i confini Douglas in metri d'onda: su un campo di secondi
   // una linea a 0,5 m affermerebbe una cosa falsa, quindi spariscono e il
   // comando che le accende si disabilita invece di restare li' a mentire.
@@ -47,25 +49,41 @@ test("passando al periodo cambiano scala, unita', numero e isolinee", async ({ p
   expect(errori, "errori in console cambiando grandezza").toEqual([]);
 });
 
-test("il periodo mostra solo i valori che il modello puo' produrre", async ({ page }) => {
-  // Misurato su tutto l'archivio: il periodo di picco prende 17 valori, in
-  // progressione geometrica di rapporto 1,1326 (la griglia delle frequenze di
-  // SWAN). Interpolare fra due ore darebbe un periodo che il modello non ha
-  // calcolato, e il numero sotto il dito lo scriverebbe: e' la stessa regola
-  // per cui l'orologio non scrive mai "09:37" su un dato orario.
-  const LIVELLI = [1, 1.13, 1.28, 1.45, 1.65, 1.87, 2.11, 2.4, 2.71, 3.08,
-                   3.48, 3.95, 4.47, 5.07, 5.74, 6.5, 7.37];
+test("il periodo a mezz'ora esatta e' quello dell'ora piu' vicina, non uno in mezzo", async ({ page }) => {
+  // Il periodo non si dissolve fra un'ora e l'altra: prende i 17 valori della
+  // griglia delle frequenze di SWAN, e interpolare fra due ore darebbe un
+  // periodo che il modello non ha calcolato. E' la stessa regola per cui
+  // l'orologio non scrive mai "09:37" su un dato orario.
+  //
+  // **Questo test non sa piu' trovare l'interpolazione, ed e' misurato.**
+  // Prima del 2026-08-21 confrontava il numero a schermo con i 17 livelli a
+  // tolleranza 0,005 s; da quando il periodo si scrive al mezzo secondo quel
+  // confronto e' quasi vuoto (su 48 valori interpolati che non devono esistere
+  // ne scarterebbe 4). E nemmeno l'uguaglianza qui sotto basta: rimettendo
+  // `dissolvenza: true` su pwave, il 2026-08-21, questo test **passava
+  // comunque**, perche' in questo punto il valore interpolato arrotondato cade
+  // sullo stesso mezzo secondo di quello vero. E' il prezzo dell'arrotondamento
+  // e non si paga qui: la prova esatta sta nei test unitari, dove non c'e'
+  // nessun arrotondamento in mezzo (`oraPiuVicina` in test/sorgente.test.ts, e
+  // il ramo di `valoreCorrente` che la chiama in test/valoreInterpolato.test.ts,
+  // scritto appunto perche' questo test ha smesso di coprirlo).
+  //
+  // Quello che resta e' comunque vero e vale tenerlo: a mezz'ora esatta il
+  // numero e' quello di un'ora vera, non uno inventato in mezzo.
+  const leggi = async (istante: string) => {
+    await pronta(page, `?t=2026-08-16T${istante}Z&z=7&c=44.2,13.6&p=44.2,13.6&var=pwave`);
+    await expect(page.locator(".valore")).toHaveText(/\d s$/, { timeout: 8000 });
+    return (await page.locator(".valore").textContent())!;
+  };
 
-  await pronta(page, "?t=2026-08-16T12:30Z&z=7&c=44.2,13.6&var=pwave");
-  await page.locator("canvas").first().click({ position: { x: 640, y: 380 } });
-  await expect(page.locator(".valore")).toHaveText(/\d s$/, { timeout: 8000 });
+  const mezzaOra = await leggi("12:30");
+  const oraDopo = await leggi("13:00");
+  const oraPrima = await leggi("12:00");
 
-  // mezz'ora esatta fra due ore: e' il punto in cui una dissolvenza produrrebbe
-  // il valore intermedio, cioe' quello che non deve esistere
-  const testo = (await page.locator(".valore").textContent())!;
-  const letto = Number(testo.replace(" s", "").replace(",", "."));
-  const vicino = LIVELLI.reduce((a, b) => Math.abs(b - letto) < Math.abs(a - letto) ? b : a);
-  expect(Math.abs(letto - vicino), `${letto} s non e' un livello di SWAN`).toBeLessThanOrEqual(0.005);
+  // Le due ore devono dire numeri diversi, se no l'uguaglianza qui sotto
+  // sarebbe vera anche interpolando e questo test non proverebbe niente.
+  expect(oraPrima, "le 12:00 e le 13:00 mostrano lo stesso periodo").not.toBe(oraDopo);
+  expect(mezzaOra, `12:30 mostra ${mezzaOra}, le 13:00 ${oraDopo}`).toBe(oraDopo);
 });
 
 test("un link con ?var=pwave apre direttamente il periodo", async ({ page }) => {

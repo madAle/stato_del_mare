@@ -57,19 +57,94 @@ describe("lo stato del mare secondo Douglas", () => {
 
 describe("il valore scritto a schermo", () => {
   it("porta lo stato del mare accanto all'altezza d'onda", () => {
-    expect(scriviValoreEStato(0.42, "m", "hwave")).toBe("0,42 m · poco mosso");
-    expect(scriviValoreEStato(0.68, "m", "hwave")).toBe("0,68 m · mosso");
+    expect(scriviValoreEStato(0.42, "m", "hwave")).toBe("0,40 m · poco mosso");
+    expect(scriviValoreEStato(0.68, "m", "hwave")).toBe("0,70 m · mosso");
   });
 
   it("ma non alle altre grandezze, che gradi di Douglas non ne hanno", () => {
     // Un periodo di 4,2 secondi non e' "poco mosso": sarebbe una cosa falsa
     // scritta accanto a un numero vero.
-    expect(scriviValoreEStato(4.2, "s", "tpeak")).toBe("4,20 s");
-    expect(scriviValoreEStato(180, "gradi", "dirwave")).toBe("180,00 gradi");
+    expect(scriviValoreEStato(4.2, "s", "pwave")).toBe("4,0 s");
+    expect(scriviValoreEStato(180, "gradi", "dwave")).toBe("180,00 gradi");
   });
 
   it("senza dato non scrive niente, nemmeno lo stato", () => {
     expect(scriviValoreEStato(null, "m", "hwave")).toBe("");
-    expect(scriviValore(null, "m")).toBe("");
+    expect(scriviValore(null, "m", 0.05)).toBe("");
+  });
+});
+
+describe("l'arrotondamento dei valori a schermo", () => {
+  // Chiesto il 2026-08-21: due decimali sono una precisione che il dato non ha.
+  // Il passo di ogni grandezza sta in ui/grandezze.ts, con le altre scelte di
+  // resa, e da la' viene anche il numero di decimali: scrivere "4,50 s" con un
+  // passo di mezzo secondo prometterebbe centesimi che non possono comparire.
+
+  it("l'altezza d'onda si scrive a cinque centimetri", () => {
+    expect(scriviValore(0.4749, "m", 0.05)).toBe("0,45 m");
+    expect(scriviValore(0.475, "m", 0.05)).toBe("0,50 m");
+    expect(scriviValore(0.62, "m", 0.05)).toBe("0,60 m");
+    // Il caso che la formula ingenua (v * 100 / 5) sbaglia per polvere in
+    // virgola mobile: 8.325 * 100 / 5 vale 166,4999... e uscirebbe 8,30.
+    expect(scriviValore(8.325, "m", 0.05)).toBe("8,35 m");
+    // 1,25 e' il confine fra "mosso" e "molto mosso": arrotondato deve restare
+    // se stesso, non 1.2500000000000002, se no il nome lo si calcola su un
+    // numero che non e' quello scritto.
+    expect(scriviValore(1.25, "m", 0.05)).toBe("1,25 m");
+  });
+
+  it("il periodo si scrive al mezzo secondo, e con un decimale solo", () => {
+    expect(scriviValore(4.2, "s", 0.5)).toBe("4,0 s");
+    expect(scriviValore(4.47, "s", 0.5)).toBe("4,5 s");
+    expect(scriviValore(7.37, "s", 0.5)).toBe("7,5 s");
+  });
+
+  it("il nome del grado si calcola sul valore arrotondato, non su quello grezzo", () => {
+    // E' l'invariante che tiene insieme le due meta' della scritta: se il nome
+    // venisse dal valore grezzo, un vero 0,49 si leggerebbe "0,50 m · poco
+    // mosso", cioe' un numero che dice "mosso" accanto a un nome che lo nega.
+    // Una contraddizione a schermo si **vede**, e questa e' la ragione per cui
+    // i cinque centimetri sono stati preferiti al decimo di metro.
+    expect(scriviValoreEStato(0.49, "m", "hwave")).toBe("0,50 m · mosso");
+    expect(scriviValoreEStato(0.4749, "m", "hwave")).toBe("0,45 m · poco mosso");
+  });
+
+  it("e non si contraddicono in nessun punto della scala", () => {
+    // Il numero a schermo, riletto, deve dare esattamente il nome a schermo.
+    // Vale perche' ogni confine Douglas e' multiplo di 5 cm: col decimo di
+    // metro 1,25 non lo era e questo test troverebbe la contraddizione.
+    for (let cm = 0; cm <= 1600; cm++) {
+      const scritta = scriviValoreEStato(cm / 100, "m", "hwave");
+      const [numero, nome] = scritta.split(" · ");
+      const riletto = Number(numero.replace(" m", "").replace(",", "."));
+      expect(statoDelMare(riletto), `${cm} cm si legge "${scritta}"`).toBe(nome);
+    }
+  });
+
+  it("i confini Douglas sopravvivono all'arrotondamento", () => {
+    // La proprieta' su cui poggia il test qui sopra, scritta a parte perche' e'
+    // lei che va guardata il giorno in cui qualcuno cambia una soglia.
+    for (const s of SOGLIE) {
+      expect(scriviValore(s.valore, "m", 0.05)).toBe(`${s.valore.toFixed(2).replace(".", ",")} m`);
+    }
+  });
+
+  it("il periodo perde cinque livelli su diciassette, ed e' il prezzo", () => {
+    // Misurato: i valori possibili sono i 17 della griglia delle frequenze di
+    // SWAN, e al mezzo secondo diventano 12. Nella parte bassa della scala,
+    // dove sta il mare d'agosto, due stati diversi mostrano lo stesso numero.
+    // Non e' un errore, e' il costo della decisione: sta scritto qui perche'
+    // chi cambiera' il passo sappia cosa sta comprando.
+    const SWAN = [1, 1.13, 1.28, 1.45, 1.65, 1.87, 2.11, 2.4, 2.71, 3.08,
+                  3.48, 3.95, 4.47, 5.07, 5.74, 6.5, 7.37];
+    const scritti = new Set(SWAN.map((v) => scriviValore(v, "s", 0.5)));
+    expect(scritti.size).toBe(12);
+  });
+
+  it("le grandezze senza passo restano come sono, a due decimali", () => {
+    // Il livello del mare non e' stato chiesto, e un campo che il catalogo
+    // pubblica e la tabella non conosce non ha nessun passo da applicargli.
+    expect(scriviValoreEStato(-0.6543, "m", "sealevel")).toBe("-0,65 m");
+    expect(scriviValore(0.4749, "m", 0)).toBe("0,47 m");
   });
 });

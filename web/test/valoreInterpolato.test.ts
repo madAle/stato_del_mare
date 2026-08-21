@@ -35,11 +35,13 @@ function frameCostante(valore: number): Int16Array {
 const LON = 12.9;
 const LAT = 44.2;
 
-function leggi(istante: number, a: Int16Array, b: Int16Array): number | null {
+function leggi(
+  istante: number, a: Int16Array, b: Int16Array, dissolvenza = true,
+): number | null {
   const frame = new Map<number, Int16Array>([[ORE[0].istante, a], [ORE[1].istante, b]]);
   return valoreCorrente(
     GRIGLIA, ORE, istante, (ora) => frame.get(ora.istante),
-    LON, LAT, 0.001, 0,
+    LON, LAT, 0.001, 0, dissolvenza,
   );
 }
 
@@ -68,5 +70,25 @@ describe("valore sotto il cursore", () => {
   it("se nessuna delle due ha dato, non c'e' valore", () => {
     expect(leggi(ORE[0].istante + 1_800_000, frameCostante(NODATA), frameCostante(NODATA)))
       .toBeNull();
+  });
+});
+
+describe("valore sotto il cursore, per le grandezze che non si dissolvono", () => {
+  // Il periodo dell'onda prende i 17 valori della griglia delle frequenze di
+  // SWAN e non si interpola: fondere 3,48 con 3,95 darebbe 3,71 s, che il
+  // modello non produce. La regola sta in `oraPiuVicina`, che ha i suoi test,
+  // ma il ramo di `valoreCorrente` che la chiama non era provato da nessuno:
+  // lo copriva solo un test end to end, che dal 2026-08-21 e' cieco, perche'
+  // il periodo si scrive al mezzo secondo e un valore interpolato arrotondato
+  // cade sullo stesso numero di quello vero. Qui non c'e' arrotondamento in
+  // mezzo, quindi la differenza si vede: 1 e 3 danno 3, non 2.
+  it("a meta' fra due ore vale l'ora dopo, non la media", () => {
+    expect(leggi(ORE[0].istante + 1_800_000, frameCostante(1000), frameCostante(3000), false))
+      .toBeCloseTo(3.0, 6);
+  });
+
+  it("appena prima della meta' vale ancora l'ora prima", () => {
+    expect(leggi(ORE[0].istante + 1_799_000, frameCostante(1000), frameCostante(3000), false))
+      .toBeCloseTo(1.0, 6);
   });
 });

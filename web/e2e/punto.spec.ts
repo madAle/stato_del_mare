@@ -29,7 +29,7 @@ test("toccando la mappa si pianta il punto e si legge il valore", async ({ page 
   await expect(page.getByTestId("segnaposto")).toBeVisible();
   // Il numero accanto al segno e' lo stesso della barra di stato: una sola
   // funzione lo scrive, quindi non possono divergere.
-  await expect(page.getByTestId("valore-segnaposto")).toHaveText(/\d+,\d\d \w+/, { timeout: 5000 });
+  await expect(page.getByTestId("valore-segnaposto")).toHaveText(/\d+,\d[05] \w+/, { timeout: 5000 });
   await expect(page.locator(".valore")).toHaveText(await page.getByTestId("valore-segnaposto").textContent() ?? "");
 });
 

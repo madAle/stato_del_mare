@@ -53,6 +53,17 @@ export type Grandezza = {
   dissolvenza: boolean;
   /** Se questa versione la sa disegnare. */
   disegnabile: boolean;
+  /**
+   * Il passo con cui il valore si scrive a schermo, nelle unita' della
+   * grandezza, e da cui vengono anche i decimali.
+   *
+   * E' una dichiarazione di quanta precisione il dato ha: due decimali su
+   * un'altezza d'onda ne promettono piu' di quanta il modello ne produca, e chi
+   * legge un centesimo di metro lo prende per una misura. Zero vuol dire "come
+   * viene, a due decimali": e' il caso delle grandezze per cui un passo non e'
+   * stato deciso, non un passo di zero.
+   */
+  passo: number;
 };
 
 const TABELLA: readonly Grandezza[] = [
@@ -61,6 +72,11 @@ const TABELLA: readonly Grandezza[] = [
     // Quattro metri e' il confine fra "agitato" e "molto agitato" nella scala
     // Douglas: sopra, in Adriatico, si va di rado.
     minimo: 0, massimo: 4, dissolvenza: true, disegnabile: true,
+    // Cinque centimetri, e non il decimo di metro: tutti i confini Douglas
+    // sono multipli esatti di 5 cm (0,10 0,50 1,25 2,50 4 6 9 14), quindi il
+    // numero a schermo e il nome del grado non possono contraddirsi. Con 0,1 m
+    // non valeva, perche' 1,25 non e' multiplo di 0,1.
+    passo: 0.05,
   },
   {
     id: "pwave", nome: "periodo dell'onda", unita: "s", campi: ["pwave"],
@@ -73,17 +89,23 @@ const TABELLA: readonly Grandezza[] = [
     // Niente dissolvenza: 17 livelli in progressione geometrica (griglia delle
     // frequenze di SWAN), interpolarli inventerebbe periodi che non esistono.
     dissolvenza: false, disegnabile: true,
+    // Mezzo secondo. Il prezzo e' misurato e accettato: dei 17 livelli che il
+    // modello produce ne restano 12 distinti (1,00 e 1,13 si leggono uguali,
+    // 1,28 1,45 e 1,65 pure, e cosi' 1,87 con 2,11 e 2,40 con 2,71), quindi in
+    // fondo alla scala, dove sta il mare d'agosto, due stati diversi mostrano
+    // lo stesso numero. Un quarto di secondo li terrebbe distinti sopra i 2 s.
+    passo: 0.5,
   },
   // Le due componenti sono adimensionali (seno e coseno); la grandezza sono gradi.
   {
     id: "dwave", nome: "direzione dell'onda", unita: "gradi",
     campi: ["dwave_sin", "dwave_cos"],
     // Una direzione non si disegna con una rampa: vuole le frecce.
-    minimo: 0, massimo: 360, dissolvenza: true, disegnabile: false,
+    minimo: 0, massimo: 360, dissolvenza: true, disegnabile: false, passo: 0,
   },
   {
     id: "corrente", nome: "corrente", unita: "m/s", campi: ["ubar", "vbar"],
-    minimo: 0, massimo: 1, dissolvenza: true, disegnabile: false,
+    minimo: 0, massimo: 1, dissolvenza: true, disegnabile: false, passo: 0,
   },
   {
     id: "sealevel", nome: "livello del mare", unita: "m", campi: ["sealevel"],
@@ -95,6 +117,9 @@ const TABELLA: readonly Grandezza[] = [
     // **sopra satura**, e un'acqua alta vera lo supera, quindi va rivisto con
     // un inverno di dati.
     minimo: -0.8, massimo: 0.8, dissolvenza: true, disegnabile: true,
+    // Nessun passo: l'arrotondamento e' stato chiesto per onda e periodo, e
+    // qui i centimetri di marea sono il dato, non rumore attorno al dato.
+    passo: 0,
   },
 ];
 
@@ -128,9 +153,23 @@ export function grandezzeDi(variabili: Variabile[]): Grandezza[] {
       gia.add(v.id);
       fuori.push({
         id: v.id, nome: v.id, unita: v.unita, campi: [v.id],
-        minimo: 0, massimo: 1, dissolvenza: true, disegnabile: false,
+        minimo: 0, massimo: 1, dissolvenza: true, disegnabile: false, passo: 0,
       });
     }
   }
   return fuori;
+}
+
+/**
+ * Il passo di scrittura di una grandezza, dal suo id.
+ *
+ * Esiste perche' chi scrive il numero a schermo (`ui/numeri.ts`) ha in mano
+ * l'id e non la grandezza intera, e perche' il passo deve stare **qui**, con le
+ * altre scelte di resa, e non in chi formatta: una seconda tabella dei passi
+ * dentro il formattatore sarebbe il modo in cui fra sei mesi la legenda e la
+ * barra di stato arrotondano in modo diverso. Un id che questa tabella non
+ * conosce non ha passo: si scrive come viene.
+ */
+export function passoDi(id: string): number {
+  return TABELLA.find((g) => g.id === id)?.passo ?? 0;
 }
