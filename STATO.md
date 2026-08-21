@@ -535,6 +535,28 @@ più, e che vale la pena riconoscere al volo:
 La domanda che li trova tutti, e che vale la pena farsi in revisione: **questa
 riga sa davvero quello che dice di sapere?**
 
+**L'onda di ADRIAC e' solo mare di vento: non contiene il mare lungo che entra
+da Otranto.** Verificato il 2026-08-21, e cambia come va letta la mappa.
+L'attributo del NetCDF dice `wind-induced significant wave height`, e il dato lo
+conferma su tre misure indipendenti: (a) il dominio del modello finisce a 40,3 N,
+appena dentro il Canale d'Otranto, e **al bordo aperto non entra energia** (7-37
+cm mentre dentro il bacino l'onda arriva a 136); (b) periodo e altezza crescono
+**monotonicamente da sud a nord** (3,10 s / 34 cm a 40-41,5 N, 4,72 s / 98 cm a
+44,5-46 N), che e' la firma del mare di vento limitato dal fetch; (c) il periodo
+massimo su dieci giorni e' **7,37 s**, mentre un mare lungo mediterraneo darebbe
+8-12 s.
+
+Conseguenze da tenere presenti: la nostra mappa **sottostima durante gli eventi
+di mare lungo** e non puo' mostrare l'onda lunga con vento locale calmo, che e'
+il caso piu' insidioso per chi va in barca. E' anche la spiegazione probabile di
+perche' ARPAE, per il servizio pubblico sullo stato del mare, usi un altro
+modello (WW3 su dominio mediterraneo) e pubblichi di ADRIAC solo le uscite di
+ROMS: temperatura, salinita', correnti, livello. L'accoppiamento con SWAN dentro
+ADRIAC **serve alla circolazione** (attrito al fondo, interazione onda-corrente,
+sovralzo), non a fare una previsione d'onda. Nota di incertezza: due pagine ARPAE
+si contraddicono sul modello del servizio pubblico, una dice WW3 e una dice SWAN
+su domini innestati; quale sia non cambia la conclusione su ADRIAC.
+
 **`Dwave` e' la direzione DA CUI l'onda viene** (convenzione nautica, gradi orari
 da nord), e il file **non lo dichiara**: l'attributo dice solo `wind-induced wave
 direction - mean` in gradi. Ricavato dal dato il 2026-08-20, con un fatto fisico:
