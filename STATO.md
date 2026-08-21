@@ -535,27 +535,54 @@ più, e che vale la pena riconoscere al volo:
 La domanda che li trova tutti, e che vale la pena farsi in revisione: **questa
 riga sa davvero quello che dice di sapere?**
 
-**L'onda di ADRIAC e' solo mare di vento: non contiene il mare lungo che entra
-da Otranto.** Verificato il 2026-08-21, e cambia come va letta la mappa.
-L'attributo del NetCDF dice `wind-induced significant wave height`, e il dato lo
-conferma su tre misure indipendenti: (a) il dominio del modello finisce a 40,3 N,
-appena dentro il Canale d'Otranto, e **al bordo aperto non entra energia** (7-37
-cm mentre dentro il bacino l'onda arriva a 136); (b) periodo e altezza crescono
-**monotonicamente da sud a nord** (3,10 s / 34 cm a 40-41,5 N, 4,72 s / 98 cm a
-44,5-46 N), che e' la firma del mare di vento limitato dal fetch; (c) il periodo
-massimo su dieci giorni e' **7,37 s**, mentre un mare lungo mediterraneo darebbe
-8-12 s.
+**Se l'onda di ADRIAC contenga il mare lungo NON LO SAPPIAMO, e la prova e'
+scritta qui sotto.** (Il 2026-08-21 questa voce diceva "e' solo mare di vento":
+era piu' forte di quello che c'era in mano, ed e' stata corretta lo stesso
+giorno.)
 
-Conseguenze da tenere presenti: la nostra mappa **sottostima durante gli eventi
-di mare lungo** e non puo' mostrare l'onda lunga con vento locale calmo, che e'
-il caso piu' insidioso per chi va in barca. E' anche la spiegazione probabile di
-perche' ARPAE, per il servizio pubblico sullo stato del mare, usi un altro
-modello (WW3 su dominio mediterraneo) e pubblichi di ADRIAC solo le uscite di
-ROMS: temperatura, salinita', correnti, livello. L'accoppiamento con SWAN dentro
-ADRIAC **serve alla circolazione** (attrito al fondo, interazione onda-corrente,
-sovralzo), non a fare una previsione d'onda. Nota di incertezza: due pagine ARPAE
-si contraddicono sul modello del servizio pubblico, una dice WW3 e una dice SWAN
-su domini innestati; quale sia non cambia la conclusione su ADRIAC.
+Cosa e' accertato:
+
+- il file d'onda porta **tre campi e nient'altro**: altezza significativa
+  totale, direzione media, periodo di picco. **Nessuna partizione spettrale**,
+  quindi anche se il mare lungo fosse dentro `Hwave` non sarebbe separabile:
+  un metro di mare di vento e un metro di onda lunga sono indistinguibili;
+- l'attributo `wind-induced significant wave height` **non e' una prova**: e' la
+  stringa che ROMS scrive per `Hwave` a prescindere dal contenuto, non una
+  dichiarazione di ARPAE. Gli attributi globali sono otto righe di metadati CF,
+  nessuna traccia della configurazione della corsa;
+- la catena ARPAE che il mare lungo ce l'ha e' **annidata dal Mediterraneo**
+  (25 km -> 8 km -> 800 m), ed e' un altro modello: fino al 2024 SWAN-MEDITARE,
+  poi WW3-MEDITA. Non e' una contraddizione fra le pagine ARPAE, e' un cambio di
+  modello. Il suo dato aperto **e' morto**: `swanemr/` risponde ma ha nove file,
+  l'ultimo del 30/09/2025, e WW3-MEDITA non ha directory pubblica;
+- **indizio interno, non conclusivo**: nei momenti in cui l'onda entra dal bordo
+  sud (direzione da ~172 gradi), al bordo l'altezza e' 9 cm e **cresce** a 24
+  andando dentro. Se il bordo portasse un mare da fuori, l'altezza sarebbe
+  massima al bordo, non minima. Punta verso "niente entra", ma non lo dimostra;
+- **perche' non e' dimostrato**: in tutto l'archivio (9-22 agosto 2026), su tre
+  punti da Otranto a Rimini, il periodo dell'onda lunga non arriva mai a 5
+  secondi. Non c'e' nessun evento di mare lungo, quindi non c'era niente che
+  potesse entrare.
+
+**La prova, da eseguire al primo evento vero** (serve solo pazienza, non un
+account):
+
+1. sorvegliare l'API **Open-Meteo Marine** (gratuita, senza chiave, e porta le
+   partizioni): `https://marine-api.open-meteo.com/v1/marine?latitude=40.6&longitude=18.7&hourly=wave_height,wind_wave_height,swell_wave_height,swell_wave_period`;
+2. aspettare un'ora con `swell_wave_height` sopra 0,5 m **e**
+   `swell_wave_period` sopra 6 s nel basso Adriatico;
+3. in quell'ora confrontare `Hwave` di ADRIAC nella stessa cella con il
+   **totale** e con la **sola componente di vento** di Open-Meteo. Se ADRIAC
+   somiglia alla componente di vento ed e' molto sotto il totale, il mare lungo
+   non c'e'. Se somiglia al totale, c'e' ed e' solo indistinguibile.
+
+**Conseguenza pratica, valida in ogni caso**: la mappa mostra un'altezza d'onda
+senza dire di quale onda si tratta, e nel dubbio va detto. Se il mare lungo non
+c'e', la mappa sottostima proprio nel caso piu' insidioso per chi va in barca
+(onda lunga con vento calmo). L'alternativa vera, se un giorno serve, e'
+**Copernicus Marine** `MEDSEA_ANALYSISFORECAST_WAV_006_017`: orario, 1/24 di
+grado (circa 4,6 km, quattro volte piu' grosso del nostro), e porta le
+partizioni dichiarate (`VHM0` totale, `VHM0_WW` vento, `VHM0_SW1` onda lunga).
 
 **`Dwave` e' la direzione DA CUI l'onda viene** (convenzione nautica, gradi orari
 da nord), e il file **non lo dichiara**: l'attributo dice solo `wind-induced wave
