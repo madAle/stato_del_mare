@@ -25,12 +25,21 @@ import { leggiStatoUrl, scriviStatoUrl } from "./statoUrl";
 /**
  * Finestra iniziale: **24** ore passate piu' 72 previste, cursore su adesso.
  *
- * Il passato era 48 ore, e prendeva il 40 per cento del cursore per lasciarne il
- * 60 alla previsione. Chiesto il 2026-08-21 di stringerlo a un giorno: con un
- * giorno il passato scende al 25 per cento e la previsione arriva al 75, che e' la
- * parte per cui si apre la mappa. Il motivo e' il cursore, non il dato: con la
+ * Il passato era 48 ore. Chiesto il 2026-08-21 di stringerlo a un giorno: con la
  * previsione schiacciata in meta' scala, un'ora di domani vale meta' dei pixel di
- * un'ora di ieri, e trovarla col dito diventa piu' difficile proprio dove serve.
+ * un'ora di ieri, e trovarla col dito diventa piu' difficile proprio dove serve,
+ * che e' la parte per cui si apre la mappa.
+ *
+ * **Quanto passato si vede davvero dipende da quanto lontano arriva la
+ * previsione**, non solo da questa costante, e la prima stesura di questo commento
+ * lo dava per fisso. Misurato sul sito vero il 2026-08-21 alle 17, con la
+ * previsione ferma a +31 ore perche' ARPAE non aveva ancora pubblicato il file del
+ * giorno: il passato occupava il **42 per cento** della scala (41,6 letto dalla
+ * posizione del segno "adesso"), non il 25. I tre casi, con la stessa aritmetica:
+ * con la previsione di quel momento il passato era il **61** per cento prima della
+ * modifica e il **42** dopo; con una previsione piena a +72 ore sarebbe il **25**.
+ * Quindi la modifica aiuta **di piu'** quando la previsione e' vecchia, cioe'
+ * proprio quando il problema e' peggiore.
  *
  * **Non toglie niente**: un link con `?t=` apre l'asse intero (vedi `asse` qui
  * sotto), quindi l'archivio resta raggiungibile e questa e' solo la vista di
