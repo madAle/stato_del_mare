@@ -471,3 +471,21 @@ il beneficio non copriva il rischio. Accettato.
 
 Revisione del task 5: **da dispacciare al ritorno**. Il lavoro e' committato e
 spinto, quindi non c'e' fretta.
+
+## Fuori piano: la finestra iniziale a un giorno (2c24f48)
+
+Chiesto durante l'esecuzione. `INDIETRO_MS` da 48 a 24 ore: con due giorni di
+passato la previsione stava in sei decimi di scala, e un'ora di domani valeva
+meta' dei pixel di un'ora di ieri. Ora il passato e' il 25 per cento.
+
+Committato sul branch della corrente, non su develop: sono in un worktree isolato
+e il guard rifiuta le operazioni git fuori da qui. Va bene, e' una riga e viaggia
+con il resto; da ricordare quando si unisce, perche' **non c'entra col piano**.
+
+Nota su come e' andata, che vale piu' della modifica: la prima stesura del
+commento affermava che il passo delle tacche scende da 24 a 12 ore. L'ho
+verificato prima di lasciarlo e **era troppo secco**: succede solo quando la
+previsione e' al massimo (+72h, ampiezza 120 -> 96). Con +36h, come stamattina,
+l'ampiezza era 84 e il passo era **gia'** 12. Corretto nel commento. E' lo stesso
+errore che ho segnalato quattro volte nei brief del piano, fatto da me in un
+commento di tre righe.
