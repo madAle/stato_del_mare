@@ -417,3 +417,57 @@ catalogo vero. Costo se sbagliato: un campo che sparisce invece di disegnarsi
 sbagliato, che e' il verso giusto in cui sbagliare.
 
 Task 4: complete (commit e11650d..e9cc53d, revisione pulita)
+
+## Interruzione: il portatile si sposta (2026-08-21)
+
+Messo al sicuro prima di fermarsi:
+- registro copiato in `docs/superpowers/revisioni/2026-08-21-corrente-esecuzione.md`
+  e committato (14dc92b), perche' `.superpowers/` e' escluso da git ed e' la
+  mappa di recupero. Regola di CLAUDE.md.
+- `worktree-feat-corrente` spinto su origin (nuovo branch): i cinque commit dei
+  task piu' il registro.
+- `develop` spinto su origin (f99e3f6): spec e piano.
+- `main` **non toccato**: nessun deploy.
+
+**Stato al momento dell'interruzione**: task 1-4 completi con revisione pulita.
+Task 5 dispacciato e in corso da 13 minuti, con 8 file modificati **non
+committati** nel worktree; su decisione dell'utente lo lascio andare invece di
+aspettarlo. Se il worktree sopravvive, i file sono la'; se sparisce, il task 5 si
+rifa' dal suo brief e dai quattro ruling che il suo dispaccio conteneva (sono
+tutti qui sopra: la correzione sull'unico chiamante, la riga di `haB`, il
+controllo delle scale a runtime, i due commenti).
+
+**Per ripartire**: leggere questo registro dall'inizio, poi
+`git log --oneline origin/main..worktree-feat-corrente`, poi il piano
+`docs/superpowers/plans/2026-08-21-corrente.md` dal task 5.
+
+### Task 5: arrivato in tempo, DONE, commit 33e7e71 (252 test, 38/38 end to end)
+
+Otto file, corrente ancora `disegnabile: false`, niente cambia a schermo. Ha fatto
+i due test del brief piu' due sul percorso a due campi di `Animazione.disegna()`,
+verificati rossi contro il difetto iniettato e verdi dopo, ripristinando con `cp`.
+
+**Quarto difetto del piano trovato da un implementatore.** Lo snippet del brief
+metteva `grandezza` (l'oggetto intero) fra le dipendenze del `useMemo` che
+costruisce i prefetcher. Ma `grandezza` si ricava da un array ricalcolato a ogni
+render, quindi cambia identita' continuamente: durante la riproduzione avrebbe
+ricostruito un `Prefetcher` **fino a dieci volte al secondo**, per qualunque
+grandezza, buttando via la cache in volo. Ha cambiato la dipendenza in
+`grandezza?.campi.join()`. Corretto: e' il valore che conta davvero, e due
+grandezze diverse non possono avere la stessa lista di campi.
+
+**Ruling (per il task 6, e non e' un dettaglio)**: la prontezza dei fotogrammi
+(`assicuraFinestra`, `avanza`, `chiediAvanti`) guarda ancora **solo il primo
+campo**. L'implementatore lo chiama innocuo oggi, e lo e' finche' la corrente e'
+spenta, ma al task 6 e' la differenza fra "la corrente si disegna" e "la corrente
+non si disegna mai": e' `assicura` che **chiede** i fotogrammi, quindi se nessuno
+lo chiede per `vbar`, quel campo non arriva in cache e il disegno si ferma sul
+controllo "manca una componente". Va sciolto **esplicitamente** nel task 6, non
+ereditato. Costo se sbagliato: un giro di correzione speso a cercare perche' lo
+schermo resta vuoto.
+
+Parte facoltativa (unione discriminata di `ComponenteFrame`) non fatta, motivata:
+il beneficio non copriva il rischio. Accettato.
+
+Revisione del task 5: **da dispacciare al ritorno**. Il lavoro e' committato e
+spinto, quindi non c'e' fretta.
