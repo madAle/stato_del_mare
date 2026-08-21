@@ -121,6 +121,39 @@ export function valoreCorrente(
   return a + (b - a) * q.frazione;
 }
 
+/**
+ * Il modulo di una grandezza a due componenti, sotto il cursore.
+ *
+ * **L'ordine non e' negoziabile**: si interpolano nel tempo le due componenti,
+ * ognuna col percorso di `valoreCorrente`, e solo dopo si prende il modulo.
+ * Mescolare i moduli sbaglia proprio all'inversione di marea, dove una
+ * componente passa da +0,3 a -0,3 e il valore vero a meta' e' zero mentre la
+ * media dei moduli da' 0,3: una corrente che non si annulla mai. E' lo stesso
+ * principio per cui il catalogo archivia seno e coseno di un angolo invece
+ * dell'angolo, scritto in `ui/grandezze.ts`.
+ *
+ * Se una delle due componenti non ha dato, non c'e' valore: meta' di un vettore
+ * non e' un vettore, e dare zero all'altra darebbe una corrente piu' lenta del
+ * vero, cioe' un numero plausibile e falso.
+ */
+export function valoreVettore(
+  griglia: Griglia,
+  ore: Ora[],
+  istante: number,
+  prendiU: (ora: Ora) => Int16Array | undefined,
+  prendiV: (ora: Ora) => Int16Array | undefined,
+  lon: number,
+  lat: number,
+  scala: number,
+  offset: number,
+  dissolvenza = true,
+): number | null {
+  const u = valoreCorrente(griglia, ore, istante, prendiU, lon, lat, scala, offset, dissolvenza);
+  const v = valoreCorrente(griglia, ore, istante, prendiV, lon, lat, scala, offset, dissolvenza);
+  if (u === null || v === null) return null;
+  return Math.hypot(u, v);
+}
+
 /** Mercatore normalizzato [0,1] come lo vuole MapLibre, y crescente verso sud. */
 export function mercatoreNormalizzato(lon: number, lat: number): { x: number; y: number } {
   const m = aMercatore(lon, lat);

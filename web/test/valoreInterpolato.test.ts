@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Griglia } from "../src/data/catalogo";
 import { NODATA } from "../src/data/frame";
 import type { Ora } from "../src/data/indice";
-import { valoreCorrente } from "../src/map/proiezione";
+import { valoreCorrente, valoreVettore } from "../src/map/proiezione";
 
 /**
  * Il numero sotto il cursore deve appartenere all'istante che la mappa sta
@@ -90,5 +90,56 @@ describe("valore sotto il cursore, per le grandezze che non si dissolvono", () =
   it("appena prima della meta' vale ancora l'ora prima", () => {
     expect(leggi(ORE[0].istante + 1_799_000, frameCostante(1000), frameCostante(3000), false))
       .toBeCloseTo(1.0, 6);
+  });
+});
+
+describe("il modulo di un vettore sotto il cursore", () => {
+  const leggiVettore = (
+    istante: number, ua: Int16Array, ub: Int16Array, va: Int16Array, vb: Int16Array,
+  ): number | null => {
+    const u = new Map([[ORE[0].istante, ua], [ORE[1].istante, ub]]);
+    const v = new Map([[ORE[0].istante, va], [ORE[1].istante, vb]]);
+    return valoreVettore(
+      GRIGLIA, ORE, istante,
+      (ora) => u.get(ora.istante), (ora) => v.get(ora.istante),
+      LON, LAT, 0.001, 0,
+    );
+  };
+
+  it("su un'ora esatta e' il modulo delle due componenti", () => {
+    // 300 e 400 millesimi di m/s danno 0,5 m/s: il triangolo che tutti sanno.
+    expect(leggiVettore(
+      ORE[0].istante, frameCostante(300), frameCostante(0),
+      frameCostante(400), frameCostante(0),
+    )).toBeCloseTo(0.5, 6);
+  });
+
+  it("**interpola le componenti e poi prende il modulo**, non il contrario", () => {
+    // E' il test per cui esiste la sezione 4 della spec. Con u che passa da
+    // +300 a -300 e v nullo, a meta' ora il valore vero e' ZERO: la corrente si
+    // annulla, che e' quello che fa a stanca. Mescolando i moduli si otterrebbe
+    // 0,3 m/s, cioe' un mare che non sta mai fermo. Non si vede come un errore:
+    // si vede come un mare diverso.
+    expect(leggiVettore(
+      ORE[0].istante + 1_800_000, frameCostante(300), frameCostante(-300),
+      frameCostante(0), frameCostante(0),
+    )).toBeCloseTo(0, 6);
+  });
+
+  it("a tre quarti pesa di piu' l'ora dopo, componente per componente", () => {
+    // u va da 0 a 400: a tre quarti vale 300, e con v nullo il modulo e' 0,3.
+    expect(leggiVettore(
+      ORE[0].istante + 2_700_000, frameCostante(0), frameCostante(400),
+      frameCostante(0), frameCostante(0),
+    )).toBeCloseTo(0.3, 6);
+  });
+
+  it("se una delle due componenti non ha dato, non c'e' valore", () => {
+    // Meta' di un vettore non e' un vettore: dare per buono zero sull'altra
+    // componente sarebbe una corrente inventata, e piu' lenta del vero.
+    expect(leggiVettore(
+      ORE[0].istante, frameCostante(300), frameCostante(300),
+      frameCostante(NODATA), frameCostante(NODATA),
+    )).toBeNull();
   });
 });
