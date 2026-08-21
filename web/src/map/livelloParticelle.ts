@@ -25,8 +25,28 @@ import { quadroGriglia } from "./proiezione";
  * all'altro.
  */
 
-/** Quanti pixel al secondo deve percorrere un'onda di periodo tipico (3,5 s). */
-const VELOCITA_A_SCHERMO_PX_S = 45;
+/**
+ * Quanti pixel al secondo deve percorrere un'onda di periodo tipico (3,5 s).
+ *
+ * **Venti e non quarantacinque, e il numero sta insieme alla taglia della
+ * cresta.** Quarantacinque erano stati scelti quando la marca era una scia lunga
+ * una quarantina di pixel: un oggetto cosi' a quella velocita' avanza 1,13 volte
+ * la propria lunghezza al secondo, quindi si sovrappone sempre a dov'era, e il
+ * moto si legge come scorrimento. La cresta ha perso l'estensione **lungo il
+ * moto** (18 px in largo, 2,7 di gobba in lungo), e gli stessi 45 px/s sono
+ * diventati 2,5 larghezze al secondo: velocita' vera identica (misurata sulla
+ * mappa, mediana 48,5 px/s) e velocita' apparente piu' che doppia. Segnalato
+ * guardando la mappa il 2026-08-21, con le creste appena messe.
+ *
+ * Venti riporta il rapporto a 1,11 larghezze al secondo, cioe' la stessa cifra
+ * delle scie, che nessuno aveva trovato veloce. Il legame fra i due numeri e'
+ * tenuto da `test/velocitaCreste.test.ts`, se no la prossima volta che la cresta
+ * cambia taglia la velocita' apparente cambia di nuovo in silenzio.
+ *
+ * Resta una scelta di resa: le velocita' **relative** sono fisiche (un'onda di
+ * periodo doppio corre il doppio), e questo e' solo il fattore comune.
+ */
+export const VELOCITA_A_SCHERMO_PX_S = 20;
 const PERIODO_TIPICO_S = 3.5;
 
 /**
@@ -57,7 +77,7 @@ const QUANTE = 1800;
  * una cella, cioe' una tessitura che promette una risoluzione che il dato non
  * ha. Il periodo continua a parlare **con la velocita'**, dove e' onesto.
  */
-const SEMI_CRESTA_PX = 9;
+export const SEMI_CRESTA_PX = 9;
 
 /**
  * Quanto l'arco gonfia in avanti, in frazione della semilunghezza.
