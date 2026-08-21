@@ -1,6 +1,6 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-21 (secondo giro) · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 15 della sezione 4c** (la sovrapposizione della direzione e' quasi vuota sopra zoom 10). Ci sono **quattro commit su `develop` non ancora pubblicati**: `git push origin develop:main` va confermato con l'utente.
+**Aggiornato:** 2026-08-21 (secondo giro) · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 15 della sezione 4c** (la sovrapposizione della direzione e' quasi vuota sopra zoom 10). **`develop` e' avanti su `main`**: la pubblicazione (`git push origin develop:main`) va confermata con l'utente ogni volta, e la verifica si fa aprendo il sito.
 
 **Leggi questo per primo.** Poi, se serve il dettaglio:
 `docs/superpowers/specs/2026-08-13-stato-del-mare-design.md` è il design
