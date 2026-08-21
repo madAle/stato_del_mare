@@ -329,11 +329,12 @@ saltato è archivio che non si recupera.
 
 13. **Arrotondare i valori a schermo.** Chiesto il 2026-08-21, **da fare per
    primo al riavvio**: il periodo dell'onda al **mezzo secondo** più vicino,
-   l'altezza d'onda al **decimo di metro**. Oggi entrambi hanno due decimali
+   l'altezza d'onda ai **5 cm**. Oggi entrambi hanno due decimali
    (`ui/numeri.ts`, `scriviValore`), che è una precisione che il dato non ha.
 
-   Due cose misurate prima di scrivere una riga, perché prese alla lettera
-   creano una contraddizione a schermo:
+   Due cose misurate prima di scrivere una riga. La seconda è già risolta dalla
+   scelta dei 5 cm, ma il perché va tenuto scritto: con il decimo di metro non
+   avrebbe funzionato.
 
    - **il periodo perde cinque livelli su diciassette.** I valori possibili sono
      i diciassette della griglia SWAN, e arrotondati al mezzo secondo diventano
@@ -342,15 +343,23 @@ saltato è archivio che non si recupera.
      bassa della scala, dove sta il mare d'agosto, due stati diversi del mare
      mostreranno lo stesso numero. Non è un errore, è il prezzo: va deciso
      sapendolo. (Un quarto di secondo li terrebbe tutti distinti sopra i 2 s.)
-   - **l'altezza può mostrare il numero di un confine Douglas con il nome del
-     grado sotto.** Con 0,46 m arrotondato si scriverebbe `0,5 m · poco mosso`,
-     mentre la linea a 0,5 m è dove **comincia** "mosso": il numero e il nome si
-     contraddirebbero nello stesso riquadro, ed è precisamente l'invariante che
-     `test/ui/numeri.test.ts` sorveglia. **Serve una decisione**: o il nome si
-     calcola dal valore arrotondato (e allora al confine sbaglia di 5 cm), o dal
-     valore vero (e allora la coppia numero-nome può stonare), o l'altezza si
-     arrotonda ma i confini si trattano come casi a parte. Non risolverla in
-     silenzio.
+   - **l'altezza si arrotonda a 5 cm** (deciso il 2026-08-21, dopo che il decimo
+     di metro aveva mostrato il problema), **e il nome del grado si calcola dal
+     valore arrotondato.** Il perché è una proprietà verificata: **tutti i
+     confini Douglas sono multipli esatti di 5 cm** (0,10 = 2, 0,50 = 10,
+     1,25 = 25, 2,50 = 50, 4 = 80, 6 = 120, 9 = 180, 14 = 280). Quindi numero e
+     nome a schermo **non possono contraddirsi**: se si legge `0,50 m`, il valore
+     arrotondato è ≥ 0,50 e il nome è "mosso". Con il decimo di metro non
+     funzionava, perché 1,25 non è multiplo di 0,1.
+     Il residuo, dichiarato: la classificazione al confine può sbagliare di al
+     più **2,5 cm** (un vero 0,475 si legge `0,50 m · mosso` mentre sarebbe
+     ancora "poco mosso"). È metà del passo che il display dichiara, cioè un
+     errore invisibile e limitato, e va preferito a una coppia numero-nome che si
+     contraddice, perché quella si **vede**.
+     Attenzione all'implementazione: arrotondare in **centimetri interi**
+     (`Math.round(v * 100 / 5) * 5 / 100`), se no 1,25 esce
+     `1.2500000000000002`. Il formato resta a due decimali, così `0,45` e `0,50`
+     si leggono uguali: cambia solo quali valori possono comparire.
 
    Da toccare: `web/src/ui/numeri.ts` (l'unico posto che scrive un valore
    misurato) e i test che fissano il formato a due decimali
