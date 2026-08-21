@@ -345,12 +345,12 @@ export function App({
             />
             isolinee
           </label>
-          {/* L'animazione della direzione: le particelle vanno dove l'onda va,
+          {/* L'animazione della direzione: le creste avanzano dove l'onda va,
               e la loro velocita' viene dal periodo (c = g T / 2 pi), non da un
               numero scelto a mano. */}
           <label
             className="interruttore"
-            title="Le scie mostrano dove l'onda va. Il dato ARPAE dichiara la direzione da cui viene, come si fa col vento: qui e' girata di mezzo giro perche' su una mappa la punta indica dove finisce l'energia."
+            title="Le creste avanzano dove l'onda va, e sono trasversali al moto come le creste vere: in un'onda non viaggia l'acqua, viaggia la cresta. Il dato ARPAE dichiara la direzione da cui l'onda viene, come si fa col vento: qui e' girata di mezzo giro, perche' su una mappa conta dove finisce l'energia."
           >
             <input
               type="checkbox"

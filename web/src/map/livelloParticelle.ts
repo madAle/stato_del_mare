@@ -1,13 +1,13 @@
 import type { CustomLayerInterface, Map as MappaLibre } from "maplibre-gl";
 import type { Griglia } from "../data/catalogo";
 import {
-  avanza, FOTOGRAMMI_PER_PUNTO, mescolaCampo, nasci, PUNTI_SCIA,
+  avanza, cresta, mescolaCampo, nasci,
   type CampiDirezione, type Particella,
 } from "./particelle";
 import { quadroGriglia } from "./proiezione";
 
 /**
- * L'animazione della direzione dell'onda: particelle trascinate dal campo.
+ * L'animazione della direzione dell'onda: creste che avanzano.
  *
  * Il moto vero sta in `particelle.ts`, che si prova senza aprire un browser.
  * Qui c'e' solo il disegno.
@@ -29,35 +29,79 @@ import { quadroGriglia } from "./proiezione";
 const VELOCITA_A_SCHERMO_PX_S = 45;
 const PERIODO_TIPICO_S = 3.5;
 
-/** Quante particelle. Misurato: sotto le mille il campo si legge a macchie. */
-const QUANTE = 2000;
+/**
+ * Quante creste.
+ *
+ * Giudicato a occhio il 2026-08-21, sulla mappa vera a zoom 8: seicento (il
+ * primo tentativo, un terzo delle duemila particelle di prima) davano marche
+ * sparse invece di una direzione, milleduecento si leggevano a zone.
+ * Milleottocento e' inchiostro paragonabile alle duemila scie di prima, e a
+ * quella densita' il **disegno** del campo si legge, cioe' la curvatura delle
+ * creste che si allineano avvicinandosi alla costa.
+ *
+ * Da rivedere se le creste cambiano taglia: la densita' che conta e' quanta
+ * parte dello schermo coprono, non quante sono.
+ */
+const QUANTE = 1800;
+
+/**
+ * Mezza cresta, in pixel di schermo.
+ *
+ * In pixel e non in metri di mare, per la stessa ragione del fattore di
+ * velocita': a zoom 7 una cella e' un pixel e a zoom 15 sono 349, quindi una
+ * lunghezza fisica sarebbe invisibile a un capo e ingombrante all'altro. La
+ * lunghezza d'onda **vera** non e' un'opzione: in acqua profonda vale
+ * `g T al quadrato / 2 pi`, cioe' 85 m col periodo piu' lungo dell'archivio
+ * (7,37 s), che a zoom 11 sono 1,5 pixel. Sopra, dove si vedrebbe, una cella
+ * del modello e' larga 349 pixel: si disegnerebbero quattordici creste dentro
+ * una cella, cioe' una tessitura che promette una risoluzione che il dato non
+ * ha. Il periodo continua a parlare **con la velocita'**, dove e' onesto.
+ */
+const SEMI_CRESTA_PX = 9;
+
+/**
+ * Quanto l'arco gonfia in avanti, in frazione della semilunghezza.
+ *
+ * Due decimi e non tre, scelto a occhio il 2026-08-21 confrontando le due
+ * schermate: con tre la marca si legge come un gabbiano invece che come una
+ * cresta, e insieme ai capi sfumati sembrava piu' corta dei suoi diciotto
+ * pixel. Con due la cresta si legge come una **linea**, che e' cio' che una
+ * cresta e', e la gobba basta ancora a dire da che parte va (vedi `cresta`,
+ * dove sta scritto perche' la gobba esiste e perche' non e' fisica).
+ */
+const BOMBATURA = 0.2;
+
+/** In quanti segmenti si spezza l'arco. Quattro bastano per 18 pixel. */
+const SEGMENTI = 4;
 
 /** Dopo quanti fotogrammi una particella rinasce comunque. */
 const VITA_MASSIMA = 180;
 
 const VERTICE = `#version 300 es
 in vec2 a_pos;
-in float a_eta;
+in float a_peso;
 uniform mat4 u_matrice;
-out float v_eta;
+out float v_peso;
 void main() {
-  v_eta = a_eta;
+  v_peso = a_peso;
   gl_Position = u_matrice * vec4(a_pos, 0.0, 1.0);
 }`;
 
 const FRAMMENTO = `#version 300 es
 precision highp float;
-in float v_eta;
+in float v_peso;
 out vec4 fragColor;
 uniform vec3 u_colore;
 uniform float u_opacita;
 void main() {
-  // La scia sbiadisce verso la coda: e' quello che da' il verso al movimento
-  // senza bisogno di una punta di freccia, che a questa scala sarebbe un
-  // pixel e mezzo. Il quadrato spegneva troppo (con dodici punti, meta' della
-  // scia stava sotto il 25 per cento di opacita' e a schermo restava un
-  // trattino chiarissimo): la sbiadita parte da meta' e arriva a uno.
-  fragColor = vec4(u_colore, u_opacita * (0.35 + 0.65 * v_eta));
+  // La cresta sfuma **verso i capi**, non verso la coda: mille e ottocento archi
+  // tutti a piena opacita' si leggono come un tartan e non come un mare. Il
+  // verso non lo porta piu' la sbiadita ma la convessita' dell'arco, che vale
+  // anche a riproduzione ferma (vedi cresta() in particelle.ts).
+  //
+  // Parte da 0,55 e non da 0,35: con 0,35 i capi svanivano e la cresta si
+  // leggeva piu' corta di quello che e'. Guardato a schermo il 2026-08-21.
+  fragColor = vec4(u_colore, u_opacita * (0.55 + 0.45 * v_peso));
 }`;
 
 function compila(gl: WebGL2RenderingContext, tipo: number, sorgente: string): WebGLShader {
@@ -82,7 +126,9 @@ export class LivelloParticelle implements CustomLayerInterface {
   private quad = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private ultimoTempo = 0;
   private fotogramma = 0;
-  private vertici = new Float32Array(QUANTE * (PUNTI_SCIA + 1) * 2 * 3);
+  // Ogni cresta sono SEGMENTI linee, cioe' due vertici per segmento, tre
+  // float per vertice (x, y, peso).
+  private vertici = new Float32Array(QUANTE * SEGMENTI * 2 * 3);
   private caso = Math.random;
   /**
    * Quello che l'ultimo fotogramma ha davvero disegnato.
@@ -190,32 +236,32 @@ export class LivelloParticelle implements CustomLayerInterface {
       : 0;
     if (dt > 0 && fattore > 0) {
       this.fotogramma++;
-      avanza(this.particelle, this.campi, dt * fattore, this.caso, VITA_MASSIMA,
-             this.fotogramma % FOTOGRAMMI_PER_PUNTO === 0);
+      avanza(this.particelle, this.campi, dt * fattore, this.caso, VITA_MASSIMA);
     }
 
     this.diagnosi = {
       campi: Boolean(this.campi), particelle: this.particelle.length,
       vertici: 0, fattore, pixelPerCella,
     };
+    // La semilunghezza si chiede in pixel e si passa in celle: la geometria
+    // della cresta e' pura e non sa niente di zoom.
+    const semiCelle = pixelPerCella > 0 ? SEMI_CRESTA_PX / pixelPerCella : 0;
     let n = 0;
     for (const p of this.particelle) {
-      // La testa e' la posizione **di adesso**, non l'ultimo punto registrato:
-      // la scia si campiona un fotogramma su sei, quindi disegnando solo i punti
-      // registrati la striscia avanzava a salti di sei fotogrammi mentre la
-      // particella si muoveva a sessanta. Sono gli scatti che si vedevano.
-      const punti = p.scia.length / 2 + 1;
-      if (punti < 2) continue;
-      const dove = (k: number): [number, number] => (k < punti - 1
-        ? [p.scia[k * 2], p.scia[k * 2 + 1]]
-        : [p.i, p.j]);
-      for (let k = 1; k < punti; k++) {
-        for (const [indice, e] of [[k - 1, (k - 1) / (punti - 1)], [k, k / (punti - 1)]] as const) {
-          const [ii, jj] = dove(indice);
-          const [x, y] = this.aMappa(ii, jj);
+      const punti = semiCelle > 0
+        ? cresta(this.campi, p.i, p.j, semiCelle, BOMBATURA, SEGMENTI)
+        : null;
+      // Niente cresta dove non c'e' direzione: la particella rinascera' al
+      // prossimo giro, e un arco inventato affermerebbe un verso che non c'e'.
+      if (!punti) continue;
+      const quanti = punti.length / 2;
+      for (let k = 1; k < quanti; k++) {
+        for (const indice of [k - 1, k]) {
+          const [x, y] = this.aMappa(punti[indice * 2], punti[indice * 2 + 1]);
           this.vertici[n++] = x;
           this.vertici[n++] = y;
-          this.vertici[n++] = e;
+          // Pieno al centro, spento ai capi: 1 - |s|, con s da -1 a 1.
+          this.vertici[n++] = 1 - Math.abs(-1 + (2 * indice) / (quanti - 1));
         }
       }
     }
@@ -226,15 +272,15 @@ export class LivelloParticelle implements CustomLayerInterface {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
     gl.bufferData(gl.ARRAY_BUFFER, this.vertici.subarray(0, n), gl.DYNAMIC_DRAW);
     const pos = gl.getAttribLocation(this.programma, "a_pos");
-    const eta = gl.getAttribLocation(this.programma, "a_eta");
+    const peso = gl.getAttribLocation(this.programma, "a_peso");
     gl.enableVertexAttribArray(pos);
     gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 12, 0);
-    gl.enableVertexAttribArray(eta);
-    gl.vertexAttribPointer(eta, 1, gl.FLOAT, false, 12, 8);
+    gl.enableVertexAttribArray(peso);
+    gl.vertexAttribPointer(peso, 1, gl.FLOAT, false, 12, 8);
     const u = (nome: string) => gl.getUniformLocation(this.programma!, nome);
     gl.uniformMatrix4fv(u("u_matrice"), false, matrice);
-    // Inchiostro scuro, come le isolinee: il campo estivo e' chiaro, e mille
-    // strisce bianche sopra un giallo pallido non si leggono come movimento ma
+    // Inchiostro scuro, come le isolinee: il campo estivo e' chiaro, e centinaia
+    // di segni bianchi sopra un giallo pallido non si leggono come movimento ma
     // come una foschia che sbiadisce il colore sotto.
     gl.uniform3f(u("u_colore"), 0.08, 0.09, 0.11);
     gl.uniform1f(u("u_opacita"), 0.95);

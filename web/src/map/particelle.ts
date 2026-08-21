@@ -34,19 +34,6 @@ import { NODATA } from "../data/frame";
 /** g / 2 pi, in metri al secondo per secondo di periodo. */
 export const VELOCITA_PER_SECONDO_DI_PERIODO = 9.81 / (2 * Math.PI);
 
-/**
- * Quanti punti di scia si ricordano, e ogni quanti fotogrammi se ne prende uno.
- *
- * Non uno per fotogramma: a una velocita' leggibile (una quarantina di pixel al
- * secondo) un fotogramma vale meno di un pixel, quindi una scia di otto passi e'
- * lunga sei pixel. Misurato: a schermo non erano strisce ma una **polvere
- * bianca uniforme**, che invece di mostrare il moto sbiadiva il campo sotto.
- * Campionando un fotogramma su sei, dodici punti coprono un secondo di moto,
- * cioe' una quarantina di pixel: quella si legge come una scia.
- */
-export const PUNTI_SCIA = 12;
-export const FOTOGRAMMI_PER_PUNTO = 6;
-
 export type CampiDirezione = {
   /** Seno della direzione da cui viene l'onda, gia' in unita' fisiche. */
   sin: Float32Array;
@@ -108,11 +95,65 @@ export function velocitaInCelle(
   return { di: est * celleAlSecondo, dj: -nord * celleAlSecondo };
 }
 
+/**
+ * I punti di una cresta d'onda, in coordinate di cella.
+ *
+ * **La forma in cui un'onda si disegna, e non e' quella del vento.** Un punto
+ * che striscia lasciando una scia e' l'idioma delle mappe di vento, e li' e'
+ * corretto: l'aria percorre davvero quella traiettoria. In un'onda no. L'acqua
+ * non viaggia: viaggia la cresta, e la cresta e' una linea **trasversale** alla
+ * direzione di propagazione. Disegnare l'onda come un flusso e' un'affermazione
+ * sbagliata sulla fisica, oltre che una confusione con un'altra grandezza.
+ *
+ * La perpendicolare si prende nel piano delle celle, che e' isotropo (una cella
+ * vale `risoluzioneM` metri di Mercatore in entrambi i versi) e conforme:
+ * perpendicolare qui vuol dire perpendicolare **anche a schermo**, a ogni zoom e
+ * a ogni latitudine, senza correzioni.
+ *
+ * `bombatura` e' quanto l'arco gonfia in avanti, in frazione della
+ * semilunghezza. **Non e' fisica**: le creste vere sono rette, o incurvate dalla
+ * rifrazione dove il fondo sale, senza nessuna convessita' sistematica nel verso
+ * del moto. E' l'unica cosa che porta il verso su un fotogramma **fermo**, ora
+ * che la scia che sbiadiva non c'e' piu': una cresta simmetrica non dice se
+ * l'onda va a nord o a sud. Chi la legge come un dato la sta leggendo male, e
+ * per questo sta scritto qui.
+ *
+ * `null` dove non c'e' direzione, per la stessa ragione per cui una particella
+ * su un buco rinasce invece di restare ferma: un arco su una cella senza dato
+ * afferma un verso che non esiste.
+ */
+export function cresta(
+  campi: CampiDirezione, i: number, j: number,
+  semiCelle: number, bombatura: number, segmenti = 4,
+): number[] | null {
+  const v = velocitaInCelle(campi, i, j);
+  if (!v) return null;
+  const modulo = Math.hypot(v.di, v.dj);
+  if (!(modulo > 0)) return null;
+  // Il verso in cui l'onda va, e la sua perpendicolare: un quarto di giro.
+  const ui = v.di / modulo;
+  const uj = v.dj / modulo;
+  const ni = -uj;
+  const nj = ui;
+
+  const punti: number[] = [];
+  for (let k = 0; k <= segmenti; k++) {
+    // Da un capo all'altro: la parabola (1 - s al quadrato) e' nulla ai capi,
+    // quindi la corda resta esattamente perpendicolare e lunga il doppio della
+    // semilunghezza, qualunque bombatura si scelga.
+    const s = -1 + (2 * k) / segmenti;
+    const gonfio = bombatura * semiCelle * (1 - s * s);
+    punti.push(
+      i + ni * s * semiCelle + ui * gonfio,
+      j + nj * s * semiCelle + uj * gonfio,
+    );
+  }
+  return punti;
+}
+
 export type Particella = {
   i: number;
   j: number;
-  /** Le ultime posizioni, dalla piu' vecchia alla piu' recente. */
-  scia: number[];
   /** Fotogrammi rimasti prima di rinascere comunque. */
   vita: number;
 };
@@ -128,7 +169,7 @@ export function nasci(
 ): Particella {
   const i = caso() * campi.larghezza;
   const j = caso() * campi.altezza;
-  return { i, j, scia: [], vita: 1 + Math.floor(caso() * vitaMassima) };
+  return { i, j, vita: 1 + Math.floor(caso() * vitaMassima) };
 }
 
 /**
@@ -146,8 +187,6 @@ export function avanza(
   dt: number,
   caso: () => number,
   vitaMassima: number,
-  /** Se aggiungere un punto alla scia in questo fotogramma. */
-  registraScia = true,
 ): void {
   for (let n = 0; n < particelle.length; n++) {
     const p = particelle[n];
@@ -155,10 +194,6 @@ export function avanza(
     if (!v || p.vita <= 0) {
       particelle[n] = nasci(campi, caso, vitaMassima);
       continue;
-    }
-    if (registraScia) {
-      p.scia.push(p.i, p.j);
-      if (p.scia.length > PUNTI_SCIA * 2) p.scia.splice(0, 2);
     }
     p.i += v.di * dt;
     p.j += v.dj * dt;
