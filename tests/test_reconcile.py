@@ -25,6 +25,9 @@ from tests.conftest import (
 
 BUCKET = "prova"
 
+# Senza orologio fermo questi test scadono da soli: vedi la fixture nel conftest.
+pytestmark = pytest.mark.usefixtures("orologio_fermo")
+
 
 @pytest.fixture
 def store():

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pytest
+from freezegun import freeze_time
 from netCDF4 import Dataset
 
 ETA, XI = 6, 4
@@ -227,3 +228,27 @@ def profile_file(tmp_path):
 @pytest.fixture
 def sealevel_file(tmp_path):
     return write_sealevel_file(tmp_path / "sealevel.nc")
+
+
+# Il giorno in cui i file dei test sono stati emessi. Il nome dice 20260813 e
+# i tempi dentro i NetCDF sono del 2026-08-12, perche' il file datato D
+# contiene i dati di D-1: le due date sono accoppiate e vanno lette insieme.
+OGGI = "2026-08-13 12:00:00"
+
+
+@pytest.fixture
+def orologio_fermo():
+    """Ferma l'orologio, altrimenti i test che passano da plan() scadono.
+
+    plan() taglia la finestra su datetime.now() e i nomi dei file sono fissati
+    al 20260813: il 22 agosto 2026 quella data e' uscita dagli otto giorni e
+    diciotto test sono diventati rossi senza che nessuno avesse toccato una
+    riga. Nessuno se n'e' accorto per tre giorni, perche' la CI gira sui push
+    e l'ultimo era del 21.
+
+    Si attiva per modulo con `pytestmark`, non d'ufficio su tutta la suite,
+    apposta: sotto il marcatore `rete` si aprono connessioni vere, e un
+    certificato emesso dopo questa data risulterebbe non ancora valido.
+    """
+    with freeze_time(OGGI):
+        yield

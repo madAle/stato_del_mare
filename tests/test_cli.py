@@ -15,6 +15,9 @@ from tests.conftest import synthetic_coords, write_profile_file, write_wave_file
 
 BUCKET = "prova"
 
+# Senza orologio fermo questi test scadono da soli: vedi la fixture nel conftest.
+pytestmark = pytest.mark.usefixtures("orologio_fermo")
+
 
 def _store_finto(monkeypatch):
     monkeypatch.setattr(cli.ObjectStore, "from_env", classmethod(lambda cls: object()))
