@@ -90,3 +90,17 @@ def test_il_download_si_arrende_dopo_tre_tentativi(tmp_path, monkeypatch):
         responses.add(responses.GET, "https://esempio/f.nc.gz", status=503)
     with pytest.raises(Exception):
         source.download("https://esempio/f.nc.gz", tmp_path / "f.nc.gz")
+
+
+@responses.activate
+def test_l_elenco_riprova_dopo_un_errore_temporaneo(monkeypatch):
+    """Il 24 agosto 2026 due run sono morti in venti secondi su un 403
+    passeggero dell'indice ARPAE, mentre il run un'ora dopo chiudeva con
+    zero errori. L'indice era l'unica delle tre chiamate di rete di questo
+    modulo senza tentativi, ed e' quella da cui dipendono le altre due: se
+    cade lei il run non comincia nemmeno."""
+    monkeypatch.setattr(source.time, "sleep", lambda _: None)
+    responses.add(responses.GET, "https://esempio/adriac/", status=403)
+    responses.add(responses.GET, "https://esempio/adriac/", body=INDICE_HTML)
+    file = source.list_source_files("https://esempio/adriac/")
+    assert len(file) == 4

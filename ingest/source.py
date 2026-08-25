@@ -63,11 +63,23 @@ def parse_filename(name: str, base_url: str = ADRIAC_BASE) -> SourceFile | None:
 
 
 def list_source_files(base_url: str = ADRIAC_BASE, session=None) -> list[SourceFile]:
+    """Elenca i file dell'indice, ritentando come fanno HEAD e download.
+
+    L'indice e' la prima chiamata del run e da lei dipendono tutte le altre:
+    senza tentativi un rifiuto passeggero della sorgente ferma il run prima
+    che abbia guardato un solo file. E' successo il 24 agosto 2026, due volte,
+    con un 403 durato meno di un'ora.
+    """
     ses = session or requests
-    risposta = ses.get(base_url, timeout=60)
-    risposta.raise_for_status()
+
+    def _leggi():
+        risposta = ses.get(base_url, timeout=60)
+        risposta.raise_for_status()
+        return risposta.text
+
+    pagina = _con_tentativi(_leggi, f"GET {base_url}")
     file: list[SourceFile] = []
-    for href in _HREF.findall(risposta.text):
+    for href in _HREF.findall(pagina):
         nome = href.rsplit("/", 1)[-1]
         analizzato = parse_filename(nome, base_url)
         if analizzato is not None:
