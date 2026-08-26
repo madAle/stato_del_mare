@@ -1,5 +1,6 @@
 """Elenco e scaricamento dei file ARPAE."""
 import hashlib
+import logging
 
 import pytest
 import responses
@@ -104,3 +105,45 @@ def test_l_elenco_riprova_dopo_un_errore_temporaneo(monkeypatch):
     responses.add(responses.GET, "https://esempio/adriac/", body=INDICE_HTML)
     file = source.list_source_files("https://esempio/adriac/")
     assert len(file) == 4
+
+
+@responses.activate
+def test_il_rifiuto_finisce_nel_log_con_corpo_e_intestazioni(monkeypatch, caplog):
+    """Perche' ARPAE ci rifiuti non lo sappiamo, e cosi' non lo sapremo mai.
+
+    raise_for_status alza e butta via la risposta. Il corpo di un 403 dice se
+    e' un filtro anti bot, un limitatore di frequenza o un deny secco, e sono
+    tre cose con tre rimedi diversi: senza, al prossimo rifiuto si indovina.
+    """
+    monkeypatch.setattr(source.time, "sleep", lambda _: None)
+    responses.add(
+        responses.GET,
+        "https://esempio/adriac/",
+        status=403,
+        body="<html><body>Bot detected: request blocked</body></html>",
+        headers={"Retry-After": "120", "Server": "nginx"},
+    )
+    responses.add(responses.GET, "https://esempio/adriac/", body=INDICE_HTML)
+    with caplog.at_level(logging.WARNING):
+        source.list_source_files("https://esempio/adriac/")
+    assert "403" in caplog.text
+    assert "120" in caplog.text
+    assert "Bot detected" in caplog.text
+
+
+@responses.activate
+def test_l_elenco_sopravvive_a_un_blocco_di_oltre_un_minuto(monkeypatch):
+    """Il 25 agosto 2026 i tre tentativi si sono esauriti tutti in 16 secondi.
+
+    Il log del run lo dice riga per riga: 403, attesa 5, 403, attesa 10, 403,
+    resa. Il blocco durava di piu' di cosi'. Cinque tentativi coprono 75
+    secondi, e se non bastano il run successivo recupera come ha sempre fatto.
+    """
+    attese = []
+    monkeypatch.setattr(source.time, "sleep", attese.append)
+    for _ in range(4):
+        responses.add(responses.GET, "https://esempio/adriac/", status=403)
+    responses.add(responses.GET, "https://esempio/adriac/", body=INDICE_HTML)
+    file = source.list_source_files("https://esempio/adriac/")
+    assert len(file) == 4
+    assert attese == [5, 10, 20, 40]

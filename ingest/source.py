@@ -20,10 +20,16 @@ from .config import ADRIAC_BASE
 
 log = logging.getLogger(__name__)
 
-# Tre tentativi con attesa crescente. Un errore passeggero a meta' di un
-# download da 2 GB non deve costare l'intero run: la riconciliazione lo
-# recupererebbe comunque il giorno dopo, ma senza motivo.
-TENTATIVI = 3
+# Cinque tentativi con attesa crescente: 5, 10, 20 e 40 secondi, 75 in tutto.
+# Erano tre, cioe' 15 secondi, e il 25 agosto 2026 un 403 sull'indice li ha
+# esauriti tutti prima che il blocco finisse. Un errore passeggero a meta' di
+# un download da 2 GB non deve costare l'intero run, e un rifiuto passeggero
+# sull'indice non deve impedirgli di cominciare.
+#
+# Cosa costa se e' sbagliata: un run che fallisce davvero impiega 80 secondi
+# invece di 20, e resta fermo li' senza fare altro. Con dodici run al giorno e
+# una finestra di otto giorni, e' un prezzo che non si vede.
+TENTATIVI = 5
 ATTESA_BASE_S = 5.0
 
 _NOME = re.compile(
@@ -87,6 +93,57 @@ def list_source_files(base_url: str = ADRIAC_BASE, session=None) -> list[SourceF
     return file
 
 
+# Quello che di una risposta rifiutata vale la pena mettere a verbale. La
+# lista e' chiusa apposta: registrare tutte le intestazioni vorrebbe dire
+# scrivere cookie e chiavi in un log pubblico.
+_INTESTAZIONI_UTILI = frozenset(
+    {
+        "retry-after",
+        "server",
+        "content-type",
+        "cf-ray",
+        "cf-mitigated",
+        "x-cache",
+        "via",
+    }
+)
+_CORPO_MAX = 300
+
+
+def _dettaglio(errore: Exception) -> str:
+    """Cosa dice di se' una risposta rifiutata, che raise_for_status butta via.
+
+    Un 403 nudo non distingue un filtro anti bot da un limitatore di frequenza
+    da un deny secco, e i tre vogliono rimedi diversi: il 25 agosto 2026 siamo
+    rimasti senza sapere quale dei tre fosse.
+
+    Non puo' fallire. Una diagnosi che fa cadere il run e' peggio della sua
+    assenza, e questa gira proprio quando qualcosa e' gia' andato storto.
+    """
+    risposta = getattr(errore, "response", None)
+    # `is None` e non la verita': Response.__bool__ vale ok, quindi una
+    # risposta 403 e' falsa e un `if not risposta` la scarterebbe sempre,
+    # cioe' esattamente nel caso per cui questa funzione esiste.
+    if risposta is None:
+        return ""
+    try:
+        intestazioni = {
+            nome: valore
+            for nome, valore in risposta.headers.items()
+            if nome.lower() in _INTESTAZIONI_UTILI
+        }
+        # Su download il corpo arriva in streaming e qui e' gia' chiuso: resta
+        # vuoto, ed e' giusto cosi'. Il rifiuto che ci interessa e' sull'indice,
+        # che e' una GET normale e il corpo ce l'ha.
+        corpo = " ".join(risposta.text.split())[:_CORPO_MAX]
+    except Exception:
+        return f" [stato {risposta.status_code}, corpo non leggibile]"
+    return (
+        f" [stato {risposta.status_code}, intestazioni {intestazioni},"
+        f" corpo: {corpo!r}]"
+    )
+
+
 def _con_tentativi(operazione, descrizione: str):
     """Riprova con attesa crescente, poi rilancia l'ultima eccezione."""
     ultimo: Exception | None = None
@@ -98,9 +155,16 @@ def _con_tentativi(operazione, descrizione: str):
             if tentativo < TENTATIVI - 1:
                 attesa = ATTESA_BASE_S * (2**tentativo)
                 log.warning(
-                    "%s fallito (%s), riprovo fra %.0f s", descrizione, errore, attesa
+                    "%s fallito (%s)%s, riprovo fra %.0f s",
+                    descrizione,
+                    errore,
+                    _dettaglio(errore),
+                    attesa,
                 )
                 time.sleep(attesa)
+    # L'ultimo tentativo e' quello che decide l'esito del run: se il suo
+    # dettaglio non finisce nel log, resta fuori proprio la riga che serve.
+    log.error("%s fallito definitivamente (%s)%s", descrizione, ultimo, _dettaglio(ultimo))
     raise ultimo
 
 
