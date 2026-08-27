@@ -73,6 +73,26 @@ jobs:
       - name: Installa le dipendenze
         run: uv sync
 
+      - name: Da quale indirizzo usciamo
+        # Dal 24 agosto 2026 la sorgente risponde 403 a intermittenza. La
+        # strumentazione ha stabilito cosa NON e': non e' un filtro anti bot
+        # (il corpo e' la pagina predefinita di nginx, senza sfida e senza
+        # Retry-After) e non e' il nostro carico (le richieste fatte prima del
+        # rifiuto sono zero, il 403 arriva sempre alla primissima).
+        #
+        # Resta da distinguere un bando per indirizzo da un fermo generale, e
+        # questa riga e' l'unico modo di farlo: i cinque tentativi dentro il
+        # run escono tutti dallo stesso IP, quindi contro un bando per
+        # indirizzo sono spreco e cio' che ci salva e' il run successivo, che
+        # parte da un IP diverso. Se un indirizzo comparira' sia fra i
+        # rifiutati sia fra gli ammessi, l'ipotesi cade.
+        #
+        # Non puo' far fallire il run: e' una diagnosi, non un requisito.
+        continue-on-error: true
+        run: |
+          ip=$(curl -s --max-time 10 https://checkip.amazonaws.com || echo sconosciuto)
+          echo "IP pubblico del runner: $ip"
+
       - name: Riconcilia
         env:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
