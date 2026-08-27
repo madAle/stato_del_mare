@@ -433,6 +433,45 @@ saltato è archivio che non si recupera.
    riguarda: onesto, ma toglie una cosa che a zoom alto sarebbe utile (dire da
    che parte arriva l'onda dentro un porto).
 
+16. **ARPAE ci risponde 403 a intermittenza, e sappiamo cosa NON e'.** Cinque
+   fallimenti fra il 2026-08-24 e il 2026-08-27, su circa dodici run al giorno.
+   Prima del 24 agosto non ce n'era mai stato uno.
+
+   Cosa e' stabilito, con la prova accanto:
+
+   - **Non e' un filtro anti bot.** Il corpo del 403 e' la pagina predefinita
+     di nginx (`<center>nginx</center>`), senza sfida, senza `cf-ray` e senza
+     `Retry-After`.
+   - **Nasce sul proxy davanti, non sul server dietro.** La 404 dello stesso
+     host e' in stile Apache con `charset=iso-8859-1`, il 403 e' `text/html`
+     nudo: due generatori diversi.
+   - **Non e' il nostro carico dentro il run.** Le richieste fatte prima del
+     rifiuto sono **zero** in tutti i fallimenti strumentati: veniamo respinti
+     alla primissima. Un limitatore acceso dalle nostre settanta HEAD darebbe
+     403 a meta' run, e non e' mai successo.
+   - **Non e' il peso del run precedente.** Un fallimento e' seguito a un run
+     da 389 s e un altro a uno da 102 s, e il run piu' pesante di tutti, 946 s,
+     e' stato seguito da un successo.
+   - **Il blocco supera i 78 secondi.** Il 2026-08-26 i cinque tentativi si
+     sono esauriti tutti, dalle 19:20:07 alle 19:21:25.
+   - **Nessun dato perso finora.** Ogni run successivo ha chiuso con
+     `rimandati 0, errori 0`, e la finestra ADRIAC di 8 giorni assorbe.
+
+   **La domanda aperta, che decide il rimedio.** I cinque tentativi escono
+   tutti dallo stesso runner, quindi dallo stesso IP: contro un bando per
+   indirizzo sono spreco, perche' nessun tentativo da li' passera' mai, e cio'
+   che ci salva e' il run successivo, che parte da un IP diverso. Contro un
+   fermo generale della sorgente, invece, la scala serve. Dal 2026-08-27 il
+   workflow registra l'IP pubblico del runner: **se un indirizzo comparira'
+   sia fra i rifiutati sia fra gli ammessi l'ipotesi del bando cade**, e se i
+   rifiuti cadranno solo su indirizzi mai visti fra gli ammessi va riportata a
+   due o tre la scala dei tentativi in `ingest/source.py`.
+
+   Un buco nelle osservazioni da tenere presente: fra il fallimento delle
+   19:20 del 26 e quello delle 03:22 del 27 non c'e' nessun campione, perche'
+   GitHub ha ritardato di cinque ore il cron delle 22:17. Non si distingue
+   quindi fra due bandi separati e un blocco unico di otto ore.
+
 **Cosa le correzioni hanno lasciato aperto di proposito** (dettaglio in
 `docs/superpowers/revisioni/2026-08-13-ingestore-correzioni.md`, sezione "Cosa
 non ho fatto"):
