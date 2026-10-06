@@ -13,6 +13,9 @@ Codici di uscita, pensati per un cron che deve decidere da solo cosa fare:
        cambiate, una variabile attesa e' stata rinominata, oppure due stazioni
        diverse collidono sullo stesso identificativo
     3  configurazione incompleta, fallira' identico a ogni tentativo
+    4  la sorgente respinge l'indirizzo da cui usciamo (403): non serve ne'
+       aspettare ne' un umano, serve ripartire subito da un'altra macchina, e
+       il workflow lo fa da solo quando vede questo codice
 
 La distinzione fra 1 e gli altri due e' l'unica cosa che impedisce a un cron di
 ritentare all'infinito un guasto che non si risolve da solo.
@@ -27,6 +30,7 @@ from pathlib import Path
 from .config import WINDOW_DAYS
 from .frames import UnitMismatch, VariableMissing
 from .reconcile import GridMismatch, gruppi_di_interesse, reconcile
+from .source import SorgenteRifiuta
 from .stations import StationCollision
 from .storage import ObjectStore
 
@@ -149,6 +153,13 @@ def main(argv: list[str] | None = None) -> int:
                 "necessario."
             )
             return 2
+        except SorgenteRifiuta as errore:
+            logging.error("LA SORGENTE RESPINGE QUESTO INDIRIZZO: %s", errore)
+            logging.error(
+                "aspettare non serve: si riparte da un'altra macchina, cioe' "
+                "da un altro indirizzo."
+            )
+            return 4
 
     logging.info(
         "pianificati %d, lavorati %d, saltati %d, rimandati %d, errori %d",

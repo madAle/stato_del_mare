@@ -387,6 +387,27 @@ def test_il_secondo_giro_non_rilavora_nulla(store, tmp_path, monkeypatch, wave_f
     assert secondo["skipped"] >= 1
 
 
+def test_un_rifiuto_della_sorgente_a_meta_run_ferma_il_run(store, tmp_path, monkeypatch):
+    """Il rifiuto e' per indirizzo: se arriva su un file arrivera' su tutti.
+
+    Contato come errore del singolo file, il run proseguirebbe raccogliendo un
+    rifiuto per ogni file e uscirebbe 1, cioe' "aspetta il run dopo", invece
+    di 4, cioe' "riparti subito da un'altra macchina".
+    """
+    f = _file_sorgente()
+    monkeypatch.setattr(reconcile.stations, "fetch_stations", lambda session=None: [])
+    monkeypatch.setattr(reconcile.source, "list_source_files", lambda session=None: [f])
+
+    def rifiuta(*a, **k):
+        raise reconcile.source.SorgenteRifiuta(f"GET {f.url}: 403")
+
+    monkeypatch.setattr(reconcile.source, "head", rifiuta)
+    monkeypatch.setattr(reconcile.source, "download", rifiuta)
+
+    with pytest.raises(reconcile.source.SorgenteRifiuta):
+        reconcile.reconcile(store, tmp_path, window_days=8)
+
+
 def test_un_file_invariato_non_viene_riscaricato(store, tmp_path, monkeypatch):
     """Il secondo run non deve ripagare 1,9 GB per riconfermare cio' che sa.
 

@@ -492,6 +492,12 @@ def reconcile(
             # mentre l'archivio si riempie di valori sbagliati (o non si
             # riempie affatto, nel caso di una variabile rinominata).
             raise
+        except source.SorgenteRifiuta:
+            # Il rifiuto e' per indirizzo: arrivato su un file, arrivera' su
+            # tutti. Contarlo come errore del file vorrebbe dire uscire 1,
+            # "aspetta il run dopo", invece di ripartire subito da un'altra
+            # macchina, che e' l'unica cosa che lo supera.
+            raise
         except Exception:
             log.exception("errore su %s", w.source.name)
             esito["errors"] += 1

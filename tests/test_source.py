@@ -95,25 +95,56 @@ def test_il_download_si_arrende_dopo_tre_tentativi(tmp_path, monkeypatch):
 
 @responses.activate
 def test_l_elenco_riprova_dopo_un_errore_temporaneo(monkeypatch):
-    """Il 24 agosto 2026 due run sono morti in venti secondi su un 403
-    passeggero dell'indice ARPAE, mentre il run un'ora dopo chiudeva con
-    zero errori. L'indice era l'unica delle tre chiamate di rete di questo
-    modulo senza tentativi, ed e' quella da cui dipendono le altre due: se
-    cade lei il run non comincia nemmeno."""
+    """L'indice e' la chiamata da cui dipendono le altre due: se cade lei il
+    run non comincia nemmeno. Un 503 passeggero non deve bastare a fermarlo.
+
+    Questo test nacque il 24 agosto 2026 con un 403, che allora sembrava
+    passeggero. Non lo era: vedi `test_un_403_non_si_ritenta`."""
     monkeypatch.setattr(source.time, "sleep", lambda _: None)
-    responses.add(responses.GET, "https://esempio/adriac/", status=403)
+    responses.add(responses.GET, "https://esempio/adriac/", status=503)
     responses.add(responses.GET, "https://esempio/adriac/", body=INDICE_HTML)
     file = source.list_source_files("https://esempio/adriac/")
     assert len(file) == 4
 
 
 @responses.activate
-def test_il_rifiuto_finisce_nel_log_con_corpo_e_intestazioni(monkeypatch, caplog):
-    """Perche' ARPAE ci rifiuti non lo sappiamo, e cosi' non lo sapremo mai.
+def test_un_403_non_si_ritenta(monkeypatch):
+    """ARPAE respinge interi blocchi di indirizzi, e un 403 non passa aspettando.
 
-    raise_for_status alza e butta via la risposta. Il corpo di un 403 dice se
-    e' un filtro anti bot, un limitatore di frequenza o un deny secco, e sono
-    tre cose con tre rimedi diversi: senza, al prossimo rifiuto si indovina.
+    Misurato dal 27 agosto al 5 ottobre 2026 su 146 run con l'IP registrato:
+    i 6 rifiutati uscivano tutti da 128.24.0.0/16 o 134.33.0.0/16, i 140
+    ammessi nessuno. E nessun run ha mai superato un 403 ritentando: chi lo
+    prendeva lo prendeva 5 volte su 5, e i tentativi costavano 75 secondi per
+    niente. Il rimedio e' un'altra macchina, non un'altra attesa.
+    """
+    attese = []
+    monkeypatch.setattr(source.time, "sleep", attese.append)
+    responses.add(responses.GET, "https://esempio/adriac/", status=403)
+    responses.add(responses.GET, "https://esempio/adriac/", body=INDICE_HTML)
+    with pytest.raises(source.SorgenteRifiuta):
+        source.list_source_files("https://esempio/adriac/")
+    assert len(responses.calls) == 1
+    assert attese == []
+
+
+@responses.activate
+def test_anche_una_head_rifiutata_non_si_ritenta(monkeypatch):
+    """Il rifiuto e' per indirizzo, non per file: vale per ogni chiamata."""
+    monkeypatch.setattr(source.time, "sleep", lambda _: None)
+    responses.add(responses.HEAD, "https://esempio/f.nc.gz", status=403)
+    with pytest.raises(source.SorgenteRifiuta):
+        source.head("https://esempio/f.nc.gz")
+    assert len(responses.calls) == 1
+
+
+@responses.activate
+def test_il_rifiuto_finisce_nel_log_con_corpo_e_intestazioni(monkeypatch, caplog):
+    """raise_for_status alza e butta via la risposta.
+
+    Il corpo di un 403 dice se e' un filtro anti bot, un limitatore di
+    frequenza o un deny secco, e sono tre cose con tre rimedi diversi. E' cosi'
+    che si e' stabilito che il rifiuto di ARPAE e' un deny secco di nginx: se
+    un giorno cambiasse natura, deve essere questa riga a dirlo.
     """
     monkeypatch.setattr(source.time, "sleep", lambda _: None)
     responses.add(
@@ -123,8 +154,7 @@ def test_il_rifiuto_finisce_nel_log_con_corpo_e_intestazioni(monkeypatch, caplog
         body="<html><body>Bot detected: request blocked</body></html>",
         headers={"Retry-After": "120", "Server": "nginx"},
     )
-    responses.add(responses.GET, "https://esempio/adriac/", body=INDICE_HTML)
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING), pytest.raises(source.SorgenteRifiuta):
         source.list_source_files("https://esempio/adriac/")
     assert "403" in caplog.text
     assert "120" in caplog.text
@@ -132,17 +162,17 @@ def test_il_rifiuto_finisce_nel_log_con_corpo_e_intestazioni(monkeypatch, caplog
 
 
 @responses.activate
-def test_l_elenco_sopravvive_a_un_blocco_di_oltre_un_minuto(monkeypatch):
-    """Il 25 agosto 2026 i tre tentativi si sono esauriti tutti in 16 secondi.
+def test_l_elenco_sopravvive_a_un_guasto_di_oltre_un_minuto(monkeypatch):
+    """Cinque tentativi con attesa crescente coprono 75 secondi.
 
-    Il log del run lo dice riga per riga: 403, attesa 5, 403, attesa 10, 403,
-    resa. Il blocco durava di piu' di cosi'. Cinque tentativi coprono 75
-    secondi, e se non bastano il run successivo recupera come ha sempre fatto.
+    La scala nacque il 25 agosto 2026 per un 403, che poi si e' rivelato un
+    bando per indirizzo e non passa aspettando. Resta per i guasti che passano
+    davvero, come un 503 o una connessione caduta a meta' di 2 GB.
     """
     attese = []
     monkeypatch.setattr(source.time, "sleep", attese.append)
     for _ in range(4):
-        responses.add(responses.GET, "https://esempio/adriac/", status=403)
+        responses.add(responses.GET, "https://esempio/adriac/", status=503)
     responses.add(responses.GET, "https://esempio/adriac/", body=INDICE_HTML)
     file = source.list_source_files("https://esempio/adriac/")
     assert len(file) == 4

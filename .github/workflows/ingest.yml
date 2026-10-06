@@ -31,6 +31,12 @@ on:
     # dell'ora). Misurato qui: la prima esecuzione oraria, programmata alle
     # 10:00, e' partita alle 10:38. Trentotto minuti su una cadenza oraria si
     # mangiano meta' del guadagno per cui la cadenza esiste.
+    #
+    # E GitHub non le esegue tutte. Fino al 26 agosto 2026 ne partivano 10-12
+    # al giorno; da allora circa quattro, verso le 14, le 18, le 21 e la
+    # mezzanotte UTC, con ritardi fino a due ore. Nessuna risulta cancellata:
+    # semplicemente non partono. La cadenza qui sotto resta quella voluta, ma
+    # quella vera e' una ogni tre o quattro ore.
     - cron: "17 9-19 * * *"
     # Rete di sicurezza per una giornata anomala, cosi' non si aspetta il
     # mattino dopo.
@@ -52,75 +58,28 @@ concurrency:
 
 jobs:
   ingest:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v7
+    uses: ./.github/workflows/riconcilia.yml
+    with:
+      dry_run: ${{ inputs.dry_run == true }}
+      rilavora: ${{ inputs.rilavora || '' }}
+    secrets: inherit
 
-      - name: Libera spazio su disco
-        # I file 3D di previsione arrivano a quasi 2 GB compressi. Il runner
-        # ne ha 14 di partenza, con diversi GB occupati da immagini inutili.
-        run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
-          df -h /
-
-      # setup-uv non pubblica piu' i tag di major dalla v8: si aggancia alla
-      # versione esatta, o al githash. Va alzato a mano quando esce una major.
-      - uses: astral-sh/setup-uv@v10.0.1
-        with:
-          enable-cache: true
-
-      - name: Installa le dipendenze
-        run: uv sync
-
-      - name: Da quale indirizzo usciamo
-        # Dal 24 agosto 2026 la sorgente risponde 403 a intermittenza. La
-        # strumentazione ha stabilito cosa NON e': non e' un filtro anti bot
-        # (il corpo e' la pagina predefinita di nginx, senza sfida e senza
-        # Retry-After) e non e' il nostro carico (le richieste fatte prima del
-        # rifiuto sono zero, il 403 arriva sempre alla primissima).
-        #
-        # Resta da distinguere un bando per indirizzo da un fermo generale, e
-        # questa riga e' l'unico modo di farlo: i cinque tentativi dentro il
-        # run escono tutti dallo stesso IP, quindi contro un bando per
-        # indirizzo sono spreco e cio' che ci salva e' il run successivo, che
-        # parte da un IP diverso. Se un indirizzo comparira' sia fra i
-        # rifiutati sia fra gli ammessi, l'ipotesi cade.
-        #
-        # Non puo' far fallire il run: e' una diagnosi, non un requisito.
-        continue-on-error: true
-        run: |
-          ip=$(curl -s --max-time 10 https://checkip.amazonaws.com || echo sconosciuto)
-          echo "IP pubblico del runner: $ip"
-
-      - name: Riconcilia
-        env:
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          DRY_RUN: ${{ inputs.dry_run }}
-          RILAVORA: ${{ inputs.rilavora }}
-        run: |
-          set +e
-          # Gli ingressi passano da variabili d'ambiente e non interpolati nel
-          # comando: un valore scelto da chi lancia il workflow non deve poter
-          # diventare shell.
-          argomenti=()
-          [ "$DRY_RUN" = "true" ] && argomenti+=(--dry-run)
-          [ -n "$RILAVORA" ] && argomenti+=(--rilavora "$RILAVORA")
-          uv run python -m ingest reconcile "${argomenti[@]}"
-          codice=$?
-          set -e
-          # I codici di uscita esistono per distinguere "riprova domani" da
-          # "serve un umano". Senza questo blocco GitHub li appiattirebbe tutti
-          # su "step fallito" e la distinzione andrebbe persa proprio dove
-          # serve, cioe' nella mail di notifica.
-          case $codice in
-            0) echo "Ingestione completata." ;;
-            1) echo "::warning::Alcuni file non sono stati lavorati. Ritentabile: il run successivo recupera dalla finestra di 8 giorni." ;;
-            2) echo "::error::GUASTO CHE NON SI RISOLVE DA SOLO. Il run si e' fermato. Serve intervento umano PRIMA del prossimo run. Quattro cause possibili, tutte nel log: la griglia sorgente e' cambiata (l'archivio si riempirebbe di valori nel posto sbagliato), le unita' di una variabile sono cambiate (numeri plausibili e sbagliati), una variabile attesa e' stata rinominata alla sorgente (nessun run successivo la fa tornare), oppure due stazioni diverse collidono sullo stesso identificativo (le loro storie si mescolerebbero in un archivio permanente)." ;;
-            3) echo "::error::Configurazione incompleta: mancano credenziali o variabili d'ambiente. Ogni tentativo fallira' allo stesso modo finche' non viene corretta." ;;
-            *) echo "::error::Uscita inattesa: $codice" ;;
-          esac
-          exit $codice
+  # Parte solo se ARPAE ha respinto la prima macchina con un 403. Una macchina
+  # nuova esce da un indirizzo nuovo, e il bando e' per blocco di indirizzi: i
+  # respinti sono stati 6 su 146 run misurati, quindi due di fila respinti per
+  # caso capitano una volta su qualche centinaio. Se capita, il run e' rosso,
+  # ed e' giusto: potrebbe essere un bando generale.
+  #
+  # Prima di questo job un 403 voleva dire un run rosso e il dato in ritardo
+  # fino al run successivo, cioe' di circa quattro ore: dieci run rossi su
+  # quattordici fra agosto e ottobre 2026, nessuno dei quali chiedeva niente a
+  # nessuno.
+  altra-macchina:
+    needs: ingest
+    if: needs.ingest.outputs.rifiutato == 'true'
+    uses: ./.github/workflows/riconcilia.yml
+    with:
+      dry_run: ${{ inputs.dry_run == true }}
+      rilavora: ${{ inputs.rilavora || '' }}
+      ultima_macchina: true
+    secrets: inherit

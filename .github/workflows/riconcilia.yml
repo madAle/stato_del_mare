@@ -1,0 +1,115 @@
+name: Riconcilia
+
+# Il lavoro di un'ingestione, scritto una volta sola e chiamato da ingest.yml
+# fino a due volte, ciascuna su una macchina nuova. Non ha cron suoi: si lancia
+# solo da li'.
+#
+# Perche' due volte: ARPAE respinge con un 403 interi blocchi di indirizzi da
+# cui escono i runner di GitHub (128.24.0.0/16 e 134.33.0.0/16, misurato su
+# 146 run dal 27 agosto al 5 ottobre 2026: i 6 respinti tutti li', i 140
+# ammessi nessuno). Da un indirizzo respinto nessuna attesa ha mai fatto
+# passare una richiesta, mentre una macchina nuova ha un indirizzo nuovo.
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        type: boolean
+        default: false
+      rilavora:
+        type: string
+        default: ""
+      ultima_macchina:
+        description: "Se la sorgente respinge anche questa, il run e' rosso"
+        type: boolean
+        default: false
+    outputs:
+      rifiutato:
+        description: "true se la sorgente ha respinto questa macchina e ne serve un'altra"
+        value: ${{ jobs.riconcilia.outputs.rifiutato }}
+
+jobs:
+  riconcilia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      rifiutato: ${{ steps.riconcilia.outputs.rifiutato }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Libera spazio su disco
+        # I file 3D di previsione arrivano a quasi 2 GB compressi. Il runner
+        # ne ha 14 di partenza, con diversi GB occupati da immagini inutili.
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          df -h /
+
+      # setup-uv non pubblica piu' i tag di major dalla v8: si aggancia alla
+      # versione esatta, o al githash. Va alzato a mano quando esce una major.
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Installa le dipendenze
+        run: uv sync
+
+      - name: Da quale indirizzo usciamo
+        id: ip
+        # E' la riga che ha stabilito che il 403 e' un bando per blocco di
+        # indirizzi, e resta: se un giorno un indirizzo comparisse sia fra i
+        # respinti sia fra gli ammessi, il rimedio delle due macchine
+        # smetterebbe di essere quello giusto, e sarebbe questa a dirlo.
+        #
+        # Non puo' far fallire il run: e' una diagnosi, non un requisito.
+        continue-on-error: true
+        run: |
+          ip=$(curl -s --max-time 10 https://checkip.amazonaws.com || echo sconosciuto)
+          echo "IP pubblico del runner: $ip"
+          echo "indirizzo=$ip" >> "$GITHUB_OUTPUT"
+
+      - name: Riconcilia
+        id: riconcilia
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RILAVORA: ${{ inputs.rilavora }}
+          ULTIMA_MACCHINA: ${{ inputs.ultima_macchina }}
+          INDIRIZZO: ${{ steps.ip.outputs.indirizzo }}
+        run: |
+          set +e
+          # Gli ingressi passano da variabili d'ambiente e non interpolati nel
+          # comando: un valore scelto da chi lancia il workflow non deve poter
+          # diventare shell.
+          argomenti=()
+          [ "$DRY_RUN" = "true" ] && argomenti+=(--dry-run)
+          [ -n "$RILAVORA" ] && argomenti+=(--rilavora "$RILAVORA")
+          uv run python -m ingest reconcile "${argomenti[@]}"
+          codice=$?
+          set -e
+          # I codici di uscita esistono per distinguere "riprova domani" da
+          # "serve un umano". Senza questo blocco GitHub li appiattirebbe tutti
+          # su "step fallito" e la distinzione andrebbe persa proprio dove
+          # serve, cioe' nella mail di notifica.
+          case $codice in
+            0) echo "Ingestione completata." ;;
+            1) echo "::warning::Alcuni file non sono stati lavorati. Ritentabile: il run successivo recupera dalla finestra di 8 giorni." ;;
+            2) echo "::error::GUASTO CHE NON SI RISOLVE DA SOLO. Il run si e' fermato. Serve intervento umano PRIMA del prossimo run. Quattro cause possibili, tutte nel log: la griglia sorgente e' cambiata (l'archivio si riempirebbe di valori nel posto sbagliato), le unita' di una variabile sono cambiate (numeri plausibili e sbagliati), una variabile attesa e' stata rinominata alla sorgente (nessun run successivo la fa tornare), oppure due stazioni diverse collidono sullo stesso identificativo (le loro storie si mescolerebbero in un archivio permanente)." ;;
+            3) echo "::error::Configurazione incompleta: mancano credenziali o variabili d'ambiente. Ogni tentativo fallira' allo stesso modo finche' non viene corretta." ;;
+            4)
+              if [ "$ULTIMA_MACCHINA" = "true" ]; then
+                echo "::error::La sorgente ha respinto anche la seconda macchina (IP $INDIRIZZO). Due indirizzi diversi respinti di fila non sono piu' il solito blocco di indirizzi: puo' essere un bando generale, e ARPAE conserva solo 8 giorni."
+              else
+                # Esce 0 apposta: un job rosso farebbe rosso il run anche se
+                # la seconda macchina riesce, e la mail direbbe "intervieni"
+                # per una cosa che si e' gia' risolta da sola.
+                echo "::warning::La sorgente ha respinto questa macchina (IP $INDIRIZZO): si riparte da un'altra."
+                echo "rifiutato=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              ;;
+            *) echo "::error::Uscita inattesa: $codice" ;;
+          esac
+          exit $codice

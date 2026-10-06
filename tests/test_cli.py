@@ -8,7 +8,7 @@ from ingest import __main__ as cli
 from ingest import reconcile
 from ingest.frames import UnitMismatch
 from ingest.reconcile import GridMismatch
-from ingest.source import parse_filename
+from ingest.source import SorgenteRifiuta, parse_filename
 from ingest.stations import StationCollision
 from ingest.storage import ObjectStore
 from tests.conftest import synthetic_coords, write_profile_file, write_wave_file
@@ -62,6 +62,19 @@ def test_i_file_rimandati_escono_con_uno(monkeypatch):
     _store_finto(monkeypatch)
     monkeypatch.setattr(cli, "reconcile", lambda *a, **k: _esito(deferred=2))
     assert cli.main(["reconcile"]) == 1
+
+
+def test_il_rifiuto_della_sorgente_esce_con_quattro(monkeypatch):
+    """Ne' 1 ne' 2: il rimedio non e' aspettare il run dopo e non e' un umano,
+    e' ripartire subito da un'altra macchina, cioe' da un altro indirizzo. Il
+    workflow lo fa solo se riconosce questo codice."""
+    _store_finto(monkeypatch)
+
+    def rifiuta(*a, **k):
+        raise SorgenteRifiuta("GET https://esempio/adriac/: 403")
+
+    monkeypatch.setattr(cli, "reconcile", rifiuta)
+    assert cli.main(["reconcile"]) == 4
 
 
 def test_la_griglia_cambiata_esce_con_due(monkeypatch):

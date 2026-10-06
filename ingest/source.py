@@ -21,16 +21,20 @@ from .config import ADRIAC_BASE
 log = logging.getLogger(__name__)
 
 # Cinque tentativi con attesa crescente: 5, 10, 20 e 40 secondi, 75 in tutto.
-# Erano tre, cioe' 15 secondi, e il 25 agosto 2026 un 403 sull'indice li ha
-# esauriti tutti prima che il blocco finisse. Un errore passeggero a meta' di
-# un download da 2 GB non deve costare l'intero run, e un rifiuto passeggero
-# sull'indice non deve impedirgli di cominciare.
+# Erano tre, cioe' 15 secondi, e furono alzati il 25 agosto 2026 per un 403
+# sull'indice che sembrava passeggero. Non lo era (vedi _con_tentativi, che il
+# 403 non lo ritenta piu'), ma la scala resta per i guasti che passano davvero:
+# un errore a meta' di un download da 2 GB non deve costare l'intero run.
 #
 # Cosa costa se e' sbagliata: un run che fallisce davvero impiega 80 secondi
-# invece di 20, e resta fermo li' senza fare altro. Con dodici run al giorno e
-# una finestra di otto giorni, e' un prezzo che non si vede.
+# invece di 20, e resta fermo li' senza fare altro. Con una finestra di otto
+# giorni e' un prezzo che non si vede.
 TENTATIVI = 5
 ATTESA_BASE_S = 5.0
+
+class SorgenteRifiuta(Exception):
+    """La sorgente ha risposto 403: respinge l'indirizzo da cui usciamo."""
+
 
 _NOME = re.compile(
     r"^(?P<date>\d{8})_adriac_1km_(?P<output>avg|his|qck)_(?P<group>[A-Za-z0-9]+)_(?P<kind>an|fc)\.nc\.gz$"
@@ -72,9 +76,9 @@ def list_source_files(base_url: str = ADRIAC_BASE, session=None) -> list[SourceF
     """Elenca i file dell'indice, ritentando come fanno HEAD e download.
 
     L'indice e' la prima chiamata del run e da lei dipendono tutte le altre:
-    senza tentativi un rifiuto passeggero della sorgente ferma il run prima
-    che abbia guardato un solo file. E' successo il 24 agosto 2026, due volte,
-    con un 403 durato meno di un'ora.
+    senza tentativi un guasto passeggero della sorgente ferma il run prima
+    che abbia guardato un solo file. Un 403 invece non passa ritentando, ed e'
+    proprio qui che arriva: solleva SorgenteRifiuta alla prima risposta.
     """
     ses = session or requests
 
@@ -144,13 +148,32 @@ def _dettaglio(errore: Exception) -> str:
     )
 
 
+def _stato(errore: Exception) -> int | None:
+    risposta = getattr(errore, "response", None)
+    return None if risposta is None else risposta.status_code
+
+
 def _con_tentativi(operazione, descrizione: str):
-    """Riprova con attesa crescente, poi rilancia l'ultima eccezione."""
+    """Riprova con attesa crescente, poi rilancia l'ultima eccezione.
+
+    Il 403 fa eccezione e non si ritenta: ARPAE respinge interi blocchi di
+    indirizzi (128.24.0.0/16 e 134.33.0.0/16, misurato su 146 run fra agosto e
+    ottobre 2026), e da un indirizzo respinto nessuna attesa ha mai fatto
+    passare una richiesta. Chi lo riceve deve ripartire da un'altra macchina.
+    """
     ultimo: Exception | None = None
     for tentativo in range(TENTATIVI):
         try:
             return operazione()
         except Exception as errore:
+            if _stato(errore) == 403:
+                log.error(
+                    "%s rifiutato (%s)%s: da questo indirizzo non si ritenta",
+                    descrizione,
+                    errore,
+                    _dettaglio(errore),
+                )
+                raise SorgenteRifiuta(f"{descrizione}: {errore}") from errore
             ultimo = errore
             if tentativo < TENTATIVI - 1:
                 attesa = ATTESA_BASE_S * (2**tentativo)
