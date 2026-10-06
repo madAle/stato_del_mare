@@ -1,6 +1,7 @@
 """Il client dell'object storage, contro un S3 finto in memoria."""
 import boto3
 import pytest
+from botocore.awsrequest import AWSResponse
 from moto import mock_aws
 
 from ingest.storage import CACHE_IMMUTABILE, ObjectStore
@@ -33,6 +34,42 @@ def test_un_frame_viene_marcato_gzip_e_immutabile(store):
 def test_giro_completo_del_json(store):
     store.put_json("catalog.json", {"schema_version": 1})
     assert store.get_json("catalog.json") == {"schema_version": 1}
+
+
+class _CorpoFinto:
+    def __init__(self, dati: bytes):
+        self._dati = dati
+
+    def stream(self, **_):
+        yield self._dati
+
+
+def test_una_scrittura_sopravvive_a_un_guasto_interno_di_r2(store, monkeypatch):
+    """Il 2 e il 3 settembre 2026, verso le 00:20 UTC, R2 ha risposto
+    InternalError a una PUT degli indici finche' botocore non si e' arreso:
+    "reached max retries: 4", cioe' la modalita' legacy e i suoi cinque
+    tentativi. Due run rossi, nessun dato perso (gli indici si rifanno al run
+    dopo), ma una mail che chiedeva un intervento per una cosa che R2 dice da
+    se' di riprovare.
+    """
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    guasti = {"restanti": 5}
+
+    def guasto_interno(request, **_):
+        if guasti["restanti"] == 0:
+            return None  # la richiesta prosegue verso l'S3 finto
+        guasti["restanti"] -= 1
+        corpo = (
+            b"<Error><Code>InternalError</Code>"
+            b"<Message>We encountered an internal error. Please try again.</Message>"
+            b"</Error>"
+        )
+        return AWSResponse(request.url, 500, {}, _CorpoFinto(corpo))
+
+    store.client.meta.events.register_first("before-send.s3.PutObject", guasto_interno)
+    store.put_json("index/hwave/an/2026-09.json", {"hours": {}})
+    assert guasti["restanti"] == 0
+    assert store.get_json("index/hwave/an/2026-09.json") == {"hours": {}}
 
 
 def test_un_json_assente_restituisce_none(store):

@@ -8,6 +8,7 @@ import json
 import os
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 # I frame non cambiano mai: una volta scritta, l'analisi delle 14:00 del
@@ -15,6 +16,17 @@ from botocore.exceptions import ClientError
 CACHE_IMMUTABILE = "public, max-age=31536000, immutable"
 # Catalogo e indici cambiano a ogni run.
 CACHE_BREVE = "public, max-age=300"
+
+# Il predefinito di botocore e' la modalita' legacy: cinque tentativi con
+# attese di pochi secondi in tutto. Il 2 e il 3 settembre 2026 R2 ha risposto
+# InternalError a una PUT finche' non si sono esauriti, e il run e' finito
+# rosso. La modalita' standard attende con jitter fino a 20 s per volta, e
+# dieci tentativi coprono in media circa un minuto.
+#
+# Cosa costa se e' sbagliata: una scrittura che fallisce davvero ci mette un
+# minuto o due in piu' ad arrendersi. Se il guasto di R2 dura di piu', il run
+# resta rosso e gli indici si rifanno al run dopo, come gia' succedeva.
+_TENTATIVI = Config(retries={"mode": "standard", "max_attempts": 10})
 
 
 class ObjectStore:
@@ -33,6 +45,7 @@ class ObjectStore:
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             region_name=region,
+            config=_TENTATIVI,
         )
 
     @classmethod
