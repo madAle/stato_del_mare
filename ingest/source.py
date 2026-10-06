@@ -36,6 +36,10 @@ class SorgenteRifiuta(Exception):
     """La sorgente ha risposto 403: respinge l'indirizzo da cui usciamo."""
 
 
+class FileSparito(Exception):
+    """La sorgente ha risposto 404: il file non c'e' piu', o non c'e' ancora."""
+
+
 _NOME = re.compile(
     r"^(?P<date>\d{8})_adriac_1km_(?P<output>avg|his|qck)_(?P<group>[A-Za-z0-9]+)_(?P<kind>an|fc)\.nc\.gz$"
 )
@@ -174,6 +178,11 @@ def _con_tentativi(operazione, descrizione: str):
                     _dettaglio(errore),
                 )
                 raise SorgenteRifiuta(f"{descrizione}: {errore}") from errore
+            if _stato(errore) == 404:
+                # Un file che non c'e' non compare aspettando. Cosa voglia
+                # dire lo decide chi chiama: per un file gia' in archivio
+                # niente, per uno mai ingerito un dato perso.
+                raise FileSparito(f"{descrizione}: {errore}") from errore
             ultimo = errore
             if tentativo < TENTATIVI - 1:
                 attesa = ATTESA_BASE_S * (2**tentativo)

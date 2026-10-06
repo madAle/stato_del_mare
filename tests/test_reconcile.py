@@ -408,6 +408,58 @@ def test_un_rifiuto_della_sorgente_a_meta_run_ferma_il_run(store, tmp_path, monk
         reconcile.reconcile(store, tmp_path, window_days=8)
 
 
+def _gia_ingerito(store, f):
+    istante = datetime(2026, 8, 13, tzinfo=timezone.utc)
+    gia_visto = manifest.RunManifest(
+        source_url=f.url,
+        source_sha256="qualunque",
+        source_bytes=42,
+        source_last_modified="Thu, 13 Aug 2026 10:34:00 GMT",
+        reference_time=istante,
+        kind=f.kind,
+        group=f.group,
+        grid_ref="grid.json",
+        ingested_at=istante,
+        frames=[],
+    )
+    store.put_json(manifest.manifest_key(f.date, f.kind, f.group), gia_visto.to_dict())
+
+
+def _sparito(url, session=None):
+    raise reconcile.source.FileSparito(f"HEAD {url}: 404")
+
+
+def test_un_file_gia_in_archivio_sparito_alla_sorgente_si_salta(store, tmp_path, monkeypatch):
+    """Il giorno che esce dalla finestra ARPAE non e' un errore.
+
+    Il 5 ottobre 2026 alle 01:00 UTC l'indice elencava ancora i file del 27
+    settembre, gia' cancellati: nove 404, run rosso, e tutti e nove erano in
+    archivio da giorni. Un file gia' ingerito che sparisce alla sorgente non
+    ha piu' niente da dare, e il suo manifest deve tornare comunque, perche'
+    e' cio' che ripara gli indici di un run morto prima della fase indici.
+    """
+    f = _file_sorgente()
+    _gia_ingerito(store, f)
+    monkeypatch.setattr(reconcile.source, "head", _sparito)
+
+    def non_chiamare(*a, **k):
+        raise AssertionError("non deve scaricare un file che non c'e' piu'")
+
+    monkeypatch.setattr(reconcile.source, "download", non_chiamare)
+
+    esito = reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path)
+    assert esito.deduplicato is True
+    assert esito.manifesto.source_sha256 == "qualunque"
+
+
+def test_un_file_sparito_prima_di_essere_ingerito_resta_un_errore(store, tmp_path, monkeypatch):
+    """Questo invece e' un dato perso per sempre, e il run deve dirlo."""
+    f = _file_sorgente()
+    monkeypatch.setattr(reconcile.source, "head", _sparito)
+    with pytest.raises(reconcile.source.FileSparito):
+        reconcile.process_file(store, None, reconcile.PlannedWork(f, "x"), tmp_path)
+
+
 def test_un_file_invariato_non_viene_riscaricato(store, tmp_path, monkeypatch):
     """Il secondo run non deve ripagare 1,9 GB per riconfermare cio' che sa.
 

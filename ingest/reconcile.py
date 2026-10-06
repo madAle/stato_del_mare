@@ -259,9 +259,22 @@ def process_file(
     # nessuno rimuove. Qualche fallimento di rete in un run di recupero
     # basterebbe a saturare il disco e far cadere anche i file sani.
     try:
-        testa = source.head(f.url, session=session)
         chiave_manifest = manifest.manifest_key(f.date, f.kind, f.group)
         esistente = store.get_json(chiave_manifest)
+        try:
+            testa = source.head(f.url, session=session)
+        except source.FileSparito:
+            # ARPAE cancella il giorno piu' vecchio verso le 01:00 UTC, e per
+            # qualche istante l'indice lo elenca ancora: il 5 ottobre 2026
+            # nove file del 27 settembre hanno fatto rosso un run, ed erano
+            # tutti in archivio da giorni. Se il manifest c'e', il file non ha
+            # piu' niente da dare. Se non c'e', e' un dato perso per sempre e
+            # deve restare un errore.
+            if not esistente:
+                log.error("sparito alla sorgente prima di essere ingerito: %s", f.name)
+                raise
+            log.info("uscito dalla sorgente, gia' in archivio: %s", f.name)
+            return EsitoFile(manifest.RunManifest.from_dict(esistente), True)
 
         # Scorciatoia prima di scaricare. L'impronta autorevole resta lo
         # sha256, ma calcolarla impone di scaricare il file: senza questo

@@ -138,6 +138,23 @@ def test_anche_una_head_rifiutata_non_si_ritenta(monkeypatch):
 
 
 @responses.activate
+def test_un_404_non_si_ritenta(monkeypatch):
+    """Un file che non c'e' non compare aspettando.
+
+    Il 5 ottobre 2026 l'indice ARPAE elencava ancora il giorno uscito dalla
+    finestra mentre i file erano gia' cancellati: nove HEAD, cinque tentativi
+    ciascuna, dodici minuti di attese su risposte che non potevano cambiare.
+    """
+    attese = []
+    monkeypatch.setattr(source.time, "sleep", attese.append)
+    responses.add(responses.HEAD, "https://esempio/f.nc.gz", status=404)
+    with pytest.raises(source.FileSparito):
+        source.head("https://esempio/f.nc.gz")
+    assert len(responses.calls) == 1
+    assert attese == []
+
+
+@responses.activate
 def test_il_rifiuto_finisce_nel_log_con_corpo_e_intestazioni(monkeypatch, caplog):
     """raise_for_status alza e butta via la risposta.
 
