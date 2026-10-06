@@ -72,6 +72,10 @@ mondo. E la verifica si fa **aprendo il sito**, non guardando il workflow verde:
 in produzione le isolinee sono state assenti per un giorno con tutti i workflow
 verdi.
 
+**Spingere `develop` mette già in produzione l'ingestore**: `develop` è il
+branch predefinito su GitHub e i cron girano lì, non su `main`. Anche quel push
+va confermato con l'utente.
+
 I comandi di ispezione delle fonti dati stanno in `STATO.md`, sezione 5. Per
 ispezionare un NetCDF senza installare nulla a livello di sistema:
 

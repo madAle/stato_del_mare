@@ -1,11 +1,11 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-08-21 (secondo giro) · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 15 della sezione 4c** (la sovrapposizione della direzione e' quasi vuota sopra zoom 10). **`develop` e' avanti su `main`**: la pubblicazione (`git push origin develop:main`) va confermata con l'utente ogni volta, e la verifica si fa aprendo il sito.
+**Aggiornato:** 2026-10-06 · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 16 della sezione 4c** (i run rossi dell'ingestione: cause trovate, tre rimedi committati; resta da vederli girare in produzione), poi il punto 15 (la sovrapposizione della direzione e' quasi vuota sopra zoom 10). **`develop` e' avanti su `main`**: la pubblicazione (`git push origin develop:main`) va confermata con l'utente ogni volta, e la verifica si fa aprendo il sito.
 
 **Leggi questo per primo.** Poi, se serve il dettaglio:
 `docs/superpowers/specs/2026-08-13-stato-del-mare-design.md` è il design
 approvato (emendato due volte, le modifiche sono citate qui);
-`docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md` sono le 34
+`docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md` sono le 37
 decisioni dell'ingestore con il motivo e il costo se sbagliate;
 `docs/superpowers/revisioni/2026-08-18-spa-decisioni.md` sono le 95 della SPA,
 scritte con la stessa regola. **Le decisioni si leggono, non si rifanno**: ognuna
@@ -60,10 +60,13 @@ ingest/           ingestore Python, gira su GitHub Actions una volta al giorno
   catalog.py      index/ e catalog.json
   reconcile.py    orchestratore
   __main__.py     CLI e codici di uscita
-tests/            147 test nella suite predefinita, più 4 dietro il marcatore `rete`
+tests/            166 test nella suite predefinita, più 4 dietro il marcatore `rete`
 .github/workflows/
   ci.yml          ruff e pytest su push e pull request
-  ingest.yml      ingestione oraria 09-19 UTC + rete alle 22, al minuto 17
+  ingest.yml      ingestione oraria 09-19 UTC + rete alle 22, al minuto 17;
+                  chiama riconcilia.yml, e una seconda volta se ARPAE respinge
+                  la prima macchina (uscita 4)
+  riconcilia.yml  i passi di un'ingestione, scritti una volta sola
   deploy.yml      pubblica la SPA su Cloudflare Pages a ogni push su main
   basemap.yml     pubblica la basemap sul bucket (a mano, workflow_dispatch)
 web/              la SPA: Vite, React 19, MapLibre 5, TypeScript
@@ -115,7 +118,9 @@ strumenti/        si eseguono a mano, una volta sola
 **Codici di uscita della CLI**, su cui il cron decide: `0` tutto bene, `1`
 qualche file fallito o rimandato (ritentabile), `2` guasto che non si risolve
 da solo e serve un umano (griglia cambiata, unità cambiate, variabile rinominata
-o sparita, collisione fra stazioni), `3` configurazione incompleta.
+o sparita, collisione fra stazioni), `3` configurazione incompleta, `4` la
+sorgente respinge l'indirizzo da cui usciamo (403): non si aspetta, si riparte
+da un'altra macchina, e il workflow lo fa da solo.
 
 **Il vincolo architetturale da non rompere:** `src/data/` e `src/map/` non devono conoscere React, e React non deve mai girare a 60 fps. Il ciclo di animazione vive in `src/map/` e riporta il tempo a React al massimo 10 volte al secondo. Se questo confine salta, il framework diventa insostituibile e l'autoplay singhiozza.
 
@@ -181,9 +186,12 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-**La prima cosa da fare al riavvio è il punto 15**, la sovrapposizione della
-direzione che sopra zoom 10 è quasi vuota: è misurata, non è una regressione, e
-vuole una decisione (dove nascono le particelle) prima di una correzione.
+**La prima cosa da fare al riavvio è il punto 16**: i tre rimedi ai run rossi
+dell'ingestione sono committati, e va guardato il primo 403 vero per vedere la
+seconda macchina partire da un altro IP. Poi **il punto 15**, la sovrapposizione
+della direzione che sopra zoom 10 è quasi vuota: è misurata, non è una
+regressione, e vuole una decisione (dove nascono le particelle) prima di una
+correzione.
 
 Gli altri punti aperti sono 7 (giudicare la palette a occhio, vuole te), 9
 (Comacchio, ferma su mezza giornata in barca), 11 (gli ultimi due layer:
@@ -433,44 +441,53 @@ saltato è archivio che non si recupera.
    riguarda: onesto, ma toglie una cosa che a zoom alto sarebbe utile (dire da
    che parte arriva l'onda dentro un porto).
 
-16. **ARPAE ci risponde 403 a intermittenza, e sappiamo cosa NON e'.** Cinque
-   fallimenti fra il 2026-08-24 e il 2026-08-27, su circa dodici run al giorno.
-   Prima del 24 agosto non ce n'era mai stato uno.
+16. **I run rossi dell'ingestione: tre cause, nessun dato perso, tre rimedi
+   committati il 2026-10-06 e non ancora visti girare in produzione.**
+   Misurato su tutti i run fra il 22 agosto e il 5 ottobre: 14 rossi, e ogni
+   manifest dal 10 agosto al 4 ottobre e' in archivio (controllati uno per
+   uno sul bucket). Le cause, con il rimedio (decisioni 35-37 del registro
+   dell'ingestore):
 
-   Cosa e' stabilito, con la prova accanto:
+   | Causa | Run rossi | Rimedio |
+   |---|---|---|
+   | 403 di ARPAE sull'indice | 10 | niente tentativi, uscita 4, seconda macchina |
+   | 404 sul giorno che esce dalla finestra | 1 | se il manifest c'e', si salta |
+   | `InternalError` di R2 su una PUT degli indici | 2 | botocore `standard`, 10 tentativi |
 
-   - **Non e' un filtro anti bot.** Il corpo del 403 e' la pagina predefinita
-     di nginx (`<center>nginx</center>`), senza sfida, senza `cf-ray` e senza
-     `Retry-After`.
-   - **Nasce sul proxy davanti, non sul server dietro.** La 404 dello stesso
-     host e' in stile Apache con `charset=iso-8859-1`, il 403 e' `text/html`
-     nudo: due generatori diversi.
-   - **Non e' il nostro carico dentro il run.** Le richieste fatte prima del
-     rifiuto sono **zero** in tutti i fallimenti strumentati: veniamo respinti
-     alla primissima. Un limitatore acceso dalle nostre settanta HEAD darebbe
-     403 a meta' run, e non e' mai successo.
-   - **Non e' il peso del run precedente.** Un fallimento e' seguito a un run
-     da 389 s e un altro a uno da 102 s, e il run piu' pesante di tutti, 946 s,
-     e' stato seguito da un successo.
-   - **Il blocco supera i 78 secondi.** Il 2026-08-26 i cinque tentativi si
-     sono esauriti tutti, dalle 19:20:07 alle 19:21:25.
-   - **Nessun dato perso finora.** Ogni run successivo ha chiuso con
-     `rimandati 0, errori 0`, e la finestra ADRIAC di 8 giorni assorbe.
+   **Il 403 e' un bando per blocco di indirizzi**, ed e' la domanda che questo
+   punto lasciava aperta. Su 146 run con l'IP registrato i 6 respinti
+   uscivano tutti da `128.24.0.0/16` o `134.33.0.0/16` (blocchi dichiarati da
+   GitHub in `gh api meta`), dei 140 ammessi nessuno. E nessun run ha mai
+   superato un 403 ritentando: 5 tentativi su 5 respinti, ogni volta. Il
+   rimedio quindi non e' aspettare ma cambiare macchina: il workflow lo fa da
+   solo, e il run e' rosso solo se la seconda e' respinta anche lei.
 
-   **La domanda aperta, che decide il rimedio.** I cinque tentativi escono
-   tutti dallo stesso runner, quindi dallo stesso IP: contro un bando per
-   indirizzo sono spreco, perche' nessun tentativo da li' passera' mai, e cio'
-   che ci salva e' il run successivo, che parte da un IP diverso. Contro un
-   fermo generale della sorgente, invece, la scala serve. Dal 2026-08-27 il
-   workflow registra l'IP pubblico del runner: **se un indirizzo comparira'
-   sia fra i rifiutati sia fra gli ammessi l'ipotesi del bando cade**, e se i
-   rifiuti cadranno solo su indirizzi mai visti fra gli ammessi va riportata a
-   due o tre la scala dei tentativi in `ingest/source.py`.
+   **Da guardare al primo 403 vero**, che e' la prova che conta (il ramo e'
+   provato solo simulando l'uscita in locale): nel run devono comparire due
+   job, il primo verde con l'avviso "si riparte da un'altra", il secondo con
+   un IP diverso. Se la seconda macchina avesse lo stesso IP della prima, il
+   rimedio non funziona e va ripensato.
 
-   Un buco nelle osservazioni da tenere presente: fra il fallimento delle
-   19:20 del 26 e quello delle 03:22 del 27 non c'e' nessun campione, perche'
-   GitHub ha ritardato di cinque ore il cron delle 22:17. Non si distingue
-   quindi fra due bandi separati e un blocco unico di otto ore.
+   **Il 404** arriva perche' ARPAE cancella il giorno piu' vecchio verso le
+   01:00 UTC e l'indice lo elenca ancora per qualche istante: il 5 ottobre,
+   nove file del 27 settembre gia' in archivio, run rosso e dodici minuti di
+   tentativi inutili. Un file sparito **senza** manifest resta un errore,
+   perche' quello e' un dato perso per sempre.
+
+   **Due cose viste lungo la strada, che non sono errori del codice**:
+   - **GitHub esegue circa 4 run al giorno invece di 12** dal 26 agosto, verso
+     le 14, le 18, le 21 e la mezzanotte UTC, con ritardi fino a due ore.
+     Nessuno risulta cancellato: non partono. Postilla alla decisione 34;
+   - **`qck_sl` (livello del mare) manca il 21/08 e il 30/08**, analisi e
+     previsione: ARPAE non lo ha mai pubblicato quei giorni (il piano ha
+     contato 70 file su 72 per tutta la finestra). Non si recupera. Il buco
+     vero e' che **nessun run lo segnala**: il piano conta solo cio' che
+     l'indice elenca, quindi un file mai pubblicato non lascia traccia nel
+     log. Non e' stato corretto.
+
+   Il 26 agosto c'e' stato un buco di otto ore senza campioni, perche'
+   GitHub ha ritardato di cinque ore il cron delle 22:17; con il bando per
+   indirizzo stabilito, non importa piu' distinguere se fosse un blocco solo.
 
 **Cosa le correzioni hanno lasciato aperto di proposito** (dettaglio in
 `docs/superpowers/revisioni/2026-08-13-ingestore-correzioni.md`, sezione "Cosa
@@ -997,8 +1014,8 @@ rifarlo:
 - Repo unico: `/Users/ale/source/personal/stato_del_mare`
 - Branch corrente: `develop` (nessun `main` locale)
 - Remote: `origin` = `git@github.com:madAle/stato_del_mare.git`
-- **`develop` è allineato a `origin/develop`**, albero pulito (verificato il 2026-08-21)
-- **`main` è alla pubblicazione del 2026-08-21** (commit `18ee36f`), verificata aprendo il sito: cinque grandezze nel selettore, 269 isolinee, 2000 particelle, zero errori in console. I commit di sola documentazione fatti dopo **non hanno bisogno di essere pubblicati**: `main` resta indietro di quelli, ed è corretto
+- **`origin/main` è a `6b48439`** (2026-08-27), cioè l'ultima pubblicazione della SPA. I commit dopo toccano solo l'ingestore e la documentazione, quindi **non hanno bisogno di essere pubblicati su `main`**: la SPA non cambia
+- **L'ingestione gira da `develop`, non da `main`**: `develop` è il branch predefinito su GitHub, e i cron girano sul branch predefinito. Quindi **spingere `develop` è già mettere in produzione l'ingestore**, e va confermato come una pubblicazione
 - **La pubblicazione è `git push origin develop:main`**, che fa scattare il workflow `Deploy`. `main` non esiste in locale: si spinge `develop` sul suo posto
 - `feat/ingestore` è stato unito con un merge non fast-forward e cancellato in locale. Resta su `origin` come `origin/feat/ingestore`: se servisse rileggere la storia dell'esecuzione commit per commit, è lì.
 - Lo spazio di lavoro `.superpowers/sdd/2026-08-13-ingestore/` è stato cancellato a lavoro concluso. I documenti che contavano erano già stati copiati in `docs/superpowers/revisioni/`.
