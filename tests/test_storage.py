@@ -2,6 +2,7 @@
 import boto3
 import pytest
 from botocore.awsrequest import AWSResponse
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 from ingest.storage import CACHE_IMMUTABILE, ObjectStore
@@ -70,6 +71,88 @@ def test_una_scrittura_sopravvive_a_un_guasto_interno_di_r2(store, monkeypatch):
     store.put_json("index/hwave/an/2026-09.json", {"hours": {}})
     assert guasti["restanti"] == 0
     assert store.get_json("index/hwave/an/2026-09.json") == {"hours": {}}
+
+
+_LIMITE_SULLA_CHIAVE = (
+    b'<?xml version="1.0" encoding="UTF-8"?><Error><Code>ServiceUnavailable</Code>'
+    b"<Message>Reduce your concurrent request rate for the same object.</Message>"
+    b"</Error>"
+)
+
+
+def _respingi(store, stato: int, corpo: bytes, volte: int | None) -> list[str]:
+    """Fa rispondere `stato` alle prime `volte` PUT (a tutte, se None).
+
+    Restituisce l'elenco, che si allunga a ogni richiesta che parte.
+    """
+    richieste: list[str] = []
+
+    def risposta(request, **_):
+        richieste.append(request.url)
+        if volte is not None and len(richieste) > volte:
+            return None  # la richiesta prosegue verso l'S3 finto
+        return AWSResponse(request.url, stato, {}, _CorpoFinto(corpo))
+
+    store.client.meta.events.register_first("before-send.s3.PutObject", risposta)
+    return richieste
+
+
+def test_una_scrittura_sopravvive_al_limite_di_r2_sulla_stessa_chiave(
+    store, monkeypatch
+):
+    """Il 12 novembre 2026 alle 17:48 UTC R2 ha respinto una PUT degli indici
+    con "Reduce your concurrent request rate for the same object", e botocore
+    non ha ritentato nemmeno una volta: la modalita' standard ritenta 500, 502,
+    503 e 504, non il 429 con cui R2 applica il limite di una scrittura al
+    secondo per chiave. Run rosso, e per sei ore indici aggiornati a meta'.
+
+    Le attese devono superare il secondo, altrimenti il ritento ricade nella
+    stessa finestra che ha fatto scattare il limite.
+    """
+    attese: list[float] = []
+    monkeypatch.setattr("time.sleep", attese.append)
+    richieste = _respingi(store, 429, _LIMITE_SULLA_CHIAVE, volte=2)
+
+    store.put_json("index/hwave/fc/2026-11.json", {"hours": {}})
+
+    assert store.get_json("index/hwave/fc/2026-11.json") == {"hours": {}}
+    assert len(richieste) == 3
+    assert len(attese) == 2
+    assert all(attesa > 1 for attesa in attese)
+
+
+def test_il_limite_sulla_chiave_che_non_passa_resta_un_errore(store, monkeypatch):
+    """Se R2 insiste, ci si arrende: il run finisce rosso e gli indici si
+    rifanno al run dopo, come gia' succede. Non si aspetta all'infinito."""
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    richieste = _respingi(store, 429, _LIMITE_SULLA_CHIAVE, volte=None)
+
+    with pytest.raises(ClientError):
+        store.put_json("index/hwave/fc/2026-11.json", {"hours": {}})
+
+    assert 1 < len(richieste) <= 10
+
+
+def test_una_scrittura_respinta_mette_a_verbale_stato_e_chiave(
+    store, monkeypatch, caplog
+):
+    """Del guasto del 12 novembre il log non diceva ne' lo stato HTTP ne' la
+    chiave: il 429 si e' dovuto dedurre dalla forma del messaggio, e quali
+    indici fossero rimasti indietro non si e' potuto dire. Vale per ogni
+    scrittura respinta, non solo per quelle che si ritentano."""
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    negato = b"<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>"
+    richieste = _respingi(store, 403, negato, volte=None)
+
+    with caplog.at_level("WARNING", logger="ingest.storage"):
+        with pytest.raises(ClientError):
+            store.put_json("index/ubar/an/2026-11.json", {"hours": {}})
+
+    assert len(richieste) == 1  # un 403 non passa aspettando
+    verbale = caplog.text
+    assert "403" in verbale
+    assert "AccessDenied" in verbale
+    assert "index/ubar/an/2026-11.json" in verbale
 
 
 def test_un_json_assente_restituisce_none(store):

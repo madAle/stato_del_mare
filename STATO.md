@@ -1,11 +1,11 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-10-06 · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 16 della sezione 4c** (i run rossi dell'ingestione: cause trovate, tre rimedi committati; resta da vederli girare in produzione), poi il punto 15 (la sovrapposizione della direzione e' quasi vuota sopra zoom 10). **`develop` e' avanti su `main`**: la pubblicazione (`git push origin develop:main`) va confermata con l'utente ogni volta, e la verifica si fa aprendo il sito.
+**Aggiornato:** 2026-11-13 · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 16 della sezione 4c** (i run rossi dell'ingestione: quattro cause trovate, quattro rimedi; l'ultimo, il ritento del 429 di R2, non e' ancora pubblicato), poi il punto 15 (la sovrapposizione della direzione e' quasi vuota sopra zoom 10). **`develop` e' avanti su `main`**: la pubblicazione (`git push origin develop:main`) va confermata con l'utente ogni volta, e la verifica si fa aprendo il sito.
 
 **Leggi questo per primo.** Poi, se serve il dettaglio:
 `docs/superpowers/specs/2026-08-13-stato-del-mare-design.md` è il design
 approvato (emendato due volte, le modifiche sono citate qui);
-`docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md` sono le 37
+`docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md` sono le 38
 decisioni dell'ingestore con il motivo e il costo se sbagliate;
 `docs/superpowers/revisioni/2026-08-18-spa-decisioni.md` sono le 95 della SPA,
 scritte con la stessa regola. **Le decisioni si leggono, non si rifanno**: ognuna
@@ -441,18 +441,21 @@ saltato è archivio che non si recupera.
    riguarda: onesto, ma toglie una cosa che a zoom alto sarebbe utile (dire da
    che parte arriva l'onda dentro un porto).
 
-16. **I run rossi dell'ingestione: tre cause, nessun dato perso, tre rimedi
-   committati il 2026-10-06 e non ancora visti girare in produzione.**
-   Misurato su tutti i run fra il 22 agosto e il 5 ottobre: 14 rossi, e ogni
-   manifest dal 10 agosto al 4 ottobre e' in archivio (controllati uno per
-   uno sul bucket). Le cause, con il rimedio (decisioni 35-37 del registro
-   dell'ingestore):
+16. **I run rossi dell'ingestione: quattro cause, nessun dato perso, quattro
+   rimedi. I primi tre sono in produzione dal 2026-10-06; il quarto e' nel
+   codice dal 2026-11-13 e va pubblicato.**
+   Misurato su tutti i run fra il 22 agosto e il 13 novembre: 15 rossi, di
+   cui uno solo dopo il 6 ottobre, su circa 120 run. Ogni manifest dal 10
+   agosto al 4 ottobre e' in archivio (controllati uno per uno sul bucket),
+   e gli indici di novembre portano il riferimento del 12. Le cause, con il
+   rimedio (decisioni 35-38 del registro dell'ingestore):
 
    | Causa | Run rossi | Rimedio |
    |---|---|---|
    | 403 di ARPAE sull'indice | 10 | niente tentativi, uscita 4, seconda macchina |
    | 404 sul giorno che esce dalla finestra | 1 | se il manifest c'e', si salta |
    | `InternalError` di R2 su una PUT degli indici | 2 | botocore `standard`, 10 tentativi |
+   | 429 di R2 su una PUT degli indici | 1 | ritento in `ObjectStore`, attese di 2, 5 e 10 s |
 
    **Il 403 e' un bando per blocco di indirizzi**, ed e' la domanda che questo
    punto lasciava aperta. Su 146 run con l'IP registrato i 6 respinti
@@ -473,6 +476,21 @@ saltato è archivio che non si recupera.
    nove file del 27 settembre gia' in archivio, run rosso e dodici minuti di
    tentativi inutili. Un file sparito **senza** manifest resta un errore,
    perche' quello e' un dato perso per sempre.
+
+   **Il 429 di R2** e' il limite di una scrittura al secondo sulla stessa
+   chiave ("Reduce your concurrent request rate for the same object"), e
+   botocore non lo ritenta: la modalita' `standard` copre 500, 502, 503 e
+   504. Il 12 novembre e' costato un run rosso e sei ore di indici
+   aggiornati a meta' (17:48-23:42 UTC), cioe' la previsione nuova visibile
+   per alcune grandezze e non per altre. **Due cose non sono stabilite**: lo
+   stato 429 e' dedotto dalla forma del messaggio (identico a quello che il
+   client produce contro un R2 finto che risponde 429, diverso da quello di
+   un 503), e non si sa perche' R2 abbia visto concorrenza, dato che ogni
+   chiave si scrive una volta per run. **Da guardare alla prossima riga
+   `scrittura respinta` nel log**: porta lo stato HTTP vero e le
+   ritrasmissioni di botocore. Se lo stato non e' 429 il rimedio e'
+   sbagliato; se le ritrasmissioni sono maggiori di zero, la concorrenza
+   l'ha fatta botocore ritrasmettendo dopo una connessione caduta.
 
    **Due cose viste lungo la strada, che non sono errori del codice**:
    - **GitHub esegue circa 4 run al giorno invece di 12** dal 26 agosto, verso

@@ -5,7 +5,9 @@ i test stubbano.
 """
 
 import json
+import logging
 import os
+import time
 
 import boto3
 from botocore.config import Config
@@ -27,6 +29,26 @@ CACHE_BREVE = "public, max-age=300"
 # minuto o due in piu' ad arrendersi. Se il guasto di R2 dura di piu', il run
 # resta rosso e gli indici si rifanno al run dopo, come gia' succedeva.
 _TENTATIVI = Config(retries={"mode": "standard", "max_attempts": 10})
+
+# Quei tentativi non coprono il 429: la modalita' standard ritenta 500, 502,
+# 503 e 504, e R2 applica con un 429 il limite di una scrittura al secondo
+# sulla stessa chiave ("Reduce your concurrent request rate for the same
+# object", codice ServiceUnavailable). Il 12 novembre 2026 una PUT degli indici
+# e' stata respinta cosi' e non e' stata ritentata nemmeno una volta: run
+# rosso, e sei ore di indici aggiornati a meta'. Misurato contro un R2 finto:
+# con un 503 partono tutti i tentativi, con un 429 una richiesta sola.
+#
+# Le attese partono sopra il secondo perche' il limite e' al secondo: un
+# ritento piu' rapido ricadrebbe nella finestra che lo ha fatto scattare.
+#
+# Cosa costa se e' sbagliata: che fosse un 429 e' dedotto dalla forma del
+# messaggio, non letto. Se non lo era, questo ritento non scatta mai e il
+# guasto torna identico: per questo ogni scrittura respinta mette a verbale lo
+# stato HTTP. Se lo era ma R2 insiste, ci si arrende 17 secondi piu' tardi.
+_ATTESE_SUL_LIMITE = (2, 5, 10)
+_LIMITE_SUPERATO = 429
+
+log = logging.getLogger(__name__)
 
 
 class ObjectStore:
@@ -66,6 +88,32 @@ class ObjectStore:
             secret_key=os.environ["R2_SECRET_ACCESS_KEY"],
         )
 
+    def _put(self, key: str, **argomenti) -> None:
+        """Una PUT che ritenta il limite di R2 sulla stessa chiave."""
+        for attesa in (*_ATTESE_SUL_LIMITE, None):
+            try:
+                self.client.put_object(Bucket=self.bucket, Key=key, **argomenti)
+                return
+            except ClientError as errore:
+                metadati = errore.response.get("ResponseMetadata", {})
+                stato = metadati.get("HTTPStatusCode")
+                si_ritenta = stato == _LIMITE_SUPERATO and attesa is not None
+                # RetryAttempts dice se botocore aveva gia' ritrasmesso: se un
+                # giorno il limite scatta dopo una sua ritrasmissione, la
+                # seconda scrittura sulla stessa chiave l'abbiamo fatta noi.
+                log.warning(
+                    "scrittura respinta: %s, HTTP %s, codice %s, "
+                    "ritrasmissioni di botocore %s, %s",
+                    key,
+                    stato,
+                    errore.response.get("Error", {}).get("Code"),
+                    metadati.get("RetryAttempts"),
+                    f"riprovo fra {attesa} s" if si_ritenta else "non si ritenta",
+                )
+                if not si_ritenta:
+                    raise
+                time.sleep(attesa)
+
     def put_frame(self, key: str, blob: bytes) -> None:
         """Carica un frame gia' compresso.
 
@@ -74,9 +122,8 @@ class ObjectStore:
         decompressione: fetch().arrayBuffer() restituisce gia' i byte in
         chiaro.
         """
-        self.client.put_object(
-            Bucket=self.bucket,
-            Key=key,
+        self._put(
+            key,
             Body=blob,
             ContentType="application/octet-stream",
             ContentEncoding="gzip",
@@ -84,9 +131,8 @@ class ObjectStore:
         )
 
     def put_json(self, key: str, obj: dict) -> None:
-        self.client.put_object(
-            Bucket=self.bucket,
-            Key=key,
+        self._put(
+            key,
             Body=json.dumps(obj, ensure_ascii=False, indent=1).encode("utf-8"),
             ContentType="application/json; charset=utf-8",
             CacheControl=CACHE_BREVE,
@@ -99,9 +145,8 @@ class ObjectStore:
         quando cambia la griglia sorgente, e congelarlo nella CDN vanificherebbe
         proprio la guardia che deve alimentare.
         """
-        self.client.put_object(
-            Bucket=self.bucket,
-            Key=key,
+        self._put(
+            key,
             Body=data,
             ContentType="application/octet-stream",
             CacheControl=CACHE_BREVE,
