@@ -1,6 +1,8 @@
 # La corrente disegnata, design
 
-Data: 2026-08-21 · Stato: **approvato, da implementare**.
+Data: 2026-08-21 · Stato: **approvato, implementazione a meta'** sul branch
+`worktree-feat-corrente` (task 1-5 di 8 del piano, non in `develop`; vedi
+`STATO.md`, sezione 4c, punto 11).
 
 Estende la spec principale (`2026-08-13-stato-del-mare-design.md`, sezione 7) su
 un punto che quella lasciava aperto: la corrente. È il **primo campo vettoriale**

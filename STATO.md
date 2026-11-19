@@ -1,6 +1,6 @@
 # Stato del lavoro
 
-**Aggiornato:** 2026-11-13 · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione. **Al riavvio: il punto 16 della sezione 4c** (i run rossi dell'ingestione: quattro cause trovate, quattro rimedi; l'ultimo, il ritento del 429 di R2, non e' ancora pubblicato), poi il punto 15 (la sovrapposizione della direzione e' quasi vuota sopra zoom 10). **`develop` e' avanti su `main`**: la pubblicazione (`git push origin develop:main`) va confermata con l'utente ogni volta, e la verifica si fa aprendo il sito.
+**Aggiornato:** 2026-11-19 · **Branch:** `develop`, release su `main` · **Fase:** ingestore e SPA in produzione; la corrente e' a meta' (task 1-5 di 8) sul branch `worktree-feat-corrente`, non in `develop`. **Al riavvio: il punto 16 della sezione 4c** (i run rossi dell'ingestione: quattro cause trovate, quattro rimedi, tutti in produzione; restano da guardare il primo 403 vero e la prossima riga `scrittura respinta`), poi il punto 15 (la sovrapposizione della direzione e' quasi vuota sopra zoom 10). **Se mancano `.venv` o `web/node_modules`**, prima di qualunque comando `uv sync` e `npm --prefix web ci` (sezione 5). **`develop` e' avanti su `main`**: la pubblicazione (`git push origin develop:main`) va confermata con l'utente ogni volta, e la verifica si fa aprendo il sito.
 
 **Leggi questo per primo.** Poi, se serve il dettaglio:
 `docs/superpowers/specs/2026-08-13-stato-del-mare-design.md` è il design
@@ -186,16 +186,16 @@ Niente.
 
 ### 4c. Da scrivere, in questo ordine
 
-**La prima cosa da fare al riavvio è il punto 16**: i tre rimedi ai run rossi
-dell'ingestione sono committati, e va guardato il primo 403 vero per vedere la
-seconda macchina partire da un altro IP. Poi **il punto 15**, la sovrapposizione
+**La prima cosa da fare al riavvio è il punto 16**: i quattro rimedi ai run
+rossi dell'ingestione sono in produzione, e va guardato il primo 403 vero per
+vedere la seconda macchina partire da un altro IP. Poi **il punto 15**, la sovrapposizione
 della direzione che sopra zoom 10 è quasi vuota: è misurata, non è una
 regressione, e vuole una decisione (dove nascono le particelle) prima di una
 correzione.
 
 Gli altri punti aperti sono 7 (giudicare la palette a occhio, vuole te), 9
-(Comacchio, ferma su mezza giornata in barca), 11 (gli ultimi due layer:
-direzione come voce del selettore, e la corrente), 12 (dire di che onda si
+(Comacchio, ferma su mezza giornata in barca), 11 (la corrente, a meta' su un
+branch: restano i task 6-8 del suo piano), 12 (dire di che onda si
 tratta, e adesso ne resta meno da dire: l'interruttore lo dichiara, la legenda
 no) e 14 (le boe, bloccata sull'accesso ai dati). Tutto il resto qui sotto è
 barrato e sta solo come storia.
@@ -340,8 +340,41 @@ saltato è archivio che non si recupera.
    `livelloParticelle.ts`. La velocita' viene dalla fisica (`c = g T / 2 pi`,
    col periodo dall'archivio), non da un numero scelto.
 
-   Resta la **corrente**: stesso motore, ma ha un modulo, quindi puo' essere un
-   layer a se' (colore = velocita', particelle = verso).
+   Resta la **corrente**: stesso motore, ma ha un modulo, quindi e' un layer a
+   se' (colore = velocita', scie = verso). **E' a meta', sul branch
+   `worktree-feat-corrente`** (su origin, c48079b), e **non e' in `develop`**:
+   in `develop` ci sono solo la spec (`docs/superpowers/specs/2026-08-21-corrente-design.md`)
+   e il piano (`docs/superpowers/plans/2026-08-21-corrente.md`). Sul branch sono
+   fatti i task 1-5 di 8: il moto da (u, v), la scia accanto alla cresta, il
+   valore vettoriale sotto il dito, lo shader a quattro texture, il cablaggio
+   con la corrente ancora spenta. Restano il 6 (accendere la corrente), il 7 (il
+   test di coerenza sui due campi) e l'8 (ritarare la velocita' delle scie e
+   scrivere le decisioni). Prima del task 6:
+
+   - **la revisione del task 5 non e' stata fatta**: va dispacciata;
+   - **il ruling per il task 6 non va ereditato**: la prontezza dei fotogrammi
+     (`assicuraFinestra`, `avanza`, `chiediAvanti`) guarda ancora solo il primo
+     campo. Se nessuno chiede i fotogrammi di `vbar`, quel campo non arriva in
+     cache e la corrente non si disegna mai;
+   - **2c24f48 e' fuori piano** (la finestra iniziale guarda indietro 24 ore
+     invece di 48): viaggia sul branch, va ricordato all'unione;
+   - **`web/src/ui/App.tsx` e' cambiato su entrambi i lati** dalla base comune
+     (f99e3f6): e' il primo punto da guardare quando si unisce.
+
+   Il registro dell'esecuzione sta sul branch, in
+   `docs/superpowers/revisioni/2026-08-21-corrente-esecuzione.md`; accanto, in
+   `docs/superpowers/revisioni/2026-08-21-corrente/`, i brief e i report dei
+   task 1-5 e le diff date ai revisori (non coincidono con un `git diff` sullo
+   stesso intervallo, quindi non si rigenerano). Lo spazio di lavoro della skill,
+   `.superpowers/sdd/2026-08-21-corrente/`, sta nella copia principale. Per
+   riprendere:
+
+   ```bash
+   git worktree add .claude/worktrees/feat-corrente worktree-feat-corrente
+   npm --prefix .claude/worktrees/feat-corrente/web ci
+   mkdir -p .claude/worktrees/feat-corrente/.superpowers/sdd   # ignorata da git: un worktree nuovo non ce l'ha
+   cp -R .superpowers/sdd/2026-08-21-corrente .claude/worktrees/feat-corrente/.superpowers/sdd/
+   ```
 
    ~~La voce "direzione dell'onda" nel selettore~~: **chiusa il 2026-08-21
    togliendola.** Era stata chiesta in aggiunta alla sovrapposizione, con il
@@ -353,8 +386,8 @@ saltato è archivio che non si recupera.
    98.
 
    Nomi, accorpamento delle componenti e scelte di resa stanno in
-   `web/src/ui/grandezze.ts`. **Vincolo da sciogliere prima della corrente**
-   (prima diceva "prima della direzione", che non serve piu'): oggi le grandezze
+   `web/src/ui/grandezze.ts`. **Vincolo da sciogliere prima della corrente**,
+   ed e' uno degli obiettivi del suo piano, ancora fuori da `develop`: oggi le grandezze
    disegnabili hanno un campo solo, quindi il loro id coincide con quello del
    campo nel catalogo, ed e' cio' che rende lecito passarlo a `leggiIndice` e a
    `urlFrame`. La corrente ne ha due.
@@ -442,8 +475,8 @@ saltato è archivio che non si recupera.
    che parte arriva l'onda dentro un porto).
 
 16. **I run rossi dell'ingestione: quattro cause, nessun dato perso, quattro
-   rimedi. I primi tre sono in produzione dal 2026-10-06; il quarto e' nel
-   codice dal 2026-11-13 e va pubblicato.**
+   rimedi. I primi tre sono in produzione dal 2026-10-06; il quarto (d7fe069)
+   anche: le ingestioni del 18 e 19 novembre girano su quel commit, verdi.**
    Misurato su tutti i run fra il 22 agosto e il 13 novembre: 15 rossi, di
    cui uno solo dopo il 6 ottobre, su circa 120 run. Ogni manifest dal 10
    agosto al 4 ottobre e' in archivio (controllati uno per uno sul bucket),
@@ -565,6 +598,15 @@ non ho fatto"):
 ## 5. Comandi
 
 I comandi di verifica del codice stanno in fondo, nella sezione 7.
+
+**Da una cartella pulita** (clone nuovo, o dopo aver tolto le dipendenze per
+fare spazio): `.venv`, `web/node_modules`, le build e le cache non sono
+versionati, pesano circa 690 MB su 700, e si ricreano cosi':
+
+```bash
+uv sync
+npm --prefix web ci
+```
 
 **La SPA.** Si lavora dentro `web/`. Gli asset di `web/public/` **sono
 versionati** (690 KB), quindi un clone e' subito buono: i comandi qui sotto
@@ -991,6 +1033,23 @@ un pixel noto, non solo che qualcosa sia stato disegnato.
 
 **Un hook blocca i trattini lunghi.** Scrivere un file che li contiene fallisce con "Contenuto bloccato". Attenzione al caso ricorsivo: anche *citare* il carattere per documentare il divieto fa fallire la scrittura. Costa una riscrittura completa del file se ci si accorge tardi.
 
+**Fuori da git c'e' lavoro, e `git worktree remove` lo butta senza chiedere.**
+Il comando rifiuta un worktree con file modificati o non tracciati, ma **non
+guarda gli ignorati**: cancella `.superpowers/` (dove le skill tengono brief,
+report e registri) insieme a `node_modules`, ed esce con 0. Gli stash non si
+spingono mai, e un branch esiste altrove solo se e' su origin. Prima di togliere
+un worktree o di ripulire la cartella:
+
+```bash
+git status --ignored --short          # in ogni copia di lavoro, worktree compresi
+git stash list
+git ls-remote --heads origin          # da confrontare con git branch
+```
+
+Quello che serve va su un branch spinto su origin (come
+`salvataggio/stash-piano-ingestore`, sezione 7). Costo se lo si salta: brief,
+report e diff di revisione di un piano non si rigenerano da git.
+
 **`netCDF4`, `numpy`, `scipy` non sono installati a livello di sistema.** Usare `uv run --with netCDF4 --with numpy python -c ...` per le ispezioni al volo. `ncdump` e `gdalinfo` non esistono su questa macchina.
 
 ### Fonti alternative: cercate il 2026-08-21, nessuna adottata
@@ -1037,6 +1096,9 @@ rifarlo:
 - **La pubblicazione è `git push origin develop:main`**, che fa scattare il workflow `Deploy`. `main` non esiste in locale: si spinge `develop` sul suo posto
 - `feat/ingestore` è stato unito con un merge non fast-forward e cancellato in locale. Resta su `origin` come `origin/feat/ingestore`: se servisse rileggere la storia dell'esecuzione commit per commit, è lì.
 - Lo spazio di lavoro `.superpowers/sdd/2026-08-13-ingestore/` è stato cancellato a lavoro concluso. I documenti che contavano erano già stati copiati in `docs/superpowers/revisioni/`.
+- **Nessun worktree aperto.** `worktree-feat-corrente` (la corrente, task 1-5 di 8) esiste in locale e su origin, allo stesso commit (c48079b). Come riprenderlo sta nella sezione 4c, punto 11.
+- **`salvataggio/stash-piano-ingestore`** (su origin, 1bdfb66) conserva lo stash locale `stash@{0}` (97bdb89): modifiche al piano dell'ingestore del 2026-08-13, 174 righe aggiunte, che non si applicano più a `develop` così come sono. Non è stabilito se il loro contenuto sia superato. Lo stash resta dov'è.
+- `.superpowers/sdd/2026-08-21-corrente/` sta nella copia principale, escluso da git; il suo contenuto è versionato sul branch della corrente (sezione 4c, punto 11).
 
 Comandi di verifica:
 

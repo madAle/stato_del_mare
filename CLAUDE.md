@@ -33,6 +33,11 @@ non va ridiscusso. Il design approvato sta in
   `docs/superpowers/revisioni/2026-08-13-ingestore-decisioni.md`.
 - I documenti di lavoro delle skill vivono in `.superpowers/`, che è escluso da
   git: quello che deve sopravvivere va copiato in `docs/`.
+- **Non perdere lavoro, nemmeno quello futuro.** `.superpowers/` (anche dentro
+  un worktree), gli stash e i branch non spinti esistono solo su questo disco.
+  Prima di cancellare un worktree o ripulire la cartella si versionano su un
+  branch spinto su origin: `git worktree remove` butta i file ignorati senza
+  chiedere. I controlli da fare stanno in `STATO.md`, sezione 6.
 
 ## Vincolo architetturale
 
@@ -53,6 +58,10 @@ L'ingestore Python (`ingest/`) e la SPA (`web/`) esistono entrambi e sono in
 produzione: <https://stato-del-mare.pages.dev>.
 
 ```bash
+# da una cartella pulita (.venv e web/node_modules non sono versionati)
+uv sync
+npm --prefix web ci
+
 # ingestore
 uv run ruff check .
 uv run pytest            # suite predefinita: i test di rete restano esclusi
