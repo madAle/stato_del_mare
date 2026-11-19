@@ -1,0 +1,404 @@
+# Review package: e11650d..e9cc53d
+
+## Commits
+e9cc53d feat(spa): il campo sa disegnare il modulo di due componenti
+
+## Files changed
+ web/src/map/animazione.ts   |  5 ++-
+ web/src/map/campo.ts        | 91 +++++++++++++++++++++++++++++++++++++++------
+ web/src/map/shader.ts       | 41 ++++++++++++++++----
+ web/test/animazione.test.ts |  5 ++-
+ 4 files changed, 120 insertions(+), 22 deletions(-)
+
+## Diff
+diff --git a/web/src/map/animazione.ts b/web/src/map/animazione.ts
+index 6cbd007..e3c14d9 100644
+--- a/web/src/map/animazione.ts
++++ b/web/src/map/animazione.ts
+@@ -272,21 +272,24 @@ export class Animazione {
+     // non ha calcolato (vedi `oraPiuVicina`).
+     const q = this.opzioni.dissolvenza?.current === false ? oraPiuVicina(grezza) : grezza;
+     const chiaveA = prefetcher.chiave(q.prima);
+     const a = this.opzioni.cache.prendi(chiaveA);
+     if (!a) return;
+     const chiaveB = q.dopo ? prefetcher.chiave(q.dopo) : null;
+     const b = chiaveB ? this.opzioni.cache.prendi(chiaveB) ?? null : null;
+     // La chiave di B viaggia solo insieme al dato vero: se b e' null (il
+     // fotogramma dopo non c'e' ancora in cache) il livello deve vedere
+     // "nessun B" e non la chiave di un fotogramma che non ha ricevuto.
+-    this.livello.imposta(a, chiaveA, b, b ? chiaveB : null, b ? q.frazione : 0);
++    // Una voce sola: il campo scalare, che e' quello che questo ciclo disegna.
++    // La lista esiste perche' il livello sa disegnare anche il modulo di due
++    // componenti, e chi ne passa due lo accende.
++    this.livello.imposta([{ a, chiaveA, b, chiaveB: b ? chiaveB : null }], b ? q.frazione : 0);
+   }
+ 
+   private riporta(forza: boolean): void {
+     const adesso = performance.now();
+     const passo = this.opzioni.passoRapportoMs ?? 100;
+     if (!forza && adesso - this.ultimoRapporto < passo) {
+       // Strozzato, ma non perso: senza mettersi in coda, un rapporto che cade
+       // qui e non seguito da nessun altro (per esempio l'ultimo vaiA di un
+       // trascinamento dello scrubber, a riproduzione ferma) non arriverebbe
+       // mai, perche' da fermi non gira nessun ciclo che lo recuperi. Chi
+diff --git a/web/src/map/campo.ts b/web/src/map/campo.ts
+index e6cf105..68bf076 100644
+--- a/web/src/map/campo.ts
++++ b/web/src/map/campo.ts
+@@ -7,20 +7,36 @@ import { FRAMMENTO, VERTICE } from "./shader";
+ /**
+  * Quanto il campo sta lontano dalla riva, in metri.
+  *
+  * In metri e non in pixel di schermo: quello che il campo copre a riva sono
+  * moli, porti e dighe foranee, che sono oggetti geografici. Un margine in pixel
+  * vale sempre meno metri man mano che si ingrandisce, quindi la struttura resta
+  * coperta proprio allo zoom a cui la si sta guardando.
+  */
+ export const MARGINE_COSTA_M = 250;
+ 
++/**
++ * Un fotogramma di UNA componente: l'ora t, l'ora t+1 se c'e', e le chiavi con
++ * cui riconoscere che sono ancora gli stessi.
++ *
++ * Esiste come tipo a se' perche' un campo vettoriale ne vuole due: raggruppare
++ * qui i quattro valori che viaggiano sempre insieme evita una `imposta` a otto
++ * parametri, dove scambiare due `Int16Array` adiacenti compila e disegna un
++ * campo sbagliato senza dire niente.
++ */
++export type ComponenteFrame = {
++  a: Int16Array;
++  chiaveA: string;
++  b: Int16Array | null;
++  chiaveB: string | null;
++};
++
+ export type OpzioniCampo = {
+   griglia: Griglia;
+   costa: HTMLImageElement;
+   maschera: HTMLImageElement;
+   limiteCostaM: number;
+   limiteDatoM: number;
+   palette: string;
+   /** Fondoscala basso. Zero per le grandezze positive, negativo per quelle con segno. */
+   minimo: number;
+   massimo: number;
+@@ -73,37 +89,52 @@ export class LivelloCampo implements CustomLayerInterface {
+    * colore casuale invece che come nodata trasparente. Un test che
+    * aspettava quel segnale non aspettava niente di preciso, e diventava
+    * intermittente sulle macchine lente.
+    */
+   alPrimoDisegno?: () => void;
+ 
+   private programma: WebGLProgram | null = null;
+   private buffer: WebGLBuffer | null = null;
+   private texA: WebGLTexture | null = null;
+   private texB: WebGLTexture | null = null;
++  // La seconda componente, cioe' le due texture in piu' che servono solo a un
++  // campo vettoriale. Si allocano sempre, anche per l'altezza d'onda che non le
++  // usa: sono vuote finche' non arriva un dato (vedi texturaDato, che non chiama
++  // texImage2D), quindi costano una `createTexture` e nessuna memoria di
++  // immagine, mentre allocarle solo al bisogno vorrebbe dire creare texture
++  // dentro imposta(), che gira dentro il ciclo di disegno.
++  private texA2: WebGLTexture | null = null;
++  private texB2: WebGLTexture | null = null;
+   private texCosta: WebGLTexture | null = null;
+   private texMaschera: WebGLTexture | null = null;
+   private texPalette: WebGLTexture | null = null;
+   private frazione = 0;
+   private haB = false;
+   private haDatoCaricato = false;
+   private primoDisegnoSegnalato = false;
+   // Le chiavi (vedi Prefetcher.chiave) dei due fotogrammi gia' caricati nelle
+   // texture: imposta() le confronta prima di richiamare texImage2D, che senza
+   // questo controllo viene chiamato a ogni fotogramma di rAF (fino a 60 volte
+   // al secondo) anche quando i due frame da disegnare sono ancora gli stessi
+   // e solo la frazione di interpolazione e' cambiata. Su una griglia di
+   // 858x844 int16 sono circa 1,4 MB per texture: a 60 fps e due texture, quasi
+   // 174 MB al secondo verso la GPU per aggiornare un dato che in realta'
+   // cambia quattro volte al secondo.
+   private chiaveA: string | null = null;
+   private chiaveB: string | null = null;
++  private chiaveA2: string | null = null;
++  private chiaveB2: string | null = null;
++  // Lo decide quante componenti ha ricevuto imposta(), non un comando da fuori:
++  // un interruttore separato si potrebbe accendere con una sola texture
++  // caricata, e lo shader leggerebbe come seconda componente una texture vuota,
++  // cioe' un modulo calcolato su meta' vettore.
++  private modulo = false;
+   private quad = { x0: 0, y0: 0, x1: 0, y1: 0 };
+   private mappa: MappaLibre | null = null;
+   // Salvato da onAdd, che e' l'unico modo pubblico di avere il contesto: MapLibre
+   // lo passa gia' come parametro. Frugare dentro campi interni non documentati
+   // (per esempio painter.context.gl) degrada in silenzio se una versione futura
+   // li rinomina o li sposta: il livello smetterebbe di aggiornare le texture
+   // senza sollevare niente, e il difetto sembrerebbe stare nel ciclo di
+   // animazione invece che qui.
+   private gl: WebGL2RenderingContext | null = null;
+ 
+@@ -126,61 +157,91 @@ export class LivelloCampo implements CustomLayerInterface {
+     if (!gl.getProgramParameter(this.programma, gl.LINK_STATUS)) {
+       throw new Error(`programma non collegato: ${gl.getProgramInfoLog(this.programma)}`);
+     }
+ 
+     this.buffer = gl.createBuffer();
+     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+ 
+     this.texA = this.texturaDato(gl);
+     this.texB = this.texturaDato(gl);
++    this.texA2 = this.texturaDato(gl);
++    this.texB2 = this.texturaDato(gl);
+     this.texCosta = texturaR8(gl, this.opzioni.costa);
+     this.texMaschera = texturaR8(gl, this.opzioni.maschera);
+     this.texPalette = this.texturaPalette(gl, this.opzioni.palette);
+ 
+     // Il quadrilatero in coordinate mercatore normalizzate di MapLibre. La y
+     // cresce verso sud, quindi il nord ha la y piu' PICCOLA: scriverlo al
+     // contrario disegna il campo capovolto senza nessun errore.
+     this.quad = quadroGriglia(this.opzioni.griglia.boundsLonLat);
+   }
+ 
+   onRemove(_mappa: MappaLibre, gl: WebGL2RenderingContext): void {
+-    for (const t of [this.texA, this.texB, this.texCosta, this.texMaschera, this.texPalette]) {
++    for (const t of [this.texA, this.texB, this.texA2, this.texB2,
++                     this.texCosta, this.texMaschera, this.texPalette]) {
+       if (t) gl.deleteTexture(t);
+     }
+     if (this.buffer) gl.deleteBuffer(this.buffer);
+     if (this.programma) gl.deleteProgram(this.programma);
+     this.gl = null;
+   }
+ 
+   /**
+-   * Il campo da disegnare: l'ora t (chiave chiaveA), l'ora t+1 se c'e' (chiave
+-   * chiaveB), e quanto si e' dentro.
++   * I fotogrammi da disegnare, una voce per componente, e quanto si e' dentro
++   * l'ora.
++   *
++   * Una sola componente e' il caso di sempre (altezza d'onda, periodo, livello
++   * del mare). Due sono un campo vettoriale: la corrente, dove il valore
++   * disegnato e' il modulo. Il numero di voci decide u_modulo, quindi non c'e'
++   * un interruttore da tenere allineato a mano con quante texture sono state
++   * davvero caricate. Le voci oltre la seconda si ignorano: le texture per
++   * tenerle non esistono, e prenderne solo due in silenzio e' meno peggio che
++   * disegnare le prime due chiamandole per intero.
++   *
++   * **Le componenti vanno passate con la stessa presenza di `b`**: l'ora t+1
++   * c'e' per tutte o per nessuna. u_haB nello shader e' uno solo per tutte e
++   * due, quindi una componente con l'ora dopo e l'altra senza farebbe
++   * interpolare la seconda verso la texture che le era rimasta dentro, cioe' un
++   * vettore fatto di due istanti diversi: un modulo continuo e sbagliato, che
++   * non si vede come un errore. Chi legge da due cache indipendenti passa
++   * `b: null` a entrambe se a una manca (e' quello che `MapView` fa gia' per le
++   * particelle della direzione).
+    *
+    * Le chiavi sono quelle che Prefetcher.chiave() gia' costruisce per
+    * indicizzare la cache: chi chiama (Animazione.disegna) le ha gia' in mano,
+    * quindi passarle qui non costa una scelta di identita' in piu'. Servono
+    * solo a riconoscere "e' lo stesso fotogramma di prima": la texture non si
+    * ricarica se la chiave non e' cambiata, u_frazione resta un uniform e la
+    * fusione fra i due fotogrammi continua a funzionare a ogni chiamata.
+    */
+-  imposta(a: Int16Array, chiaveA: string, b: Int16Array | null, chiaveB: string | null, frazione: number): void {
+-    if (!this.gl) return;
+-    if (chiaveA !== this.chiaveA) {
+-      this.carica(this.gl, this.texA!, a);
+-      this.chiaveA = chiaveA;
++  imposta(componenti: ComponenteFrame[], frazione: number): void {
++    if (!this.gl || componenti.length === 0) return;
++    const [primo, secondo] = componenti;
++    if (primo.chiaveA !== this.chiaveA) {
++      this.carica(this.gl, this.texA!, primo.a);
++      this.chiaveA = primo.chiaveA;
+     }
+-    this.haB = b !== null;
+-    if (b && chiaveB !== this.chiaveB) {
+-      this.carica(this.gl, this.texB!, b);
++    this.haB = primo.b !== null;
++    if (primo.b && primo.chiaveB !== this.chiaveB) this.carica(this.gl, this.texB!, primo.b);
++    this.chiaveB = primo.b ? primo.chiaveB : null;
++
++    this.modulo = componenti.length > 1;
++    if (secondo) {
++      if (secondo.chiaveA !== this.chiaveA2) {
++        this.carica(this.gl, this.texA2!, secondo.a);
++        this.chiaveA2 = secondo.chiaveA;
++      }
++      if (secondo.b && secondo.chiaveB !== this.chiaveB2) this.carica(this.gl, this.texB2!, secondo.b);
++      this.chiaveB2 = secondo.b ? secondo.chiaveB : null;
+     }
+-    this.chiaveB = b ? chiaveB : null;
++
+     this.frazione = frazione;
+     // Da qui in poi le texture contengono un fotogramma vero: il prossimo
+     // render() e' quello che alPrimoDisegno aspetta.
+     this.haDatoCaricato = true;
+     this.mappa?.triggerRepaint();
+   }
+ 
+   impostaEstremi(minimo: number, massimo: number): void {
+     this.opzioni = { ...this.opzioni, minimo, massimo };
+     this.mappa?.triggerRepaint();
+@@ -235,25 +296,31 @@ export class LivelloCampo implements CustomLayerInterface {
+     gl.uniform4f(u("u_quad"), this.quad.x0, this.quad.y0, this.quad.x1, this.quad.y1);
+     gl.uniform2f(u("u_dim"), this.opzioni.griglia.larghezza, this.opzioni.griglia.altezza);
+     gl.uniform1f(u("u_scala"), this.opzioni.scala);
+     gl.uniform1f(u("u_minimo"), this.opzioni.minimo);
+     gl.uniform1f(u("u_massimo"), this.opzioni.massimo);
+     gl.uniform1f(u("u_limiteCosta"), this.opzioni.limiteCostaM);
+     gl.uniform1f(u("u_limiteDato"), this.opzioni.limiteDatoM);
+     gl.uniform1f(u("u_margine"), MARGINE_COSTA_M);
+     gl.uniform1f(u("u_frazione"), this.frazione);
+     gl.uniform1i(u("u_haB"), this.haB ? 1 : 0);
++    gl.uniform1i(u("u_modulo"), this.modulo ? 1 : 0);
+     gl.uniform1f(u("u_opacita"), this.opzioni.opacita ?? 0.88);
+ 
++    // L'indice nell'array E' l'unita' di texture. Le due della seconda
++    // componente si accodano (unita' 5 e 6) invece di infilarsi accanto a
++    // u_a e u_b: cosi' nessuna delle cinque che c'erano cambia unita', e un
++    // errore qui non potrebbe presentarsi come costa e palette scambiate.
+     const unita: [WebGLTexture | null, string][] = [
+       [this.texA, "u_a"], [this.texB, "u_b"], [this.texCosta, "u_costa"],
+       [this.texMaschera, "u_maschera"], [this.texPalette, "u_palette"],
++      [this.texA2, "u_a2"], [this.texB2, "u_b2"],
+     ];
+     unita.forEach(([tex, nome], i) => {
+       gl.activeTexture(gl.TEXTURE0 + i);
+       gl.bindTexture(gl.TEXTURE_2D, tex);
+       gl.uniform1i(u(nome), i);
+     });
+ 
+     gl.enable(gl.BLEND);
+     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+diff --git a/web/src/map/shader.ts b/web/src/map/shader.ts
+index 3d0a9c7..32662e8 100644
+--- a/web/src/map/shader.ts
++++ b/web/src/map/shader.ts
+@@ -10,20 +10,23 @@ void main() {
+ }`;
+ 
+ export const FRAMMENTO = `#version 300 es
+ precision highp float;
+ precision highp isampler2D;
+ in vec2 v_uv;
+ out vec4 fragColor;
+ 
+ uniform isampler2D u_a;        // frame all'ora t
+ uniform isampler2D u_b;        // frame all'ora t+1
++uniform isampler2D u_a2;       // seconda componente all'ora t, letta solo se u_modulo
++uniform isampler2D u_b2;       // seconda componente all'ora t+1
++uniform bool u_modulo;         // true: il valore e' il modulo delle due componenti
+ uniform float u_frazione;      // quanto si e' dentro l'ora
+ uniform bool u_haB;            // false dentro un buco: non si interpola
+ uniform sampler2D u_costa;     // distanza con segno dalla costa, positiva in mare
+ uniform sampler2D u_maschera;  // distanza con segno dal bordo del dato
+ uniform sampler2D u_palette;   // 256 x 1, RGB
+ uniform float u_limiteCosta;   // fondoscala della distanza dalla costa, in metri
+ uniform float u_limiteDato;    // fondoscala della distanza dal dato, in metri
+ uniform float u_margine;       // quanto stare lontani dalla riva, in metri
+ uniform vec2 u_dim;            // larghezza, altezza in celle
+ uniform float u_scala;         // da intero a unita' fisica
+@@ -77,34 +80,58 @@ void main() {
+   if (bordo <= 0.0) { fragColor = vec4(0.0); return; }
+ 
+   // L'opacita' misura quanto si sta estrapolando, e la misura giusta e' la
+   // distanza dal BORDO del dato. La distanza dal campione valido piu' vicino,
+   // dentro il dato, e' la distanza dal centro del texel: continua ma periodica,
+   // cioe' una scacchiera su tutto il mare aperto.
+   float dDato = (texture(u_maschera, uv).r * 2.0 - 1.0) * u_limiteDato;
+   float dissolvenza = clamp((dDato + 1800.0) / 1200.0, 0.0, 1.0);
+   if (dissolvenza <= 0.0) { fragColor = vec4(0.0); return; }
+ 
++  // Si interpolano nel tempo le COMPONENTI, e solo dopo si prende il modulo.
++  // Nell'ordine opposto la corrente non si annullerebbe mai: all'inversione di
++  // marea una componente passa da +0,3 a -0,3 e il valore vero a meta' e' zero,
++  // mentre la media dei moduli da' 0,3. Non si vede come un errore, si vede
++  // come un mare che non sta mai fermo.
+   float pesoA;
+   float va = media(u_a, p, pesoA);
+-  float valore;
++  float pesoA2 = pesoA;
++  float va2 = u_modulo ? media(u_a2, p, pesoA2) : 0.0;
++  float c1;
++  float c2;
+   if (u_haB) {
+     float pesoB;
+     float vb = media(u_b, p, pesoB);
+-    // Se una delle due ore non ha dato qui, si usa l'altra invece di mediare
+-    // con zero, che sarebbe un'onda che sprofonda e risale a ogni ora.
++    float pesoB2 = pesoB;
++    float vb2 = u_modulo ? media(u_b2, p, pesoB2) : 0.0;
+     if (pesoA <= 0.0 && pesoB <= 0.0) { fragColor = vec4(0.0); return; }
+-    if (pesoA <= 0.0) valore = vb;
+-    else if (pesoB <= 0.0) valore = va;
+-    else valore = mix(va, vb, u_frazione);
++    // Meta' di un vettore non e' un vettore: se la seconda componente non ha
++    // dato qui si lascia trasparente, invece di dare zero all'altra, che
++    // darebbe una corrente piu' lenta del vero, cioe' plausibile e falsa.
++    if (u_modulo && pesoA2 <= 0.0 && pesoB2 <= 0.0) { fragColor = vec4(0.0); return; }
++    // Se una delle due ore non ha dato qui, si usa l'altra invece di mediare
++    // con zero, che sarebbe un campo che sprofonda e risale a ogni ora.
++    c1 = pesoA <= 0.0 ? vb : (pesoB <= 0.0 ? va : mix(va, vb, u_frazione));
++    c2 = !u_modulo ? 0.0
++       : (pesoA2 <= 0.0 ? vb2 : (pesoB2 <= 0.0 ? va2 : mix(va2, vb2, u_frazione)));
+   } else {
+     if (pesoA <= 0.0) { fragColor = vec4(0.0); return; }
+-    valore = va;
++    if (u_modulo && pesoA2 <= 0.0) { fragColor = vec4(0.0); return; }
++    c1 = va;
++    c2 = va2;
+   }
++  // Il modulo si prende sui valori GREZZI e si scala dopo (u_scala qui sotto e'
++  // uno solo): e' lecito unicamente perche' le due componenti hanno la stessa
++  // scala di archiviazione, verificata nel catalogo vero (0,001 per entrambe le
++  // componenti della corrente). Chi accende u_modulo su due campi con scale
++  // diverse ottiene un numero plausibile e falso: il controllo di quella
++  // condizione sta a chi mette insieme le due componenti (arriva col task che
++  // accende la corrente), e questo shader ci conta.
++  float valore = u_modulo ? length(vec2(c1, c2)) : c1;
+ 
+   // Fra minimo e massimo, non fra zero e massimo: il livello del mare ha segno,
+   // e con la scala ancorata a zero tutti i valori negativi finivano schiacciati
+   // nello stesso colore, cioe' meta' del fenomeno sarebbe stata invisibile.
+   float t = clamp((valore * u_scala - u_minimo) / (u_massimo - u_minimo), 0.0, 1.0);
+   vec3 colore = texture(u_palette, vec2(t, 0.5)).rgb;
+   fragColor = vec4(colore, u_opacita * bordo * dissolvenza);
+ }`;
+diff --git a/web/test/animazione.test.ts b/web/test/animazione.test.ts
+index e7e4b6e..c6a8544 100644
+--- a/web/test/animazione.test.ts
++++ b/web/test/animazione.test.ts
+@@ -1,29 +1,30 @@
+ import { beforeEach, describe, expect, it, vi } from "vitest";
+ import { CacheFrame } from "../src/data/cache";
+ import type { Ora } from "../src/data/indice";
+ import { Prefetcher } from "../src/data/prefetch";
+ import { Animazione } from "../src/map/animazione";
++import type { ComponenteFrame } from "../src/map/campo";
+ 
+ const asse: Ora[] = Array.from({ length: 24 }, (_, i) => ({
+   istante: Date.UTC(2026, 7, 15, i),
+   tipo: "an" as const,
+   riferimento: "20260815",
+ }));
+ 
+ /** Un finto livello che registra cosa gli e' stato chiesto di disegnare. */
+ function livelloFinto() {
+   const chiamate: { frazione: number; haB: boolean }[] = [];
+   return {
+     chiamate,
+-    imposta(_a: Int16Array, _chiaveA: string, b: Int16Array | null, _chiaveB: string | null, frazione: number) {
+-      chiamate.push({ frazione, haB: b !== null });
++    imposta(componenti: ComponenteFrame[], frazione: number) {
++      chiamate.push({ frazione, haB: componenti[0].b !== null });
+     },
+   };
+ }
+ 
+ let adesso = 0;
+ let attivita: FrameRequestCallback[] = [];
+ 
+ beforeEach(() => {
+   adesso = 0;
+   attivita = [];
