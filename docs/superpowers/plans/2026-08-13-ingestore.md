@@ -974,9 +974,14 @@ def write_profile_file(path, var_names=("temp",), n_times: int = NT):
         h[:] = np.full((ETA, XI), 20.0)
 
         mare = synthetic_sea_mask()
+        # Il campo varia anche nello spazio, non solo in tempo e livello.
+        # Senza questa variazione un test sui valori estratti passerebbe anche
+        # se la colonna venisse presa dalla cella sbagliata, che e' proprio
+        # l'errore piu' insidioso di questo modulo.
+        per_cella = np.arange(ETA * XI, dtype=np.float64).reshape(ETA, XI) / 100.0
         for nome in var_names:
             v = ds.createVariable(
-                "temp" if nome == "temp" else nome,
+                nome,
                 "f4",
                 ("ocean_time", "s_rho", "eta_rho", "xi_rho"),
                 fill_value=1.0e37,
@@ -984,7 +989,7 @@ def write_profile_file(path, var_names=("temp",), n_times: int = NT):
             dati = np.zeros((n_times, NS, ETA, XI), dtype=np.float64)
             for k in range(n_times):
                 for livello in range(NS):
-                    dati[k, livello] = livello + k * 10.0
+                    dati[k, livello] = livello + k * 10.0 + per_cella
             mask = np.broadcast_to(~mare, dati.shape).copy()
             v[:] = np.ma.masked_array(dati, mask=mask)
     finally:
@@ -2204,6 +2209,9 @@ Creare `tests/test_stations.py`:
 """Anagrafica delle stazioni marine dal flusso BUFR in tempo reale."""
 import json
 
+import pytest
+import responses
+
 from ingest import stations
 
 RIGA_BOA = json.dumps(
@@ -2271,6 +2279,50 @@ def test_una_riga_malformata_non_ferma_il_parsing():
     assert len(trovate) == 1
 
 
+def test_un_record_marino_senza_coordinate_non_ferma_il_parsing():
+    """Il flusso arriva da fuori: una riga storta non deve far perdere le
+    stazioni gia' accumulate."""
+    senza_coordinate = json.dumps(
+        {
+            "network": "boa",
+            "date": "2026-08-13T04:00:00Z",
+            "data": [{"vars": {"B01019": {"v": "Rotta"}}}],
+        }
+    )
+    trovate = stations.parse_realtime([senza_coordinate, RIGA_BOA, "[]", "12"])
+    assert [s.name for s in trovate] == ["Nausicaa 2"]
+
+
+def test_un_nome_senza_caratteri_utili_viene_saltato():
+    illeggibile = json.dumps(
+        {
+            "network": "boa",
+            "lon": 1200000,
+            "lat": 4400000,
+            "data": [{"vars": {"B01019": {"v": "!!!"}}}],
+        }
+    )
+    assert stations.parse_realtime([illeggibile]) == []
+
+
+def test_due_nomi_diversi_sullo_stesso_identificativo_fermano_tutto():
+    """Un identificativo condiviso fonderebbe due archivi permanenti in uno.
+
+    Meglio fermarsi che scrivere: e' il caso in cui proseguire fa danno.
+    """
+    altra = RIGA_BOA.replace("Nausicaa 2", "Nausicaa/2")
+    with pytest.raises(stations.StationCollision):
+        stations.parse_realtime([RIGA_BOA, altra])
+
+
+@responses.activate
+def test_fetch_stations_legge_il_flusso_remoto():
+    corpo = (RIGA_BOA + "\n" + RIGA_TERRA + "\n").encode("utf-8")
+    responses.add(responses.GET, "https://esempio/realtime.jsonl", body=corpo)
+    trovate = stations.fetch_stations("https://esempio/realtime.jsonl")
+    assert [s.name for s in trovate] == ["Nausicaa 2"]
+
+
 def test_il_dizionario_e_serializzabile():
     d = stations.stations_to_dict(stations.parse_realtime([RIGA_BOA]))
     json.dumps(d)
@@ -2295,6 +2347,7 @@ pubblicheremo sono sempre dati di modello, e vanno etichettate come tali.
 """
 
 import json
+import logging
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -2303,6 +2356,17 @@ from dataclasses import dataclass
 import requests
 
 from .config import OBSERVED_NETWORKS, OBSERVED_REALTIME
+
+log = logging.getLogger(__name__)
+
+
+class StationCollision(Exception):
+    """Due nomi di stazione diversi producono lo stesso identificativo.
+
+    Non e' un caso da ignorare: l'identificativo e' un segmento di percorso
+    sull'object store, quindi due stazioni fuse su uno stesso id mescolerebbero
+    le loro storie in un archivio permanente. Meglio fermarsi.
+    """
 
 # Le coordinate arrivano come interi moltiplicati per centomila.
 _SCALA_COORDINATE = 100_000.0
@@ -2327,10 +2391,65 @@ def slugify(network: str, name: str) -> str:
     normalizzato = unicodedata.normalize("NFKD", name)
     senza_accenti = normalizzato.encode("ascii", "ignore").decode("ascii")
     pezzo = _NON_ALFANUMERICO.sub("-", senza_accenti.lower()).strip("-")
+    if not pezzo:
+        raise ValueError(f"nome di stazione senza caratteri utili: {name!r}")
     return f"{network}-{pezzo}"
 
 
+def _accumula(record: dict, accumulate: dict[str, dict]) -> None:
+    """Aggiunge un record all'anagrafica in costruzione.
+
+    Solleva se il record e' malformato: il chiamante lo salta. Solleva
+    StationCollision se due nomi diversi finiscono sullo stesso identificativo,
+    e quella invece non va saltata.
+    """
+    rete = record.get("network")
+    if rete not in OBSERVED_NETWORKS:
+        return
+
+    nome = None
+    variabili: set[str] = set()
+    for blocco in record.get("data", []):
+        for codice, valore in blocco.get("vars", {}).items():
+            if codice == "B01019":
+                nome = valore.get("v")
+            if not codice.startswith(_PREFISSI_NON_OSSERVATI):
+                variabili.add(codice)
+
+    if not nome:
+        return
+
+    identificativo = slugify(rete, nome)
+    esistente = accumulate.get(identificativo)
+    if esistente is not None and esistente["name"] != nome:
+        raise StationCollision(
+            f"{identificativo!r} generato sia da {esistente['name']!r} "
+            f"sia da {nome!r}"
+        )
+
+    voce = accumulate.setdefault(
+        identificativo,
+        {
+            "name": nome,
+            "network": rete,
+            # Le coordinate si prendono dal primo record e non si aggiornano:
+            # sono infrastrutture fisse, e un aggiornamento silenzioso
+            # sposterebbe la stazione a meta' archivio.
+            "lon": record["lon"] / _SCALA_COORDINATE,
+            "lat": record["lat"] / _SCALA_COORDINATE,
+            "variables": set(),
+        },
+    )
+    voce["variables"].update(variabili)
+
+
 def parse_realtime(lines: Iterable[str]) -> list[Station]:
+    """Costruisce l'anagrafica dal flusso JSONL.
+
+    Un record malformato viene saltato senza fermare gli altri: il flusso
+    arriva da fuori e non ne controlliamo la forma, quindi una riga storta non
+    deve far perdere tutte le stazioni gia' accumulate.
+    """
     accumulate: dict[str, dict] = {}
 
     for riga in lines:
@@ -2338,38 +2457,12 @@ def parse_realtime(lines: Iterable[str]) -> list[Station]:
         if not riga:
             continue
         try:
-            record = json.loads(riga)
-        except json.JSONDecodeError:
+            _accumula(json.loads(riga), accumulate)
+        except StationCollision:
+            raise
+        except (json.JSONDecodeError, AttributeError, KeyError, TypeError, ValueError) as errore:
+            log.debug("riga ignorata: %s", errore)
             continue
-
-        rete = record.get("network")
-        if rete not in OBSERVED_NETWORKS:
-            continue
-
-        nome = None
-        variabili: set[str] = set()
-        for blocco in record.get("data", []):
-            for codice, valore in blocco.get("vars", {}).items():
-                if codice == "B01019":
-                    nome = valore.get("v")
-                if not codice.startswith(_PREFISSI_NON_OSSERVATI):
-                    variabili.add(codice)
-
-        if not nome:
-            continue
-
-        identificativo = slugify(rete, nome)
-        voce = accumulate.setdefault(
-            identificativo,
-            {
-                "name": nome,
-                "network": rete,
-                "lon": record["lon"] / _SCALA_COORDINATE,
-                "lat": record["lat"] / _SCALA_COORDINATE,
-                "variables": set(),
-            },
-        )
-        voce["variables"].update(variabili)
 
     return [
         Station(
@@ -2430,7 +2523,7 @@ git commit -m "feat: anagrafica delle stazioni marine dal flusso BUFR"
 - Test: `tests/test_profiles.py`
 
 **Interfaces:**
-- Consumes: `stations.Station`, `grid.lonlat_to_mercator`, `encode.*`, `frames.read_times`, `config.PROFILE_GROUPS`, `config.MAX_NEIGHBOUR_DISTANCE_M`
+- Consumes: `stations.Station`, `grid.lonlat_to_mercator`, `encode.quantize`, `config.MAX_NEIGHBOUR_DISTANCE_M`. (`config.PROFILE_GROUPS` e `frames.read_times` servono all'orchestratore del Task 12, non a questo modulo.)
 - Produces:
   - `nearest_sea_cells(stations, lon_rho, lat_rho, sea_mask, max_distance_m) -> dict[str, tuple[int, int]]`
   - `column_key(station_id: str, date: str) -> str` restituisce `stations/{id}/columns/{YYYY-MM-DD}.bin`
@@ -2505,7 +2598,10 @@ def test_estrae_una_colonna_per_istante_e_per_variabile(profile_file):
 
 
 def test_i_valori_estratti_sono_quelli_del_file(profile_file):
-    """Nel file sintetico temp vale livello + ora*10."""
+    """Nel file sintetico temp vale livello + ora*10 + indice_piatto/100.
+
+    La cella (1,1) ha indice piatto 5, quindi il suo contributo e' 0,05.
+    """
     lon, lat = synthetic_coords()
     mare = synthetic_sea_mask()
     s = _stazione(float(lon[1, 1]), float(lat[1, 1]))
@@ -2513,8 +2609,36 @@ def test_i_valori_estratti_sono_quelli_del_file(profile_file):
     with Dataset(str(profile_file)) as ds:
         colonne = profiles.extract_columns(ds, ("temp",), celle, profiles.PROFILE_SCALE)
     valori = encode.dequantize(colonne["boa-prova"], profiles.PROFILE_SCALE)
-    assert np.allclose(valori[0, 0], [0.0, 1.0, 2.0], atol=0.01)
-    assert np.allclose(valori[1, 0], [10.0, 11.0, 12.0], atol=0.01)
+    assert np.allclose(valori[0, 0], [0.05, 1.05, 2.05], atol=0.01)
+    assert np.allclose(valori[1, 0], [10.05, 11.05, 12.05], atol=0.01)
+
+
+def test_la_colonna_viene_presa_dalla_cella_giusta(profile_file):
+    """Due stazioni su celle diverse devono dare valori diversi.
+
+    La seconda cella sta **fuori dalla diagonale** apposta. Su una diagonale
+    il contributo per cella e' invariante allo scambio di riga e colonna,
+    quindi una trasposizione dentro extract_columns passerebbe inosservata:
+    con (2,1) invece la trasposizione leggerebbe (1,2), che ha un valore
+    diverso, e il test fallisce.
+    """
+    lon, lat = synthetic_coords()
+    mare = synthetic_sea_mask()
+    a = _stazione(float(lon[1, 1]), float(lat[1, 1]), "boa-a")
+    b = _stazione(float(lon[2, 1]), float(lat[2, 1]), "boa-b")
+    celle = profiles.nearest_sea_cells([a, b], lon, lat, mare, max_distance_m=2000.0)
+    assert celle["boa-a"] == (1, 1)
+    assert celle["boa-b"] == (2, 1)
+
+    with Dataset(str(profile_file)) as ds:
+        colonne = profiles.extract_columns(ds, ("temp",), celle, profiles.PROFILE_SCALE)
+
+    valori_a = encode.dequantize(colonne["boa-a"], profiles.PROFILE_SCALE)
+    valori_b = encode.dequantize(colonne["boa-b"], profiles.PROFILE_SCALE)
+    # Indici piatti 5 e 9, quindi i contributi sono 0,05 e 0,09.
+    # Con righe e colonne scambiate la seconda leggerebbe (1,2), indice 6,
+    # cioe' 0,06: la differenza attesa cambierebbe da -0,04 a -0,01.
+    assert np.allclose(valori_a[0, 0] - valori_b[0, 0], -0.04, atol=0.005)
 ```
 
 - [ ] **Step 2: Eseguire i test e verificare che falliscano**
@@ -2537,11 +2661,15 @@ sproporzionato ma inevitabile: NetCDF non supporta richieste parziali per
 cella.
 """
 
+import logging
+
 import numpy as np
 from scipy.spatial import cKDTree
 
 from . import encode, grid
 from .config import MAX_NEIGHBOUR_DISTANCE_M
+
+log = logging.getLogger(__name__)
 
 # Centesimi di unita': va bene per gradi Celsius, salinita' pratica e m/s.
 PROFILE_SCALE = 0.01
@@ -2572,6 +2700,15 @@ def nearest_sea_cells(
         distanza, posizione = albero.query([float(px), float(py)])
         al_suolo = distanza * np.cos(np.radians(stazione.lat))
         if not np.isfinite(distanza) or al_suolo > max_distance_m:
+            # Il log non e' decorativo: senza, una stazione lagunare sparisce
+            # dall'archivio in silenzio e nessuno se ne accorge per mesi.
+            log.warning(
+                "stazione %s saltata: la cella di mare piu' vicina dista %.0f m, "
+                "oltre la soglia di %.0f m",
+                stazione.id,
+                al_suolo,
+                max_distance_m,
+            )
             continue
         fuori[stazione.id] = (int(righe[posizione]), int(colonne[posizione]))
     return fuori
